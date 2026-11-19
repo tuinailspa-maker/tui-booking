@@ -54,19 +54,23 @@
 .kiosk-counts button[aria-pressed="true"] { border-color: #bd8588; background: #fbf2ef; }
 .kiosk-counts strong { font: 27px Georgia, serif; }
 .kiosk-counts span { color: var(--kiosk-muted); font-size: 14px; }
+.kiosk-service-categories { display: grid; gap: 14px; }
+.kiosk-service-categories h3 { margin: 0 0 8px; color: var(--kiosk-muted); font-size: 14px; font-weight: 700; letter-spacing: .06em; }
 .kiosk-services { max-height: 240px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; overflow: auto; padding: 1px; }
 .kiosk-services button { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--kiosk-line); background: var(--kiosk-paper); cursor: pointer; text-align: left; }
 .kiosk-services button[aria-pressed="true"] { border-color: #bd8588; background: #fbf2ef; }
 .kiosk-services button span { font-size: 14px; line-height: 1.35; }
 .kiosk-services button b { font-size: 14px; white-space: nowrap; }
 .kiosk-start-over { display: block; min-height: 48px; margin: 14px auto; padding: 0 16px; border: 1px solid var(--kiosk-line); background: transparent; color: var(--kiosk-muted); cursor: pointer; }
-.kiosk-thanks { display: grid; place-items: center; text-align: center; }
+.kiosk-thanks { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.kiosk-thanks .kiosk-header { flex: 0 0 auto; }
+.kiosk-thanks-card { margin: auto; }
 .kiosk-thanks-card { width: min(640px, 100%); padding: 55px 35px; border: 1px solid var(--kiosk-line); background: var(--kiosk-paper); box-shadow: 0 20px 60px #382c2412; }
 .kiosk-flower { color: #b57f80; font-size: 49px; }
 .kiosk-thanks h1 { margin: 20px 0 12px; font: clamp(34px, 5vw, 48px)/1.2 Georgia, serif; }
 .kiosk-thanks p { color: var(--kiosk-muted); font: 19px Georgia, serif; }
 .kiosk-reset-track { height: 3px; margin-top: 35px; background: #eee6e1; }
-.kiosk-reset-track span { width: 100%; height: 100%; display: block; transform-origin: left; background: #b57f80; animation: kiosk-reset 5s linear forwards; }
+.kiosk-reset-track span { width: 100%; height: 100%; display: block; transform-origin: left; background: #b57f80; animation: kiosk-reset 6s linear forwards; }
 @keyframes kiosk-reset { to { transform: scaleX(0); } }
 @media (max-width: 700px) {
   .kiosk-header { min-height: 84px; }

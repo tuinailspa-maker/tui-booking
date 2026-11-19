@@ -13,6 +13,7 @@ type AdminBooking = {
   squareBookingIds: string[];
   status: string;
   startAt: string;
+  arrivalAt?: string | null;
   customerName: string;
   phone: string;
   technicians: string[];
@@ -97,7 +98,8 @@ function statusLabel(status: string) {
   if (status === "ACCEPTED" || status === "BOOKED") return "Confirmed";
   if (status === "PENDING") return "Pending";
   if (status === "MIXED") return "Partially confirmed";
-  if (status === "CHECKED_IN") return "Checked-in";
+  if (status === "CHECKED_IN") return "Checked In";
+  if (status === "WALK_IN_WAITING" || status === "WALK_IN") return "Waiting (Walk-in)";
   return status.replaceAll("_", " ").toLowerCase().replace(/^\w/, (letter) => letter.toUpperCase());
 }
 
@@ -119,6 +121,8 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
   const checkedOut = useMemo<Record<string, boolean>>(() => JSON.parse(checkedOutSnapshot), [checkedOutSnapshot]);
   const [serviceOverrides, setServiceOverrides] = useState<Record<string, { serviceIds: string[][]; addOns: Record<string, ServiceAddOnKey>[] }>>({});
   const [walkIns, setWalkIns] = useState<AdminBooking[]>([]);
+  const [assignmentBusy, setAssignmentBusy] = useState<string | null>(null);
+  const [assignmentError, setAssignmentError] = useState("");
   const [editor, setEditor] = useState<{ booking: AdminBooking | null; walkIn: boolean } | null>(null);
   const session = useSWR<{ authenticated: boolean }, FetchError>(sessionHint ? "/api/admin/session" : null, jsonFetcher, { shouldRetryOnError: false, revalidateOnFocus: false });
   const isAuthenticated = sessionHint && session.data?.authenticated === true;
@@ -164,6 +168,26 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
 
   function setCheckedOutStatus(id: string) {
     saveCheckedOutSnapshot({ ...checkedOut, [id]: true });
+  }
+
+  async function assignWalkInTechnician(booking: AdminBooking, technician: string) {
+    const teamMemberIds: Record<string, string> = { Jenny: "TMeOgAbe7NNuvMjT", Melika: "TM1-LEgXD0We2PeB", Nana: "TMepcy8rc3Xdpaer" };
+    const teamMemberId = teamMemberIds[technician];
+    if (!teamMemberId || assignmentBusy) return;
+    setAssignmentBusy(booking.id);
+    setAssignmentError("");
+    try {
+      for (const bookingId of booking.squareBookingIds) {
+        const response = await fetch("/api/admin/bookings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bookingId, teamMemberId }) });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || "Unable to assign technician.");
+      }
+      await bookings.mutate();
+    } catch (error) {
+      setAssignmentError(error instanceof Error ? error.message : "Unable to assign technician.");
+    } finally {
+      setAssignmentBusy(null);
+    }
   }
 
   function openAppointmentEditor(booking: AdminBooking) {
@@ -240,13 +264,15 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
 
       <div className="admin-schedule-heading"><div><h2>Appointments</h2><p>{new Intl.DateTimeFormat("en-CA", { dateStyle: "full", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`))}</p></div><span className="admin-count-pill">{appointments.length} {appointments.length === 1 ? "booking" : "bookings"}</span></div>
       {bookings.error && <div className="admin-alert" role="alert"><strong>Couldn&apos;t sync Square appointments.</strong><span>{bookings.error.message}</span><button type="button" onClick={() => bookings.mutate()}>Try again</button></div>}
+      {assignmentError && <div className="admin-alert" role="alert"><strong>Couldn&apos;t assign technician.</strong><span>{assignmentError}</span></div>}
       {bookings.isLoading && <div className="admin-loading" role="status"><span className="admin-spinner" />Loading Square appointments…</div>}
       {!bookings.isLoading && !bookings.error && appointments.length === 0 && <div className="admin-empty"><span aria-hidden="true">—</span><h3>No appointments for this day</h3><p>Square has no active bookings for the selected date. Add a walk-in ticket when a guest arrives.</p></div>}
       {appointments.length > 0 && <div className="admin-appointment-list">
         {appointments.map((booking) => {
           const override = serviceOverrides[booking.id];
           const selection = override ?? { serviceIds: booking.serviceIds, addOns: booking.addOns };
-          const isWalkIn = booking.status === "WALK_IN";
+          const isWalkIn = booking.status === "WALK_IN" || booking.status === "WALK_IN_WAITING";
+          const isCheckedIn = booking.status === "CHECKED_IN";
           const isCheckedOut = checkedOut[booking.id] === true;
           const dateTime = formatAppointmentDate(booking.startAt);
           const displayDuration = override ? selection.serviceIds.reduce((sum, ids, guestIndex) => sum + ids.reduce((guestTotal, id) => {
@@ -260,8 +286,8 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
           return <article className={`admin-appointment-card${isCheckedOut ? " is-checked-out" : ""}`} key={booking.id}>
             <div className="admin-time-column"><strong>{formatAppointmentTime(booking.startAt)}</strong><span>{displayDuration ? `${displayDuration} min` : "Walk-in"}</span><i /></div>
             <div className="admin-appointment-main">
-              <div className="admin-appointment-person"><div><h3>{booking.customerName || "Walk-in guest"}</h3><p>{booking.phone || "No phone on file"}</p></div><span className={`admin-status${isCheckedOut ? " is-paid" : ""}`}>{isCheckedOut ? "Checked out" : isWalkIn ? "Checked-in (Walk-in)" : statusLabel(booking.status)}</span></div>
-              <div className="admin-appointment-meta"><span><small>TECHNICIAN</small>{Array.from(new Set(booking.technicians)).join(", ") || "Unassigned"}</span><span><small>SQUARE REF</small>{booking.squareBookingIds[0] ?? "Walk-in"}</span></div>
+              <div className="admin-appointment-person"><div><h3>{booking.customerName || "Walk-in guest"}</h3><p>{booking.phone || "No phone on file"}</p></div><span className={`admin-status${isCheckedOut || isCheckedIn ? " is-paid" : ""}`}>{isCheckedOut ? "Checked out" : statusLabel(booking.status)}</span></div>
+              <div className="admin-appointment-meta"><span><small>TECHNICIAN</small>{Array.from(new Set(booking.technicians)).join(", ") || "Unassigned"}{isWalkIn && booking.squareBookingIds.length > 0 && <select aria-label={`Assign technician to ${booking.customerName}`} value={booking.technicians.find((name) => ["Jenny", "Melika", "Nana"].includes(name)) ?? ""} disabled={assignmentBusy !== null} onChange={(event) => void assignWalkInTechnician(booking, event.target.value)}><option value="" disabled>Choose technician</option>{["Jenny", "Melika", "Nana"].map((name) => <option key={name} value={name}>{name}</option>)}</select>}</span><span><small>SQUARE REF</small>{booking.squareBookingIds[0] ?? "Walk-in"}</span>{isCheckedIn && booking.arrivalAt && <span><small>ARRIVED</small>{new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(booking.arrivalAt))}</span>}</div>
               <div className="admin-appointment-services"><div className="admin-service-lines"><strong>Services</strong>{serviceList.length > 0 ? serviceList.map((service) => <span key={service.id}>{selection.serviceIds.length > 1 ? <small>Guest {service.guestIndex + 1} · </small> : null}{service.label}<b>${service.amount}</b></span>) : <span className="admin-unmapped-service">Services weren&apos;t recognized. Add them before checkout.</span>}</div><div className="admin-card-total"><small>ESTIMATED</small><strong>${totalFor({ ...booking, ...selection }).toFixed(2)}</strong></div></div>
               <div className="admin-card-actions"><button type="button" className="admin-edit-button" onClick={() => openAppointmentEditor(booking)}>Edit services</button><BackupBill language="en" date={dateTime.date} time={dateTime.time} selections={selection.serviceIds} serviceAddOns={selection.addOns} customerName={booking.customerName} customerPhone={booking.phone} triggerLabel={isCheckedOut ? "View receipt" : "Check out / Bill"} onMarkCheckedOut={isCheckedOut ? undefined : () => setCheckedOutStatus(booking.id)} markCheckedOutLabel="Mark checked out" /></div>
             </div>

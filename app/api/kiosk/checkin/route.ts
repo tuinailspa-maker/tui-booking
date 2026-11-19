@@ -5,8 +5,9 @@ import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig"
 
 const API = process.env.SQUARE_ENVIRONMENT === "sandbox" ? "https://connect.squareupsandbox.com/v2" : "https://connect.squareup.com/v2";
 const LOCATION_ID = process.env.SQUARE_LOCATION_ID || "R73A64VPAR34X";
-const CHECKED_IN = "[TUI_CHECKED_IN]";
+const CHECKED_IN = "[TUI_CHECKED_IN:";
 const WALK_IN = "[TUI_WALK_IN]";
+const NO_SERVICE = "[TUI_NO_SERVICE]";
 type SquareBooking = { id: string; version?: number; status?: string; start_at?: string; customer_id?: string; seller_note?: string; appointment_segments?: { duration_minutes?: number; service_variation_id?: string; team_member_id?: string }[] };
 type SquareCustomer = { id: string; given_name?: string; family_name?: string; phone_number?: string };
 type Variation = { id: string; version: number; item_variation_data?: { name?: string; available_for_booking?: boolean; team_member_ids?: string[] } };
@@ -35,6 +36,7 @@ function dayStart(date: string) {
   return new Date(guess - (Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second)) - guess));
 }
 function normalizePhone(value: string) { return value.replace(/\D/g, "").slice(-10); }
+function technicianName(id?: string) { return Object.entries(SQUARE_TEAM_MEMBER_IDS).find(([, teamMemberId]) => teamMemberId === id)?.[0] ?? "Unassigned"; }
 async function todayBookings() {
   const date = torontoDate(); const start = dayStart(date); const end = dayStart(new Date(start.getTime() + 36 * 60 * 60 * 1000).toISOString().slice(0, 10));
   const query = new URLSearchParams({ location_id: LOCATION_ID, start_at_min: start.toISOString(), start_at_max: new Date(start.getTime() + 36 * 60 * 60 * 1000).toISOString(), limit: "100" });
@@ -61,36 +63,47 @@ export async function GET(request: Request) {
       square<{ customers?: SquareCustomer[] }>("/customers/search", "POST", { query: { filter: { phone_number: { exact: `+1${phone}` } } }, limit: 1 }),
     ]);
     const customer = customerResult.customers?.[0];
-    const result = customer ? bookings.filter((booking) => booking.customer_id === customer.id).map((booking) => ({ id: booking.id, version: booking.version, name: [customer.given_name, customer.family_name].filter(Boolean).join(" ") || "Guest", time: booking.start_at, service: booking.seller_note?.match(/Services:\s*([\s\S]+?)(?:\. Guest subtotal|\. Combo discount:|$)/)?.[1]?.split(/;\s*/).map((line) => line.split(/\s+—\s+\$/)[0]).join(", ") || "Appointment", checkedIn: booking.seller_note?.includes(CHECKED_IN) ?? false })) : [];
+    const result = customer ? bookings.filter((booking) => booking.customer_id === customer.id).map((booking) => ({ id: booking.id, version: booking.version, name: [customer.given_name, customer.family_name].filter(Boolean).join(" ") || "Guest", time: booking.start_at, service: booking.seller_note?.match(/Services:\s*([\s\S]+?)(?:\. Guest subtotal|\. Combo discount:|$)/)?.[1]?.split(/;\s*/).map((line) => line.split(/\s+—\s+\$/)[0]).join(", ") || "Appointment", technician: Array.from(new Set((booking.appointment_segments ?? []).map((segment) => technicianName(segment.team_member_id)))).filter((name) => name !== "Unassigned").join(", ") || "Unassigned", checkedIn: booking.seller_note?.includes(CHECKED_IN) || booking.seller_note?.includes("[TUI_CHECKED_IN]") || false })) : [];
     return NextResponse.json({ appointments: result }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return responseError(error); }
 }
 export async function PATCH(request: Request) {
   const body = await request.json().catch(() => null);
-  if (!body || typeof body.id !== "string" || typeof body.version !== "number") return NextResponse.json({ error: "Invalid appointment." }, { status: 400 });
+  if (!body || typeof body.id !== "string" || typeof body.version !== "number" || typeof body.phone !== "string" || normalizePhone(body.phone).length !== 10) return NextResponse.json({ error: "Invalid appointment." }, { status: 400 });
   try {
     const current = await square<{ booking?: SquareBooking }>(`/bookings/${encodeURIComponent(body.id)}`);
     if (!current.booking || typeof current.booking.version !== "number") return NextResponse.json({ error: "Appointment could not be found." }, { status: 404 });
-    await square(`/bookings/${encodeURIComponent(body.id)}`, "PUT", { booking: { version: current.booking.version, seller_note: `${current.booking.seller_note ?? ""} ${CHECKED_IN}`.trim() } });
-    return NextResponse.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
+    const booking = current.booking;
+    const todaysBookings = await todayBookings();
+    if (!booking.customer_id || !booking.start_at || !todaysBookings.some((item) => item.id === booking.id)) return NextResponse.json({ error: "This appointment is not available for check-in today." }, { status: 404 });
+    const customer = await square<{ customer?: SquareCustomer }>(`/customers/${encodeURIComponent(booking.customer_id)}`);
+    if (!customer.customer?.phone_number || normalizePhone(customer.customer.phone_number) !== normalizePhone(body.phone)) return NextResponse.json({ error: "The phone number does not match this appointment." }, { status: 403 });
+    if (booking.seller_note?.includes(CHECKED_IN)) return NextResponse.json({ success: true, alreadyCheckedIn: true }, { headers: { "Cache-Control": "no-store" } });
+    const arrivalAt = new Date().toISOString();
+    const checkInMarker = `${CHECKED_IN}${arrivalAt}]`;
+    const note = `${(booking.seller_note ?? "").slice(0, 500 - checkInMarker.length - 1)} ${checkInMarker}`.trim();
+    await square(`/bookings/${encodeURIComponent(body.id)}`, "PUT", { booking: { version: booking.version, seller_note: note } });
+    return NextResponse.json({ success: true, arrivalAt }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return responseError(error); }
 }
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const name = typeof body?.name === "string" ? body.name.trim().slice(0, 100) : "";
   const phone = typeof body?.phone === "string" ? body.phone.trim().slice(0, 30) : "";
-  const serviceIds: string[] = Array.isArray(body?.serviceIds) ? body.serviceIds.filter((id: unknown): id is string => typeof id === "string" && serviceById.has(id)).slice(0, 8) : [];
+  const serviceIds: string[] = Array.isArray(body?.serviceIds) ? body.serviceIds.filter((id: unknown): id is string => typeof id === "string" && serviceById.has(id) && /^(hands-|enhancement-|feet-|waxing-)/.test(id)).slice(0, 8) : [];
   const guestCount = Number.isInteger(body?.guestCount) && body.guestCount >= 1 && body.guestCount <= 3 ? body.guestCount : 1;
-  if (!name || normalizePhone(phone).length !== 10 || serviceIds.length === 0) return NextResponse.json({ error: "Enter a name, valid phone number, and at least one service." }, { status: 400 });
+  if (!name || normalizePhone(phone).length !== 10) return NextResponse.json({ error: "Enter a name and valid phone number." }, { status: 400 });
   try {
     const catalog = await square<{ objects?: CatalogItem[] }>("/catalog/search", "POST", { object_types: ["ITEM"], include_deleted_objects: false, limit: 100 });
     const selected = serviceIds.map((id) => serviceById.get(id)!);
-    const service = selected[0];
     const normalized = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
     const variations = (catalog.objects ?? []).flatMap((item) => (item.item_data?.variations ?? []).map((variation) => ({ variation, name: normalized(`${item.item_data?.name ?? ""} ${variation.item_variation_data?.name ?? ""}`) })));
-    const target = normalized(service.nameEn);
-    const match = variations.find(({ variation, name: candidate }) => variation.item_variation_data?.available_for_booking && (candidate === target || candidate.includes(target)));
-    if (!match) throw new Error(`No bookable Square service was found for ${service.nameEn}.`);
+    const serviceMatches = selected.map((item) => {
+      const target = normalized(item.nameEn);
+      const match = variations.find(({ variation, name: candidate }) => variation.item_variation_data?.available_for_booking && (candidate === target || candidate.includes(target)));
+      if (!match) throw new Error(`No bookable Square service was found for ${item.nameEn}.`);
+      return { item, variation: match.variation };
+    });
     const teamId = Object.values(SQUARE_TEAM_MEMBER_IDS)[0];
     const phoneNumber = phone.startsWith("+") ? `+${phone.replace(/\D/g, "")}` : `+1${phone.replace(/\D/g, "")}`;
     const customerSearch = await square<{ customers?: SquareCustomer[] }>("/customers/search", "POST", { query: { filter: { phone_number: { exact: phoneNumber } } }, limit: 1 });
@@ -98,9 +111,15 @@ export async function POST(request: Request) {
     if (!customer) {
       const parts = name.split(/\s+/); const created = await square<{ customer: SquareCustomer }>("/customers", "POST", { idempotency_key: crypto.randomUUID(), given_name: parts[0], family_name: parts.slice(1).join(" ") || undefined, phone_number: phoneNumber }); customer = created.customer;
     }
-    const notes = `${WALK_IN} ${CHECKED_IN} Guests: ${guestCount}. Services: ${selected.map((item) => `${serviceDisplayNameWithAddOn(item, "en")} — $${item.priceCad} (${item.durationMinutes} min)`).join("; ")}. Guest subtotal $${selected.reduce((sum, item) => sum + item.priceCad, 0)} CAD.`;
-    const duration = selected.reduce((sum, item) => sum + selectedServiceDuration(item), 0);
-    const created = await square<{ booking: { id: string } }>("/bookings", "POST", { idempotency_key: crypto.randomUUID(), booking: { location_id: LOCATION_ID, start_at: new Date().toISOString(), customer_id: customer.id, seller_note: notes.slice(0, 500), appointment_segments: [{ duration_minutes: duration, service_variation_id: match.variation.id, service_variation_version: match.variation.version, team_member_id: teamId }] } });
+    const fallbackVariation = serviceMatches.length ? null : variations.find(({ variation }) => variation.item_variation_data?.available_for_booking)?.variation;
+    if (!serviceMatches.length && !fallbackVariation) throw new Error("No bookable Square service is available to create the walk-in queue entry.");
+    const queueAt = new Date();
+    const bookingStartAt = new Date(queueAt.getTime() + 2 * 60_000);
+    const notes = `${WALK_IN} [TUI_QUEUE_AT:${queueAt.toISOString()}] ${serviceMatches.length ? "" : `${NO_SERVICE} `}Guests: ${guestCount}. Services: ${selected.length ? selected.map((item) => `${serviceDisplayNameWithAddOn(item, "en")} — $${item.priceCad} (${selectedServiceDuration(item)} min)`).join("; ") : "No service selected"}. Guest subtotal $${selected.reduce((sum, item) => sum + item.priceCad, 0)} CAD.`;
+    const segments = serviceMatches.length
+      ? serviceMatches.map(({ item, variation }) => ({ duration_minutes: selectedServiceDuration(item), service_variation_id: variation.id, service_variation_version: variation.version, team_member_id: teamId }))
+      : [{ duration_minutes: 15, service_variation_id: fallbackVariation!.id, service_variation_version: fallbackVariation!.version, team_member_id: teamId }];
+    const created = await square<{ booking: { id: string } }>("/bookings", "POST", { idempotency_key: crypto.randomUUID(), booking: { location_id: LOCATION_ID, start_at: bookingStartAt.toISOString(), customer_id: customer.id, seller_note: notes.slice(0, 500), appointment_segments: segments } });
     return NextResponse.json({ success: true, id: created.booking.id }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return responseError(error); }
 }

@@ -8,9 +8,11 @@ const SQUARE_PRODUCTION_URL = "https://connect.squareup.com/v2";
 const SQUARE_SANDBOX_URL = "https://connect.squareupsandbox.com/v2";
 const ADMIN_LOCATION_ID = "R73A64VPAR34X";
 const INACTIVE_STATUSES = new Set(["CANCELLED_BY_CUSTOMER", "CANCELLED_BY_SELLER", "DECLINED", "COMPLETED", "NO_SHOW"]);
+const NO_SERVICE_MARKER = "[TUI_NO_SERVICE]";
 
 type SquareBooking = {
   id: string;
+  version?: number;
   status?: string;
   start_at?: string;
   customer_id?: string;
@@ -46,6 +48,7 @@ function nextDate(date: string) {
 }
 
 function parseSellerNote(note: string | undefined): ServiceSelection {
+  if (note?.includes(NO_SERVICE_MARKER)) return { serviceIds: [], addOns: {} };
   const match = note?.match(/Services:\s*([\s\S]+?)(?:\. Guest subtotal|\. Combo discount:|$)/);
   const serviceIds: string[] = [];
   const addOns: Record<string, ServiceAddOnKey> = {};
@@ -89,11 +92,12 @@ function normalize(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-async function squareGet<T>(path: string): Promise<T> {
+async function squareRequest<T>(path: string, method: "GET" | "PUT" = "GET", body?: unknown): Promise<T> {
   const response = await fetch(`${squareBaseUrl()}${path}`, {
-    method: "GET",
+    method,
     cache: "no-store",
-    headers: { Authorization: `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`, "Square-Version": SQUARE_API_VERSION },
+    headers: { Authorization: `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`, "Square-Version": SQUARE_API_VERSION, ...(body ? { "Content-Type": "application/json" } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {}),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -114,7 +118,7 @@ async function fetchBookings(startAt: Date, endAt: Date) {
       limit: "100",
     });
     if (cursor) query.set("cursor", cursor);
-    const page = await squareGet<{ bookings?: SquareBooking[]; cursor?: string }>(`/bookings?${query}`);
+    const page = await squareRequest<{ bookings?: SquareBooking[]; cursor?: string }>(`/bookings?${query}`);
     bookings.push(...(page.bookings ?? []));
     cursor = page.cursor;
   } while (cursor);
@@ -126,7 +130,7 @@ async function fetchBookings(startAt: Date, endAt: Date) {
 
 async function fetchCustomer(customerId: string): Promise<SquareCustomer | null> {
   try {
-    const result = await squareGet<{ customer?: SquareCustomer }>(`/customers/${encodeURIComponent(customerId)}`);
+    const result = await squareRequest<{ customer?: SquareCustomer }>(`/customers/${encodeURIComponent(customerId)}`);
     return result.customer ?? null;
   } catch {
     return null;
@@ -160,7 +164,7 @@ export async function GET(request: Request) {
 
     const variationNames = new Map<string, string>();
     const hasUnparsedCatalogServices = squareBookings.some((booking) =>
-      parseSellerNote(booking.seller_note).serviceIds.length === 0 && booking.appointment_segments?.some((segment) => segment.service_variation_id),
+      !booking.seller_note?.includes(NO_SERVICE_MARKER) && parseSellerNote(booking.seller_note).serviceIds.length === 0 && booking.appointment_segments?.some((segment) => segment.service_variation_id),
     );
     if (hasUnparsedCatalogServices) {
       try {
@@ -168,7 +172,7 @@ export async function GET(request: Request) {
         do {
           const query = new URLSearchParams({ types: "ITEM", limit: "100" });
           if (cursor) query.set("cursor", cursor);
-          const catalog = await squareGet<{ objects?: SquareCatalogItem[]; cursor?: string }>(`/catalog/list?${query}`);
+          const catalog = await squareRequest<{ objects?: SquareCatalogItem[]; cursor?: string }>(`/catalog/list?${query}`);
           for (const item of catalog.objects ?? []) {
             for (const variation of item.item_data?.variations ?? []) {
               variationNames.set(variation.id, `${item.item_data?.name ?? ""} ${variation.item_variation_data?.name ?? ""}`);
@@ -187,7 +191,7 @@ export async function GET(request: Request) {
         Object.entries(SQUARE_TEAM_MEMBER_IDS).find(([name, id]) => ["Jenny", "Melika", "Nana"].includes(name) && id === segment.team_member_id)?.[0],
       ).filter((name): name is string => Boolean(name))));
       const parsed = parseSellerNote(booking.seller_note);
-      const segmentSelections = segments.flatMap((segment) => segment.service_variation_id
+      const segmentSelections = booking.seller_note?.includes(NO_SERVICE_MARKER) ? [] : segments.flatMap((segment) => segment.service_variation_id
         ? [parseCatalogVariation(variationNames.get(segment.service_variation_id) ?? "")]
         : []);
       const serviceSelection = parsed.serviceIds.length > 0
@@ -204,8 +208,9 @@ export async function GET(request: Request) {
         id: booking.id,
         groupKey: groupMarker?.[1] ?? booking.id,
         guestIndex: Number(groupMarker?.[2] ?? 1),
-        status: booking.seller_note?.includes("[TUI_WALK_IN]") ? "WALK_IN" : booking.seller_note?.includes("[TUI_CHECKED_IN]") ? "CHECKED_IN" : booking.status ?? "UNKNOWN",
-        startAt: booking.start_at ?? "",
+        status: booking.seller_note?.includes("[TUI_WALK_IN]") ? "WALK_IN_WAITING" : booking.seller_note?.includes("[TUI_CHECKED_IN:") || booking.seller_note?.includes("[TUI_CHECKED_IN]") ? "CHECKED_IN" : booking.status ?? "UNKNOWN",
+        arrivalAt: booking.seller_note?.match(/\[TUI_CHECKED_IN:(\d{4}-\d{2}-\d{2}T[^\]]+)\]/)?.[1] ?? null,
+        startAt: booking.seller_note?.match(/\[TUI_QUEUE_AT:(\d{4}-\d{2}-\d{2}T[^\]]+)\]/)?.[1] ?? booking.start_at ?? "",
         customerName: `${fullName || "Square customer"}${extraGuests ? ` + ${extraGuests} ${extraGuests === 1 ? "guest" : "guests"}` : ""}`,
         phone: customer?.phone_number ?? "",
         technician: technicians.join(", ") || "Unassigned",
@@ -226,6 +231,7 @@ export async function GET(request: Request) {
         id: guests[0].id,
         squareBookingIds: guests.map((guest) => guest.id),
         status: guests.every((guest) => guest.status === guests[0].status) ? guests[0].status : "MIXED",
+        arrivalAt: guests.map((guest) => guest.arrivalAt).find((value) => value) ?? null,
         startAt: guests[0].startAt,
         customerName: guests[0].customerName,
         phone: guests[0].phone,
@@ -241,6 +247,37 @@ export async function GET(request: Request) {
     return NextResponse.json({ bookings, date, locationId: ADMIN_LOCATION_ID }, { headers: { "Cache-Control": "no-store, max-age=0" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load Square appointments.";
+    return NextResponse.json({ error: message }, { status: 502, headers: { "Cache-Control": "no-store" } });
+  }
+}
+
+export async function PATCH(request: Request) {
+  if (!isAdminRequestAuthorized(request)) {
+    return NextResponse.json({ error: "Admin authentication required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+  }
+  if (!process.env.SQUARE_ACCESS_TOKEN) {
+    return NextResponse.json({ error: "Square is not configured." }, { status: 503, headers: { "Cache-Control": "no-store" } });
+  }
+  const body = await request.json().catch(() => null);
+  const bookingId = typeof body?.bookingId === "string" ? body.bookingId : "";
+  const teamMemberId = typeof body?.teamMemberId === "string" ? body.teamMemberId : "";
+  if (!bookingId || !Object.values(SQUARE_TEAM_MEMBER_IDS).includes(teamMemberId)) {
+    return NextResponse.json({ error: "Choose a valid appointment and technician." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+  }
+  try {
+    const current = await squareRequest<{ booking?: SquareBooking }>(`/bookings/${encodeURIComponent(bookingId)}`);
+    if (!current.booking || typeof current.booking.version !== "number" || !current.booking.appointment_segments?.length) {
+      return NextResponse.json({ error: "Appointment could not be found." }, { status: 404, headers: { "Cache-Control": "no-store" } });
+    }
+    const result = await squareRequest<{ booking: SquareBooking }>(`/bookings/${encodeURIComponent(bookingId)}`, "PUT", {
+      booking: {
+        version: current.booking.version,
+        appointment_segments: current.booking.appointment_segments.map((segment) => ({ ...segment, team_member_id: teamMemberId })),
+      },
+    });
+    return NextResponse.json({ success: true, version: result.booking.version }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to assign technician.";
     return NextResponse.json({ error: message }, { status: 502, headers: { "Cache-Control": "no-store" } });
   }
 }
