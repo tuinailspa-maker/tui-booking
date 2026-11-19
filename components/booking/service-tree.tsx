@@ -99,7 +99,7 @@ export function ServiceTree({ language, copy, selectedIds, onToggleService }: Se
         >
           <span className={`branch-chevron${open ? " is-open" : ""}`} aria-hidden="true">⌄</span>
           <span className="branch-name">{name}</span>
-          {note && <span className="branch-note">{note}</span>}
+          {note && node.id !== "enhancement-new-set" && node.id !== "enhancement-refill" && <span className="branch-note">{note}</span>}
           {count > 0 && <span className="branch-count">{count}</span>}
         </button>
         <div className={`tree-children${open ? " is-open" : ""}`} aria-hidden={!open} inert={!open}>

@@ -24,6 +24,7 @@ const TIP_CHOICES: TipChoice[] = ["none", "15", "20", "25", "custom"];
 const labels = {
   en: {
     title: "Tui Nail Spa",
+    trigger: "Backup Bill",
     close: "Close",
     copy: "Copy Bill",
     copied: "Copied",
@@ -45,6 +46,7 @@ const labels = {
   },
   fr: {
     title: "Tui Nail Spa",
+    trigger: "Facture de secours",
     close: "Fermer",
     copy: "Copier le reçu",
     copied: "Copié",
@@ -154,7 +156,7 @@ export function BackupBill({ language, date, time, selections }: BackupBillProps
 
   return (
     <>
-      <button className="backup-bill-trigger" type="button" onClick={openBill}>{text.title}</button>
+      <button className="backup-bill-trigger" type="button" onClick={openBill}>{text.trigger}</button>
       <dialog
         ref={dialogRef}
         className="backup-bill-dialog"
