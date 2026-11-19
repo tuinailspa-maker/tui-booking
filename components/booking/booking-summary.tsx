@@ -69,8 +69,7 @@ export function BookingSummary({ language, copy, partySize, date, time, selectio
                 {ids.map((id) => {
                   const item = serviceById.get(id);
                   if (!item) return null;
-                  const name = language === "en" ? item.nameEn : item.nameFr;
-                  return <li key={id}><span>{name}</span><span>{item.priceLabel ?? formatCad(item.priceCad, language)}</span></li>;
+                  return <li key={id}><span>{serviceDisplayName(item, language)}</span><span>{item.priceLabel ?? formatCad(item.priceCad, language)}</span></li>;
                 })}
               </ul>
             ) : <p className="summary-empty">{copy.noServices}</p>}

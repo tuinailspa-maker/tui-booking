@@ -120,7 +120,7 @@ export function BackupBill({ language, selections }: BackupBillProps) {
       `${text.title} — TUI Nail Spa Montreal`,
       ...guests.flatMap((items, index) => [
         guests.length > 1 ? `${text.guest} ${index + 1}` : null,
-        ...items.map((item) => `  ${language === "en" ? item.nameEn : item.nameFr} (${item.durationMinutes} ${text.minutes}) — ${money(item.priceCad)}`),
+        ...items.map((item) => `  ${serviceDisplayName(item, language)} (${item.durationMinutes} ${text.minutes}) — ${money(item.priceCad)}`),
       ]).filter((line): line is string => line !== null),
       "",
       ...(comboDiscount > 0 ? [`${text.comboDiscount}: -${money(comboDiscount)}`] : []),
@@ -167,7 +167,7 @@ export function BackupBill({ language, selections }: BackupBillProps) {
                   {items.map((item) => (
                     <li key={item.id}>
                       <span>
-                        {language === "en" ? item.nameEn : item.nameFr}
+                        {serviceDisplayName(item, language)}
                         <small>{item.durationMinutes} {text.minutes}</small>
                       </span>
                       <span>{money(item.priceCad)}</span>
