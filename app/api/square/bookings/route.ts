@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { serviceById } from "@/data/serviceTree";
+import { serviceById, serviceDisplayName } from "@/data/serviceTree";
 import {
   SQUARE_API_VERSION,
   SQUARE_FALLBACK_VARIATION,

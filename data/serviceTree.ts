@@ -9,6 +9,8 @@ export type ServiceLeaf = {
   priceLabel?: string;
   durationMinutes: number;
   squareVariationId?: string;
+  displayNameEn?: string;
+  displayNameFr?: string;
 };
 
 export type ServiceBranch = {
@@ -130,6 +132,27 @@ export const serviceTree: ServiceBranch[] = [
     ]),
   ]),
 ];
+
+const optionGroupIds = new Set(["manicure", "natural-nails-touch-up", "enhancement-new-set", "enhancement-refill", "pedicure", "feet-touch-up"]);
+
+function nameOptionLeaves(nodes: ServiceNode[], parent?: ServiceBranch) {
+  nodes.forEach((node) => {
+    if (node.type === "branch") {
+      nameOptionLeaves(node.children, node);
+      return;
+    }
+    if (parent && optionGroupIds.has(parent.id)) {
+      node.displayNameEn = `${parent.nameEn} ${node.nameEn}`;
+      node.displayNameFr = `${parent.nameFr} ${node.nameFr}`;
+    }
+  });
+}
+
+nameOptionLeaves(serviceTree);
+
+export function serviceDisplayName(service: ServiceLeaf, language: "en" | "fr") {
+  return language === "en" ? service.displayNameEn ?? service.nameEn : service.displayNameFr ?? service.nameFr;
+}
 
 export function flattenServices(nodes: ServiceNode[] = serviceTree): ServiceLeaf[] {
   return nodes.flatMap((node) => node.type === "service" ? [node] : flattenServices(node.children));

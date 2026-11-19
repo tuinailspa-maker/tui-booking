@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { getComboDiscount } from "@/data/comboDiscount";
-import { serviceById } from "@/data/serviceTree";
+import { serviceById, serviceDisplayName } from "@/data/serviceTree";
 import type { Language } from "./copy";
 
 type BackupBillProps = {

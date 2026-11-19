@@ -1,4 +1,4 @@
-import { serviceById } from "@/data/serviceTree";
+import { serviceById, serviceDisplayName } from "@/data/serviceTree";
 import { getComboDiscount } from "@/data/comboDiscount";
 import { formatSlotTime } from "@/data/staffSchedule";
 import type { BookingCopy, Language } from "./copy";
