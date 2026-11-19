@@ -6,6 +6,11 @@ import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { BackupBill } from "@/components/booking/backup-bill";
 import { AppointmentDrawer, type AppointmentStatus } from "./appointment-drawer";
 
+function datePartsForTime(iso: string) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(iso)).map((part) => [part.type, part.value]));
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, hour: parts.hour ?? "10", minute: parts.minute ?? "00" };
+}
+
 type ServiceEditorProps = {
   initialServiceIds: string[][];
   initialAddOns: Record<string, ServiceAddOnKey>[];
@@ -23,9 +28,10 @@ type ServiceEditorProps = {
   onTechnicianChange: (value: string) => void;
   onStatusChange: (value: AppointmentStatus) => void;
   onSave: (value: { serviceIds: string[][]; addOns: Record<string, ServiceAddOnKey>[]; customerName: string; customerPhone: string }) => void;
+  onBookingCreated?: () => Promise<void>;
 };
 
-export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, customerName, customerPhone, startAt, technician, status, busy, checkedOut, onMarkCheckedOut, walkIn, onCancel, onTechnicianChange, onStatusChange, onSave }: ServiceEditorProps) {
+export function ServiceEditor({ initialServiceIds, initialAddOns, customerName, customerPhone, startAt, technician, status, busy, checkedOut, onMarkCheckedOut, walkIn, onCancel, onTechnicianChange, onStatusChange, onSave, onBookingCreated }: ServiceEditorProps) {
   const guestCount = Math.max(1, initialServiceIds.length);
   const [activeGuest, setActiveGuest] = useState(0);
   const [serviceIds, setServiceIds] = useState(() => Array.from({ length: guestCount }, (_, index) => initialServiceIds[index] ?? []));
@@ -34,6 +40,13 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
   const [phone, setPhone] = useState(customerPhone);
   const [search, setSearch] = useState("");
   const [validation, setValidation] = useState("");
+  const [mode, setMode] = useState<"walkin" | "appointment">("walkin");
+  const [partySize, setPartySize] = useState(guestCount);
+  const [notes, setNotes] = useState("");
+  const [bookingDate, setBookingDate] = useState(datePartsForTime(startAt).date);
+  const [bookingTime, setBookingTime] = useState(`${datePartsForTime(startAt).hour}:${datePartsForTime(startAt).minute}`);
+  const [technicians, setTechnicians] = useState<string[]>(Array.from({ length: 3 }, (_, index) => index === 0 ? technician || "Jenny" : ["Jenny", "Melika", "Nana"].filter((name) => name !== technician)[index - 1] ?? "Jenny"));
+  const [submitting, setSubmitting] = useState(false);
   const visibleServices = allServices.filter((service) => serviceDisplayNameWithAddOn(service, "en").toLowerCase().includes(search.toLowerCase()) || service.nameFr.toLowerCase().includes(search.toLowerCase()));
   const activeIds = serviceIds[activeGuest] ?? [];
   const activeAddOns = addOns[activeGuest] ?? {};
@@ -64,7 +77,30 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
     }));
   }
 
+  async function createSquareAppointment() {
+    if (!name.trim() || !phone.trim()) { setValidation("Enter the client name and phone number."); return; }
+    const selected = serviceIds.slice(0, partySize);
+    if (selected.length !== partySize || selected.some((ids) => ids.length === 0)) { setValidation("Choose at least one service for each guest."); return; }
+    const assigned = technicians.slice(0, partySize);
+    if (new Set(assigned).size !== partySize) { setValidation("Choose a different technician for each guest."); return; }
+    if (!bookingDate || !bookingTime) { setValidation("Choose an appointment date and start time."); return; }
+    setSubmitting(true); setValidation("");
+    try {
+      const localAsUtc = Date.parse(`${bookingDate}T${bookingTime}:00Z`);
+      const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(localAsUtc)).map((part) => [part.type, part.value]));
+      const represented = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute));
+      const startAt = new Date(localAsUtc - (represented - localAsUtc)).toISOString();
+      const names = name.trim().split(/\\s+/);
+      const response = await fetch("/api/bookings/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: crypto.randomUUID(), startAt, client: { firstName: names[0], lastName: names.slice(1).join(" ") || "Guest", countryCode: "+1", phone: phone.trim(), notes: notes.trim() }, guests: selected.map((ids, index) => ({ serviceIds: ids, addOns: addOns[index] ?? {}, technician: assigned[index] })) }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(response.status === 409 ? "This time conflicts with an existing Square appointment. Choose another time." : result.detail || result.error || "Could not create the Square appointment.");
+      await onBookingCreated?.();
+    } catch (error) { setValidation(error instanceof Error ? error.message : "Could not create the Square appointment."); }
+    finally { setSubmitting(false); }
+  }
+
   function save() {
+    if (mode === "appointment") { void createSquareAppointment(); return; }
     if (walkIn && !name.trim()) {
       setValidation("Enter the walk-in customer name.");
       return;
@@ -78,14 +114,22 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
 
   return <AppointmentDrawer open name={walkIn ? (name || "New walk-in") : customerName || "Appointment"} phone={walkIn ? phone : customerPhone} startAt={startAt} technician={technician} status={status} busy={busy} onClose={onCancel} onTechnicianChange={onTechnicianChange} onStatusChange={onStatusChange}>
     <div className="admin-drawer-services">
+      {walkIn && <div className="admin-booking-mode" role="group" aria-label="Ticket type"><button type="button" aria-pressed={mode === "appointment"} onClick={() => { setMode("appointment"); setValidation(""); }}>Book Appointment (Sync to Square)</button><button type="button" aria-pressed={mode === "walkin"} onClick={() => { setMode("walkin"); setValidation(""); }}>Quick Walk-in</button></div>}
       <div className="admin-drawer-service-heading"><div><span className="admin-drawer-section-label">TICKET</span><h3>Services</h3></div><span>{serviceIds.flat().length} selected</span></div>
       {walkIn && <div className="admin-walkin-fields">
-        <label>Customer name<input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Guest name" /></label>
-        <label>Phone (optional)<input type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="438-555-0100" /></label>
+        <label>Client name<input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Guest name" /></label>
+        <label>Phone number<input type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="438-555-0100" /></label>
       </div>}
-      {guestCount > 1 && <div className="admin-guest-tabs" role="group" aria-label="Choose a guest">
-        {Array.from({ length: guestCount }, (_, index) => <button key={index} type="button" aria-pressed={activeGuest === index} className={activeGuest === index ? "is-active" : ""} onClick={() => setActiveGuest(index)}>{guestNames[index] || `Guest ${index + 1}`}</button>)}
+      {walkIn && mode === "appointment" && <div className="admin-booking-fields">
+        <label>Appointment date<input type="date" value={bookingDate} onChange={(event) => setBookingDate(event.target.value)} /></label>
+        <label>Start time<input type="time" value={bookingTime} onChange={(event) => setBookingTime(event.target.value)} /></label>
+        <label>Party size<select value={partySize} onChange={(event) => { const size = Number(event.target.value); setPartySize(size); setServiceIds((current) => Array.from({ length: size }, (_, index) => current[index] ?? [])); setAddOns((current) => Array.from({ length: size }, (_, index) => current[index] ?? {})); setActiveGuest(Math.min(activeGuest, size - 1)); }}>{[1, 2, 3].map((size) => <option key={size} value={size}>{size} {size === 1 ? "guest" : "guests"}</option>)}</select></label>
       </div>}
+      {walkIn && mode === "appointment" && <label className="admin-search-label">Notes<textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={500} placeholder="Anything the team should know?" /></label>}
+      {(mode === "appointment" ? partySize : guestCount) > 1 && <div className="admin-guest-tabs" role="group" aria-label="Choose a guest">
+        {Array.from({ length: mode === "appointment" ? partySize : guestCount }, (_, index) => <button key={index} type="button" aria-pressed={activeGuest === index} className={activeGuest === index ? "is-active" : ""} onClick={() => setActiveGuest(index)}>{`Guest ${index + 1}`}</button>)}
+      </div>}
+      {walkIn && mode === "appointment" && <label className="admin-search-label">Technician for Guest {activeGuest + 1}<select value={technicians[activeGuest] || "Jenny"} onChange={(event) => setTechnicians((current) => current.map((value, index) => index === activeGuest ? event.target.value : value))}>{["Jenny", "Melika", "Nana"].map((name) => <option key={name}>{name}</option>)}</select></label>}
       <label className="admin-search-label">Add or edit services<input type="search" aria-label="Search salon services" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search the service menu" /></label>
       <div className="admin-service-list">
         {visibleServices.map((service) => {
@@ -109,7 +153,7 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
       {validation && <p className="admin-form-error" role="alert">{validation}</p>}
       <div className="admin-ticket-totals"><span>Services subtotal<strong>${subtotal.toFixed(2)}</strong></span>{discount > 0 && <span>Combo discount<strong>−${discount.toFixed(2)}</strong></span>}<span className="admin-ticket-total">Estimated total<strong>${(subtotal - discount).toFixed(2)}</strong></span></div>
       <div className="admin-drawer-bill"><BackupBill language="en" date={billDate} time={billTime} selections={serviceIds} serviceAddOns={addOns} customerName={walkIn ? name : customerName} customerPhone={walkIn ? phone : customerPhone} triggerLabel={checkedOut ? "View receipt" : "Check out / Bill"} onMarkCheckedOut={checkedOut ? undefined : onMarkCheckedOut} markCheckedOutLabel="Mark checked out" /></div>
-      <div className="admin-drawer-footer"><button className="admin-secondary-button" type="button" onClick={onCancel}>Cancel</button><button className="admin-primary-button" type="button" onClick={save}>{walkIn ? "Create ticket" : "Save services"}</button></div>
+      <div className="admin-drawer-footer"><button className="admin-secondary-button" type="button" onClick={onCancel} disabled={submitting}>Cancel</button><button className="admin-primary-button" type="button" onClick={save} disabled={submitting}>{submitting ? "Syncing to Square…" : walkIn && mode === "appointment" ? "Book appointment" : walkIn ? "Create ticket" : "Save services"}</button></div>
     </div>
   </AppointmentDrawer>;
 }

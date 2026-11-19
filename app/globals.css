@@ -793,7 +793,18 @@ button { color: inherit; }
 .admin-drawer-status button { min-height: 32px; padding: 3px; border: 0; border-radius: 4px; background: transparent; color: #646b73; cursor: pointer; font-size: 8px; }
 .admin-drawer-status button[aria-pressed="true"] { background: #fff; color: #111; box-shadow: 0 1px 3px #0000001a; font-weight: 600; }
 .admin-drawer-status button:disabled { opacity: .55; cursor: wait; }
-.admin-drawer-services { padding-top: 16px; }
+ .admin-drawer-services { padding-top: 16px; }
+ .admin-booking-mode { display: grid; grid-template-columns: 1.4fr 1fr; gap: 4px; margin: 0 0 15px; padding: 4px; border: 1px solid var(--admin-line); border-radius: 7px; background: #f5f5f4; }
+ .admin-booking-mode button { min-height: 36px; padding: 6px; border: 0; border-radius: 5px; background: transparent; color: #656b73; cursor: pointer; font-size: 9px; font-weight: 550; }
+ .admin-booking-mode button[aria-pressed="true"] { background: #fff; color: #17191c; box-shadow: 0 1px 3px #00000014; }
+ .admin-booking-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+ .admin-booking-fields label, .admin-booking-fields select, .admin-booking-fields input, .admin-search-label select, .admin-search-label textarea { display: block; width: 100%; }
+ .admin-booking-fields label { color: #626971; font-size: 9px; }
+ .admin-booking-fields input, .admin-booking-fields select, .admin-search-label select, .admin-search-label textarea { min-height: 36px; margin-top: 5px; padding: 7px 9px; border: 1px solid var(--admin-line); border-radius: 5px; background: #fff; color: #222; font: 11px Arial, sans-serif; }
+ .admin-booking-fields label:last-child { grid-column: 1 / -1; }
+ .admin-booking-fields label:last-child select { width: 100%; }
+ .admin-search-label textarea { min-height: 70px; resize: vertical; }
+ .admin-booking-mode button:focus-visible, .admin-booking-fields input:focus-visible, .admin-booking-fields select:focus-visible, .admin-search-label textarea:focus-visible { outline: 2px solid #006aff; outline-offset: 2px; }
 .admin-drawer-service-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .admin-drawer-service-heading h3 { margin: 4px 0 0; font-size: 14px; font-weight: 600; }
 .admin-drawer-service-heading > span:last-child { color: #777e87; font-size: 9px; }
