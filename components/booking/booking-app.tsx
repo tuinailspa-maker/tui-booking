@@ -187,7 +187,7 @@ export function BookingApp() {
     <main className="booking-page">
       <header className="booking-header">
         <a className="salon-wordmark" href="https://tuinailspa.ca" aria-label={`${copy.salon} — tuinailspa.ca`}>
-          <img src="/tui-logo.jpg" alt="Tui — La beauté des ongles" className="salon-logo" />
+          <img src="/tui-logo.png" alt="Tui — La beauté des ongles" className="salon-logo" />
         </a>
         <div className="header-tools">
           <a className="salon-link" href="https://tuinailspa.ca">{copy.backToSalon}<span aria-hidden="true">↗</span></a>
