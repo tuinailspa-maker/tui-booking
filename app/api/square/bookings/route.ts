@@ -101,6 +101,67 @@ async function squareRequest<T>(step: string, path: string, body: unknown): Prom
   return data as T;
 }
 
+const SLOT_UNAVAILABLE_MESSAGE = "This time slot is no longer available. Please choose another time.";
+const INACTIVE_BOOKING_STATUSES = new Set(["CANCELLED_BY_CUSTOMER", "CANCELLED_BY_SELLER", "DECLINED"]);
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+type SquareBookingSummary = {
+  status?: string;
+  start_at?: string;
+  appointment_segments?: { duration_minutes?: number }[];
+};
+
+type BusyWindow = { startMs: number; endMs: number };
+
+async function fetchTechnicianBusyWindows(locationId: string, memberId: string, startMs: number): Promise<BusyWindow[]> {
+  const windows: BusyWindow[] = [];
+  let cursor: string | undefined;
+  do {
+    const params = new URLSearchParams({
+      location_id: locationId,
+      team_member_id: memberId,
+      start_at_min: new Date(startMs - DAY_MS).toISOString(),
+      start_at_max: new Date(startMs + DAY_MS).toISOString(),
+      limit: "100",
+    });
+    if (cursor) params.set("cursor", cursor);
+
+    const response = await fetch(`${squareBaseUrl()}/bookings?${params}`, {
+      headers: {
+        Authorization: `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
+        "Square-Version": SQUARE_API_VERSION,
+      },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new SquareStepError("list_bookings", response.status, Array.isArray(data.errors) ? data.errors : []);
+    }
+
+    for (const booking of (data.bookings ?? []) as SquareBookingSummary[]) {
+      if (booking.status && INACTIVE_BOOKING_STATUSES.has(booking.status)) continue;
+      const bookingStartMs = booking.start_at ? Date.parse(booking.start_at) : Number.NaN;
+      const durationMinutes = (booking.appointment_segments ?? []).reduce((sum, segment) => sum + (segment.duration_minutes ?? 0), 0);
+      if (Number.isNaN(bookingStartMs) || durationMinutes <= 0) continue;
+      windows.push({ startMs: bookingStartMs, endMs: bookingStartMs + durationMinutes * 60_000 });
+    }
+    cursor = data.cursor;
+  } while (cursor);
+  return windows;
+}
+
+async function hasTechnicianConflict(request: BookingRequest, locationId: string): Promise<boolean> {
+  const startMs = Date.parse(request.startAt);
+  const technicians = new Set(request.guests.map((guest) => guest.technician));
+  if (technicians.size !== request.guests.length) return true;
+
+  for (const guest of request.guests) {
+    const endMs = startMs + guestDurationMinutes(guest) * 60_000;
+    const busyWindows = await fetchTechnicianBusyWindows(locationId, SQUARE_TEAM_MEMBER_IDS[guest.technician], startMs);
+    if (busyWindows.some((window) => window.startMs < endMs && window.endMs > startMs)) return true;
+  }
+  return false;
+}
+
 function buildSellerNote(request: BookingRequest, guest: BookingGuest, guestIndex: number) {
   const lines = guest.serviceIds.map((id) => {
     const service = serviceById.get(id);
@@ -204,6 +265,10 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (await hasTechnicianConflict(parsed, locationId)) {
+      return NextResponse.json({ error: SLOT_UNAVAILABLE_MESSAGE, step: "availability_check" }, { status: 409 });
+    }
+
     const { customer } = await squareRequest<{ customer: { id: string } }>("create_customer", "/customers", {
       idempotency_key: `${parsed.reference}-customer`,
       given_name: parsed.client.firstName,
