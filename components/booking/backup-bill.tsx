@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useRef, useState } from "react";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
-import { serviceById, serviceDisplayName } from "@/data/serviceTree";
+import { selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import { formatSlotTime } from "@/data/staffSchedule";
 import type { Language } from "./copy";
 
@@ -12,6 +12,7 @@ type BackupBillProps = {
   date: string;
   time: string;
   selections: string[][];
+  serviceAddOns: Record<string, ServiceAddOnKey>[];
 };
 
 type TipChoice = "none" | "15" | "20" | "25" | "custom";
@@ -84,7 +85,7 @@ function sanitizeCustomTip(raw: string) {
   return Number.isFinite(parsed) && parsed > 0 ? toCents(parsed) : 0;
 }
 
-export function BackupBill({ language, date, time, selections }: BackupBillProps) {
+export function BackupBill({ language, date, time, selections, serviceAddOns }: BackupBillProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [receiptLanguage, setReceiptLanguage] = useState<Language>(language);
   const [tipChoice, setTipChoice] = useState<TipChoice>("none");
@@ -97,9 +98,12 @@ export function BackupBill({ language, date, time, selections }: BackupBillProps
   const money = (amount: number) =>
     new Intl.NumberFormat(text.currencyLocale, { style: "currency", currency: "CAD" }).format(amount);
 
-  const guests = selections.map((ids) => ids.map((id) => serviceById.get(id)).filter((item) => item !== undefined));
-  const grossSubtotal = toCents(guests.flat().reduce((sum, item) => sum + item.priceCad, 0));
-  const comboDiscount = getComboDiscountDetails(selections).amount;
+  const guests = selections.map((ids, guestIndex) => ids.flatMap((id) => {
+    const service = serviceById.get(id);
+    return service ? [{ service, addOnKey: serviceAddOns[guestIndex]?.[id] }] : [];
+  }));
+  const grossSubtotal = toCents(guests.flat().reduce((sum, item) => sum + selectedServicePrice(item.service, item.addOnKey), 0));
+  const comboDiscount = getComboDiscountDetails(selections, serviceAddOns).amount;
   const subtotal = toCents(grossSubtotal - comboDiscount);
   const tps = toCents(subtotal * TPS_RATE);
   const tvq = toCents(subtotal * TVQ_RATE);
@@ -127,7 +131,7 @@ export function BackupBill({ language, date, time, selections }: BackupBillProps
       ...(receiptDateTime ? [`${text.date}: ${receiptDateTime}`] : []),
       ...guests.flatMap((items, index) => [
         `${text.guest} ${index + 1}`,
-        ...items.map((item) => `  ${serviceDisplayName(item, receiptLanguage)} (${item.durationMinutes} ${text.minutes}) — ${money(item.priceCad)}`),
+        ...items.map((item) => `  ${serviceDisplayNameWithAddOn(item.service, receiptLanguage, item.addOnKey)} (${item.service.durationMinutes} ${text.minutes}) — ${money(selectedServicePrice(item.service, item.addOnKey))}`),
       ]),
       "",
       ...(comboDiscount > 0 ? [`${text.comboDiscount}${comboDiscount > 5 ? ` (${comboDiscount / 5}x)` : ""}: -${money(comboDiscount)}`] : []),
@@ -198,12 +202,12 @@ export function BackupBill({ language, date, time, selections }: BackupBillProps
                 <h3>{text.guest} {index + 1}</h3>
                 <ul>
                   {items.map((item) => (
-                    <li key={item.id}>
+                    <li key={item.service.id}>
                       <span>
-                        {serviceDisplayName(item, receiptLanguage)}
-                        <small>{item.durationMinutes} {text.minutes}</small>
+                        {serviceDisplayNameWithAddOn(item.service, receiptLanguage, item.addOnKey)}
+                        <small>{item.service.durationMinutes} {text.minutes}</small>
                       </span>
-                      <span>{money(item.priceCad)}</span>
+                      <span>{money(selectedServicePrice(item.service, item.addOnKey))}</span>
                     </li>
                   ))}
                 </ul>

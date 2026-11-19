@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { assignTechnicians, BUSINESS_TIME_ZONE, getSlotsForDate, isOnlineOnlyTime, type PublicTechnician, type Technician } from "@/data/staffSchedule";
-import { serviceById } from "@/data/serviceTree";
+import { serviceById, type ServiceAddOnKey } from "@/data/serviceTree";
 import { BookingSummary, formatCad, getBookingTotals } from "./booking-summary";
 import { ClientDetails, type ClientDetailsValue } from "./client-details";
 import { translations, type Language } from "./copy";
@@ -59,6 +59,7 @@ export function BookingApp() {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [selections, setSelections] = useState<string[][]>([[]]);
+  const [serviceAddOns, setServiceAddOns] = useState<Record<string, ServiceAddOnKey>[]>([{}]);
   const [technicianPreferences, setTechnicianPreferences] = useState<(PublicTechnician | "")[]>([""]);
   const [activeGuest, setActiveGuest] = useState(0);
   const [client, setClient] = useState<ClientDetailsValue>(initialClient);
@@ -68,7 +69,7 @@ export function BookingApp() {
   const [serviceError, setServiceError] = useState(false);
   const [durationError, setDurationError] = useState(false);
   const copy = translations[language];
-  const totals = useMemo(() => getBookingTotals(selections), [selections]);
+  const totals = useMemo(() => getBookingTotals(selections, serviceAddOns), [selections, serviceAddOns]);
   const slots = useMemo(() => getSlotsForDate(date, partySize), [date, partySize]);
   const selectedSlot = slots.find((slot) => slot.time === time);
   const remainingMinutes = selectedSlot ? minutes(selectedSlot.shift.end) - minutes(time) : 0;
@@ -83,6 +84,7 @@ export function BookingApp() {
     setPartySize(nextSize);
     setTime("");
     setSelections((current) => Array.from({ length: nextSize }, (_, index) => current[index] ?? []));
+    setServiceAddOns((current) => Array.from({ length: nextSize }, (_, index) => current[index] ?? {}));
     setTechnicianPreferences((current) => Array.from({ length: nextSize }, (_, index) => current[index] ?? ""));
     setActiveGuest(0);
   }
@@ -98,9 +100,33 @@ export function BookingApp() {
   }
 
   function toggleService(serviceId: string) {
+    const isSelected = selections[activeGuest]?.includes(serviceId) ?? false;
     setSelections((current) => current.map((ids, index) => {
       if (index !== activeGuest) return ids;
       return ids.includes(serviceId) ? ids.filter((id) => id !== serviceId) : [...ids, serviceId];
+    }));
+    if (isSelected) {
+      setServiceAddOns((current) => current.map((addOns, index) => {
+        if (index !== activeGuest || !(serviceId in addOns)) return addOns;
+        const next = { ...addOns };
+        delete next[serviceId];
+        return next;
+      }));
+    }
+    setServiceError(false);
+    setDurationError(false);
+  }
+
+  function toggleServiceAddOn(serviceId: string) {
+    const addOn = serviceById.get(serviceId)?.addOn;
+    if (!addOn) return;
+    setSelections((current) => current.map((ids, index) => index === activeGuest && !ids.includes(serviceId) ? [...ids, serviceId] : ids));
+    setServiceAddOns((current) => current.map((addOns, index) => {
+      if (index !== activeGuest) return addOns;
+      const next = { ...addOns };
+      if (next[serviceId] === addOn.key) delete next[serviceId];
+      else next[serviceId] = addOn.key;
+      return next;
     }));
     setServiceError(false);
     setDurationError(false);
@@ -137,7 +163,7 @@ export function BookingApp() {
         reference: nextReference,
         startAt: localTorontoDateTimeToUtc(date, time).toISOString(),
         client,
-        guests: selections.map((serviceIds, index) => ({ serviceIds, technician: technicians[index] })),
+        guests: selections.map((serviceIds, index) => ({ serviceIds, addOns: serviceAddOns[index] ?? {}, technician: technicians[index] })),
       }),
     });
     if (!response.ok) {
@@ -195,6 +221,7 @@ const detail = failure?.step ? `Step: ${failure.step}. ${squareErrors || failure
     setDate("");
     setTime("");
     setSelections([[]]);
+    setServiceAddOns([{}]);
     setTechnicianPreferences([""]);
     setActiveGuest(0);
     setClient(initialClient);
@@ -251,6 +278,7 @@ const detail = failure?.step ? `Step: ${failure.step}. ${squareErrors || failure
           time={time}
           partySize={partySize}
           selections={selections}
+          serviceAddOns={serviceAddOns}
           hasOnlineOnlyTime={isOnlineOnlyTime(time)}
           assignedNames={selectedPublicNames}
           onAddToCalendar={addToCalendar}
@@ -312,7 +340,9 @@ const detail = failure?.step ? `Step: ${failure.step}. ${squareErrors || failure
                     language={language}
                     copy={copy}
                     selectedIds={selections[activeGuest] ?? []}
+                    selectedAddOns={serviceAddOns[activeGuest] ?? {}}
                     onToggleService={toggleService}
+                    onToggleAddOn={toggleServiceAddOn}
                   />
                 </div>
                 {serviceError && <p className="validation-note" role="alert">{copy.selectOneService}</p>}
@@ -342,7 +372,7 @@ const detail = failure?.step ? `Step: ${failure.step}. ${squareErrors || failure
           </div>
 
           <aside className="desktop-summary" aria-label={copy.summary}>
-            <BookingSummary language={language} copy={copy} partySize={partySize} date={date} time={time} selections={selections} />
+            <BookingSummary language={language} copy={copy} partySize={partySize} date={date} time={time} selections={selections} serviceAddOns={serviceAddOns} />
           </aside>
         </div>
       )}
@@ -350,7 +380,7 @@ const detail = failure?.step ? `Step: ${failure.step}. ${squareErrors || failure
       {step !== 4 && (
         <div className="mobile-summary-wrap">
           <div className="mobile-summary-details" id="mobile-summary-details" hidden={!showMobileSummary}>
-            <BookingSummary language={language} copy={copy} partySize={partySize} date={date} time={time} selections={selections} />
+            <BookingSummary language={language} copy={copy} partySize={partySize} date={date} time={time} selections={selections} serviceAddOns={serviceAddOns} />
           </div>
           <button className="mobile-summary-bar" type="button" aria-expanded={showMobileSummary} aria-controls="mobile-summary-details" onClick={() => setShowMobileSummary((open) => !open)}>
             <span className="mobile-summary-label"><span>{copy.summary}</span><small>{totals.serviceCount} {copy.summarySelected.toLowerCase()} · {totals.duration} min</small></span>

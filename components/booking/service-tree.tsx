@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { serviceTree, type ServiceBranch, type ServiceLeaf, type ServiceNode } from "@/data/serviceTree";
+import { selectedServicePrice, serviceTree, type ServiceAddOnKey, type ServiceBranch, type ServiceLeaf, type ServiceNode } from "@/data/serviceTree";
 import type { BookingCopy, Language } from "./copy";
 
 type ServiceTreeProps = {
   language: Language;
   copy: BookingCopy;
   selectedIds: string[];
+  selectedAddOns: Record<string, ServiceAddOnKey>;
   onToggleService: (serviceId: string) => void;
+  onToggleAddOn: (serviceId: string) => void;
 };
 
 function visibleNodes(nodes: ServiceNode[], query: string, language: Language): ServiceNode[] {
@@ -52,7 +54,7 @@ function formatPrice(price: number, language: Language) {
   return formatted;
 }
 
-export function ServiceTree({ language, copy, selectedIds, onToggleService }: ServiceTreeProps) {
+export function ServiceTree({ language, copy, selectedIds, selectedAddOns, onToggleService, onToggleAddOn }: ServiceTreeProps) {
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<string[]>(["hands", "feet", "waxing", "variable-add-ons"]);
   const tree = useMemo(() => visibleNodes(
@@ -71,15 +73,30 @@ export function ServiceTree({ language, copy, selectedIds, onToggleService }: Se
   function renderNode(node: ServiceNode, depth: number): ReactNode {
     if (node.type === "service") {
       const checked = selected.has(node.id);
+      const selectedAddOn = selectedAddOns[node.id];
+      const addOnSelected = node.addOn?.key === selectedAddOn;
       const name = language === "en" ? node.nameEn : node.nameFr;
+      const addOnName = node.addOn ? (language === "en" ? node.addOn.nameEn : node.addOn.nameFr) : "";
+      const addOnPrice = node.addOn ? formatPrice(node.addOn.priceCad, language) : "";
+      const price = selectedServicePrice(node, selectedAddOn);
       return (
-        <label className={`service-leaf${checked ? " is-added" : ""}`} key={node.id} style={{ "--depth": depth } as CSSProperties}>
-          <input type="checkbox" checked={checked} onChange={() => onToggleService(node.id)} />
-          <span className="leaf-name">{name}</span>
+        <div className={`service-leaf${checked ? " is-added" : ""}`} key={node.id} style={{ "--depth": depth } as CSSProperties}>
+          <input id={`service-${node.id}`} type="checkbox" checked={checked} onChange={() => onToggleService(node.id)} />
+          <label className="leaf-name" htmlFor={`service-${node.id}`}>{name}</label>
           <span className="leaf-duration">{node.durationMinutes} min</span>
-          <span className="leaf-price">{node.priceLabel ?? formatPrice(node.priceCad, language)}</span>
+          <span className="leaf-price">{node.priceLabel && !addOnSelected ? node.priceLabel : formatPrice(price, language)}</span>
+          {node.addOn ? (
+            <button
+              className={`leaf-addon-toggle${addOnSelected ? " is-selected" : ""}`}
+              type="button"
+              aria-pressed={addOnSelected}
+              onClick={() => onToggleAddOn(node.id)}
+            >
+              {addOnName} (+{addOnPrice})
+            </button>
+          ) : <span className="leaf-addon-spacer" aria-hidden="true" />}
           <span className="leaf-action" aria-hidden="true">{checked ? copy.added : copy.add}</span>
-        </label>
+        </div>
       );
     }
 

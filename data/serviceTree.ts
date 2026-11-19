@@ -1,3 +1,12 @@
+export type ServiceAddOnKey = "length-ml" | "over-3-weeks";
+
+export type ServiceAddOn = {
+  key: ServiceAddOnKey;
+  nameEn: string;
+  nameFr: string;
+  priceCad: number;
+};
+
 export type ServiceLeaf = {
   type: "service";
   id: string;
@@ -8,6 +17,7 @@ export type ServiceLeaf = {
   priceCad: number;
   priceLabel?: string;
   durationMinutes: number;
+  addOn?: ServiceAddOn;
   squareVariationId?: string;
   displayNameEn?: string;
   displayNameFr?: string;
@@ -26,7 +36,9 @@ export type ServiceBranch = {
 export type ServiceNode = ServiceBranch | ServiceLeaf;
 
 const branch = (id: string, nameEn: string, nameFr: string, children: ServiceNode[], noteEn?: string, noteFr?: string): ServiceBranch => ({ type: "branch", id, nameEn, nameFr, children, ...(noteEn ? { noteEn } : {}), ...(noteFr ? { noteFr } : {}) });
-const service = (id: string, nameEn: string, nameFr: string, price: number, durationMinutes: number, priceLabel?: string): ServiceLeaf => ({ type: "service", id, name: nameEn, nameEn, nameFr, price, priceCad: price, durationMinutes, ...(priceLabel ? { priceLabel } : {}) });
+const service = (id: string, nameEn: string, nameFr: string, price: number, durationMinutes: number, priceLabel?: string, addOn?: ServiceAddOn): ServiceLeaf => ({ type: "service", id, name: nameEn, nameEn, nameFr, price, priceCad: price, durationMinutes, ...(priceLabel ? { priceLabel } : {}), ...(addOn ? { addOn } : {}) });
+const lengthMlAddOn: ServiceAddOn = { key: "length-ml", nameEn: "Length M/L", nameFr: "Longueur M/L", priceCad: 10 };
+const overThreeWeeksAddOn: ServiceAddOn = { key: "over-3-weeks", nameEn: "Nails over 3 weeks", nameFr: "Ongles de plus de 3 semaines", priceCad: 5 };
 
 export const serviceTree: ServiceBranch[] = [
   branch("hands", "Hands", "Mains", [
@@ -43,14 +55,14 @@ export const serviceTree: ServiceBranch[] = [
     ]),
     branch("nail-enhancement", "Nail Enhancement (Acrylic, Builder gel, Gel X)", "Extensions (acrylique, gel de construction, Gel X)", [
       branch("enhancement-new-set", "New set", "Nouvelle pose", [
-        service("enhancement-new-no-polish", "No polish", "Sans vernis", 40, 60),
-        service("enhancement-new-regular-polish", "Regular polish", "Vernis classique", 50, 60),
-        service("enhancement-new-shellac", "Shellac", "Shellac", 55, 60),
+        service("enhancement-new-no-polish", "No polish", "Sans vernis", 40, 60, undefined, lengthMlAddOn),
+        service("enhancement-new-regular-polish", "Regular polish", "Vernis classique", 50, 60, undefined, lengthMlAddOn),
+        service("enhancement-new-shellac", "Shellac", "Shellac", 55, 60, undefined, lengthMlAddOn),
       ]),
       branch("enhancement-refill", "Refill", "Remplissage", [
-        service("enhancement-refill-no-polish", "No polish", "Sans vernis", 32, 50),
-        service("enhancement-refill-regular-polish", "Regular polish", "Vernis classique", 42, 50),
-        service("enhancement-refill-shellac", "Shellac", "Shellac", 47, 50),
+        service("enhancement-refill-no-polish", "No polish", "Sans vernis", 32, 50, undefined, overThreeWeeksAddOn),
+        service("enhancement-refill-regular-polish", "Regular polish", "Vernis classique", 42, 50, undefined, overThreeWeeksAddOn),
+        service("enhancement-refill-shellac", "Shellac", "Shellac", 47, 50, undefined, overThreeWeeksAddOn),
       ]),
     ]),
   ]),
@@ -198,6 +210,17 @@ assignDisplayPaths(serviceTree);
 
 export function serviceDisplayName(service: ServiceLeaf, language: "en" | "fr") {
   return language === "en" ? service.displayNameEn ?? service.nameEn : service.displayNameFr ?? service.nameFr;
+}
+
+export function selectedServicePrice(service: ServiceLeaf, addOnKey?: ServiceAddOnKey) {
+  return service.priceCad + (service.addOn && service.addOn.key === addOnKey ? service.addOn.priceCad : 0);
+}
+
+export function serviceDisplayNameWithAddOn(service: ServiceLeaf, language: "en" | "fr", addOnKey?: ServiceAddOnKey) {
+  const baseName = serviceDisplayName(service, language);
+  if (!service.addOn || service.addOn.key !== addOnKey) return baseName;
+  const addOnName = language === "en" ? service.addOn.nameEn : service.addOn.nameFr;
+  return `${baseName} + ${addOnName}`;
 }
 
 export function flattenServices(nodes: ServiceNode[] = serviceTree): ServiceLeaf[] {

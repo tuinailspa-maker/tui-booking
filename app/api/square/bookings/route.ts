@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { serviceById, serviceDisplayName } from "@/data/serviceTree";
+import { selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import type { Technician } from "@/data/staffSchedule";
@@ -10,7 +10,7 @@ const MAX_GUESTS = 3;
 const MAX_SQUARE_NOTE_LENGTH = 500;
 const REFERENCE_PATTERN = /^[A-Za-z0-9-]{4,40}$/;
 
-type BookingGuest = { serviceIds: string[]; technician: Technician };
+type BookingGuest = { serviceIds: string[]; addOns: Record<string, ServiceAddOnKey>; technician: Technician };
 type BookingClient = { firstName: string; lastName: string; countryCode: string; phone: string; email: string; notes: string };
 type BookingRequest = { reference: string; startAt: string; client: BookingClient; guests: BookingGuest[] };
 
@@ -72,7 +72,16 @@ function parseBookingRequest(body: unknown): BookingRequest | null {
     if (!isTechnician(guest.technician) || !Array.isArray(guest.serviceIds) || guest.serviceIds.length === 0) return null;
     const serviceIds = guest.serviceIds.filter((id): id is string => typeof id === "string" && serviceById.has(id));
     if (serviceIds.length !== guest.serviceIds.length) return null;
-    parsedGuests.push({ serviceIds, technician: guest.technician });
+    const addOns: Record<string, ServiceAddOnKey> = {};
+    if (guest.addOns !== undefined) {
+      if (!guest.addOns || typeof guest.addOns !== "object" || Array.isArray(guest.addOns)) return null;
+      for (const [serviceId, addOnKey] of Object.entries(guest.addOns as Record<string, unknown>)) {
+        const service = serviceById.get(serviceId);
+        if (!serviceIds.includes(serviceId) || !service?.addOn || addOnKey !== service.addOn.key) return null;
+        addOns[serviceId] = service.addOn.key;
+      }
+    }
+    parsedGuests.push({ serviceIds, addOns, technician: guest.technician });
   }
 
   return { reference, startAt, client: { firstName, lastName, countryCode, phone, email, notes }, guests: parsedGuests };
@@ -166,10 +175,14 @@ async function hasTechnicianConflict(request: BookingRequest, locationId: string
 function buildSellerNote(request: BookingRequest, guest: BookingGuest, guestIndex: number) {
   const lines = guest.serviceIds.map((id) => {
     const service = serviceById.get(id);
-    return service ? `${serviceDisplayName(service, "en")} $${service.priceCad} (${service.durationMinutes} min)` : id;
+    const addOnKey = guest.addOns[id];
+    return service ? `${serviceDisplayNameWithAddOn(service, "en", addOnKey)} — $${selectedServicePrice(service, addOnKey)} (${service.durationMinutes} min)` : id;
   });
-  const total = guest.serviceIds.reduce((sum, id) => sum + (serviceById.get(id)?.priceCad ?? 0), 0);
-  const discount = getComboDiscountDetails(request.guests.map((item) => item.serviceIds));
+  const total = guest.serviceIds.reduce((sum, id) => {
+    const service = serviceById.get(id);
+    return sum + (service ? selectedServicePrice(service, guest.addOns[id]) : 0);
+  }, 0);
+  const discount = getComboDiscountDetails(request.guests.map((item) => item.serviceIds), request.guests.map((item) => item.addOns));
   const guestDiscount = discount.qualifyingGuests.find((item) => item.guestIndex === guestIndex)?.subtotal ? 5 : 0;
   const note = [
     `Ref ${request.reference}, guest ${guestIndex + 1}/${request.guests.length}.`,

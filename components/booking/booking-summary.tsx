@@ -1,4 +1,4 @@
-import { serviceById, serviceDisplayName } from "@/data/serviceTree";
+import { selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { formatSlotTime } from "@/data/staffSchedule";
 import type { BookingCopy, Language } from "./copy";
@@ -11,13 +11,17 @@ type BookingSummaryProps = {
   date: string;
   time: string;
   selections: string[][];
+  serviceAddOns: Record<string, ServiceAddOnKey>[];
 };
 
-export function getBookingTotals(selections: string[][]) {
+export function getBookingTotals(selections: string[][], serviceAddOns: Record<string, ServiceAddOnKey>[] = []) {
   const guestDurations = selections.map((ids) => ids.reduce((sum, id) => sum + (serviceById.get(id)?.durationMinutes ?? 0), 0));
-  const guestPrices = selections.map((ids) => ids.reduce((sum, id) => sum + (serviceById.get(id)?.priceCad ?? 0), 0));
+  const guestPrices = selections.map((ids, guestIndex) => ids.reduce((sum, id) => {
+    const service = serviceById.get(id);
+    return sum + (service ? selectedServicePrice(service, serviceAddOns[guestIndex]?.[id]) : 0);
+  }, 0));
   const subtotal = guestPrices.reduce((sum, value) => sum + value, 0);
-  const comboDiscount = getComboDiscountDetails(selections).amount;
+  const comboDiscount = getComboDiscountDetails(selections, serviceAddOns).amount;
   return {
     serviceCount: selections.reduce((sum, ids) => sum + ids.length, 0),
     subtotal,
@@ -46,8 +50,8 @@ export function formatDate(date: string, language: Language) {
   }).format(new Date(`${date}T12:00:00Z`));
 }
 
-export function BookingSummary({ language, copy, partySize, date, time, selections }: BookingSummaryProps) {
-  const totals = getBookingTotals(selections);
+export function BookingSummary({ language, copy, partySize, date, time, selections, serviceAddOns }: BookingSummaryProps) {
+  const totals = getBookingTotals(selections, serviceAddOns);
   return (
     <div className="summary-content">
       <div className="summary-topline">
@@ -70,7 +74,9 @@ export function BookingSummary({ language, copy, partySize, date, time, selectio
                 {ids.map((id) => {
                   const item = serviceById.get(id);
                   if (!item) return null;
-                  return <li key={id}><span>{serviceDisplayName(item, language)}</span><span>{item.priceLabel ?? formatCad(item.priceCad, language)}</span></li>;
+                  const addOnKey = serviceAddOns[index]?.[id];
+                  const price = selectedServicePrice(item, addOnKey);
+                  return <li key={id}><span>{serviceDisplayNameWithAddOn(item, language, addOnKey)}</span><span>{item.priceLabel && !addOnKey ? item.priceLabel : formatCad(price, language)}</span></li>;
                 })}
               </ul>
             ) : <p className="summary-empty">{copy.noServices}</p>}
@@ -85,7 +91,7 @@ export function BookingSummary({ language, copy, partySize, date, time, selectio
         <div className="subtotal-row"><span>{copy.subtotal}</span><strong>{formatCad(totals.subtotal - totals.comboDiscount, language)}</strong></div>
         <p className="tax-note">{copy.taxNote}</p>
       </div>
-      <BackupBill language={language} date={date} time={time} selections={selections} />
+      <BackupBill language={language} date={date} time={time} selections={selections} serviceAddOns={serviceAddOns} />
     </div>
   );
 }

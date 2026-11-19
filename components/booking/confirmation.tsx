@@ -1,8 +1,8 @@
 import { formatSlotTime } from "@/data/staffSchedule";
-import { serviceById, serviceDisplayName } from "@/data/serviceTree";
+import { selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import type { BookingCopy, Language } from "./copy";
-import { formatDate, getBookingTotals } from "./booking-summary";
+import { formatCad, formatDate, getBookingTotals } from "./booking-summary";
 
 type ConfirmationProps = {
   language: Language;
@@ -12,15 +12,16 @@ type ConfirmationProps = {
   time: string;
   partySize: number;
   selections: string[][];
+  serviceAddOns: Record<string, ServiceAddOnKey>[];
   hasOnlineOnlyTime: boolean;
   assignedNames: string[];
   onAddToCalendar: () => void;
   onStartAgain: () => void;
 };
 
-export function Confirmation({ language, copy, reference, date, time, partySize, selections, hasOnlineOnlyTime, assignedNames, onAddToCalendar, onStartAgain }: ConfirmationProps) {
-  const totals = getBookingTotals(selections);
-  const comboDiscount = getComboDiscountDetails(selections);
+export function Confirmation({ language, copy, reference, date, time, partySize, selections, serviceAddOns, hasOnlineOnlyTime, assignedNames, onAddToCalendar, onStartAgain }: ConfirmationProps) {
+  const totals = getBookingTotals(selections, serviceAddOns);
+  const comboDiscount = getComboDiscountDetails(selections, serviceAddOns);
   return (
     <section className="confirmation-step" aria-labelledby="confirmation-title">
       <div className="confirmation-icon" aria-hidden="true">✓</div>
@@ -38,11 +39,16 @@ export function Confirmation({ language, copy, reference, date, time, partySize,
           <div><dt>{copy.summaryGuests}</dt><dd>{partySize} {partySize === 1 ? copy.guest : copy.guests}</dd></div>
           <div><dt>{copy.totalDuration}</dt><dd>{totals.duration} min</dd></div>
           <div className="confirmation-services"><dt>{copy.summarySelected}</dt><dd>{selections.map((ids, guestIndex) => (
-            <span key={guestIndex}>{partySize > 1 ? `${copy.guest} ${guestIndex + 1}: ` : ""}{ids.map((id) => serviceById.get(id)).filter((service): service is NonNullable<typeof service> => Boolean(service)).map((service) => serviceDisplayName(service, language)).join(", ")}</span>
+            <span key={guestIndex}>{partySize > 1 ? `${copy.guest} ${guestIndex + 1}: ` : ""}{ids.map((id) => {
+              const service = serviceById.get(id);
+              if (!service) return null;
+              const addOnKey = serviceAddOns[guestIndex]?.[id];
+              return `${serviceDisplayNameWithAddOn(service, language, addOnKey)} — ${formatCad(selectedServicePrice(service, addOnKey), language)}`;
+            }).filter(Boolean).join("; ")}</span>
           ))}</dd></div>
           <div><dt>{copy.assignedTeam}</dt><dd>{assignedNames.length ? Array.from(new Set(assignedNames)).join(", ") : copy.anyTechnician}</dd></div>
           {comboDiscount.amount > 0 && <div><dt>{language === "en" ? `Combo discount${comboDiscount.qualifyingGuests.length > 1 ? ` (${comboDiscount.qualifyingGuests.length}x)` : ""}` : `Rabais combo${comboDiscount.qualifyingGuests.length > 1 ? ` (${comboDiscount.qualifyingGuests.length}x)` : ""}`}</dt><dd>-{new Intl.NumberFormat(language === "en" ? "en-CA" : "fr-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }).format(comboDiscount.amount)}</dd></div>}
-          <div><dt>{copy.subtotal}</dt><dd>{new Intl.NumberFormat(language === "en" ? "en-CA" : "fr-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }).format(totals.subtotal - comboDiscount.amount)}</dd></div>
+          <div><dt>{copy.subtotal}</dt><dd>{formatCad(totals.subtotal - comboDiscount.amount, language)}</dd></div>
         </dl>
         {hasOnlineOnlyTime && <p className="online-only-banner"><span aria-hidden="true">i</span>{copy.onlineOnly}</p>}
         <div className="confirmation-divider" />
