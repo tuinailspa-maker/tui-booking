@@ -206,6 +206,54 @@ button { color: inherit; }
 .bill-grand-total { padding-top: 10px; border-top: 1px solid var(--ink); font-size: 13px !important; }
 .bill-tips { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: 12px; }
 .bill-tips legend { margin-bottom: 10px; font-size: 10px; font-weight: 600; }
+
+.booking-page { font-size: 16px; font-weight: 500; }
+.booking-page .salon-link { font-size: 15px; font-weight: 600; }
+.booking-page .language-switch { font-size: 13px; font-weight: 700; }
+.booking-page .eyebrow,
+.booking-page .step-kicker,
+.booking-page .summary-eyebrow,
+.booking-page .date-weekday,
+.booking-page .date-month,
+.booking-page .progress-number,
+.booking-page .summary-guest-label,
+.booking-page .summary-section-title span:last-child,
+.booking-page .tree-controls button,
+.booking-page .branch-note,
+.booking-page .branch-count,
+.booking-page .leaf-duration,
+.booking-page .leaf-action,
+.booking-page .closed-note,
+.booking-page .summary-guest li,
+.booking-page .tax-note { font-size: 12px; font-weight: 600; }
+.booking-page .progress-label,
+.booking-page .field-hint,
+.booking-page .party-option > span:last-child,
+.booking-page .summary-meta span,
+.booking-page .summary-totals span,
+.booking-page .summary-meta strong,
+.booking-page .summary-totals strong,
+.booking-page .technician-select,
+.booking-page .technician-select select,
+.booking-page .service-search input,
+.booking-page .tree-controls,
+.booking-page .summary-empty,
+.booking-page .leaf-price,
+.booking-page .time-option,
+.booking-page .guest-tab,
+.booking-page .button,
+.booking-page .backup-bill-trigger { font-size: 14px; font-weight: 600; }
+.booking-page .booking-page-title { font-size: 44px; }
+.booking-page .branch-name,
+.booking-page .leaf-name,
+.booking-page .capacity-note,
+.booking-page .online-only-banner,
+.booking-page .empty-state,
+.booking-page .validation-note,
+.booking-page .step-heading > p:last-child,
+.booking-page .subtotal-row span,
+.booking-page .section-label-row h2,
+.booking-page .summary-section-title { font-size: 15px; font-weight: 600; }
 .bill-tips legend span { color: var(--muted); font-weight: 400; }
 .bill-tip-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .bill-tip-option { min-height: 40px; padding: 0 8px; border: 1px solid var(--line); background: #fff; color: #615c54; font-size: 10px; cursor: pointer; }
