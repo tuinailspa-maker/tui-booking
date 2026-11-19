@@ -63,6 +63,7 @@ export function BookingApp() {
   const [activeGuest, setActiveGuest] = useState(0);
   const [client, setClient] = useState<ClientDetailsValue>(initialClient);
   const [reference, setReference] = useState("");
+  const [bookingError, setBookingError] = useState(false);
   const [showMobileSummary, setShowMobileSummary] = useState(false);
   const [serviceError, setServiceError] = useState(false);
   const [durationError, setDurationError] = useState(false);
@@ -123,11 +124,28 @@ export function BookingApp() {
     setStep(3);
   }
 
-  function submitClientDetails(event: FormEvent<HTMLFormElement>) {
+  async function submitClientDetails(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     if (!form.reportValidity()) return;
-    setReference(makeReference());
+    const nextReference = makeReference();
+    const technicians = assignedTechnicians();
+    const response = await fetch("/api/square/bookings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        reference: nextReference,
+        startAt: localTorontoDateTimeToUtc(date, time).toISOString(),
+        client,
+        guests: selections.map((serviceIds, index) => ({ serviceIds, technician: technicians[index] })),
+      }),
+    });
+    if (!response.ok) {
+      setBookingError(true);
+      return;
+    }
+    setBookingError(false);
+    setReference(nextReference);
     setStep(4);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -298,7 +316,10 @@ export function BookingApp() {
             )}
 
             {step === 3 && (
-              <ClientDetails copy={copy} value={client} onChange={setClient} onSubmit={submitClientDetails} />
+              <>
+            {bookingError && <p className="validation-note" role="alert">{copy.bookingFailed}</p>}
+            <ClientDetails copy={copy} value={client} onChange={setClient} onSubmit={submitClientDetails} />
+          </>
             )}
 
             <div className="step-actions">
