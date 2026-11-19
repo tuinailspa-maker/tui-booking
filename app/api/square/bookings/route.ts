@@ -165,7 +165,7 @@ async function hasTechnicianConflict(request: BookingRequest, locationId: string
 function buildSellerNote(request: BookingRequest, guest: BookingGuest, guestIndex: number) {
   const lines = guest.serviceIds.map((id) => {
     const service = serviceById.get(id);
-    return service ? `${service.nameEn} $${service.priceCad} (${service.durationMinutes} min)` : id;
+    return service ? `${serviceDisplayName(service, "en")} $${service.priceCad} (${service.durationMinutes} min)` : id;
   });
   const total = guest.serviceIds.reduce((sum, id) => sum + (serviceById.get(id)?.priceCad ?? 0), 0);
   const note = [

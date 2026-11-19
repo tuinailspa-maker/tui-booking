@@ -1,4 +1,5 @@
 import { formatSlotTime } from "@/data/staffSchedule";
+import { serviceById, serviceDisplayName } from "@/data/serviceTree";
 import type { BookingCopy, Language } from "./copy";
 import { formatDate, getBookingTotals } from "./booking-summary";
 
@@ -34,6 +35,9 @@ export function Confirmation({ language, copy, reference, date, time, partySize,
           <div><dt>{copy.summaryTime}</dt><dd>{formatSlotTime(time, language)}</dd></div>
           <div><dt>{copy.summaryGuests}</dt><dd>{partySize} {partySize === 1 ? copy.guest : copy.guests}</dd></div>
           <div><dt>{copy.totalDuration}</dt><dd>{totals.duration} min</dd></div>
+          <div className="confirmation-services"><dt>{copy.summarySelected}</dt><dd>{selections.map((ids, guestIndex) => (
+            <span key={guestIndex}>{partySize > 1 ? `${copy.guest} ${guestIndex + 1}: ` : ""}{ids.map((id) => serviceById.get(id)).filter((service): service is NonNullable<typeof service> => Boolean(service)).map((service) => serviceDisplayName(service, language)).join(", ")}</span>
+          ))}</dd></div>
           <div><dt>{copy.assignedTeam}</dt><dd>{assignedNames.length ? Array.from(new Set(assignedNames)).join(", ") : copy.anyTechnician}</dd></div>
           <div><dt>{copy.subtotal}</dt><dd>{new Intl.NumberFormat(language === "en" ? "en-CA" : "fr-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }).format(totals.subtotal)}</dd></div>
         </dl>

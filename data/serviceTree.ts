@@ -133,22 +133,68 @@ export const serviceTree: ServiceBranch[] = [
   ]),
 ];
 
-const optionGroupIds = new Set(["manicure", "natural-nails-touch-up", "enhancement-new-set", "enhancement-refill", "pedicure", "feet-touch-up"]);
+const DISPLAY_PATH_OVERRIDES: Record<string, { en: string; fr: string }> = {
+  "hands-manicure-no-polish": { en: "Manicure / No polish", fr: "Manucure / Sans vernis" },
+  "hands-manicure-regular-polish": { en: "Manicure / Regular polish", fr: "Manucure / Vernis classique" },
+  "hands-manicure-shellac": { en: "Manicure / Shellac", fr: "Manucure / Shellac" },
+  "hands-touch-up-regular": { en: "Hands / Touch-up / Regular", fr: "Mains / Retouche / Classique" },
+  "hands-touch-up-shellac": { en: "Hands / Touch-up / Shellac", fr: "Mains / Retouche / Shellac" },
+  "enhancement-new-no-polish": { en: "New set / No polish", fr: "Nouvelle pose / Sans vernis" },
+  "enhancement-new-regular-polish": { en: "New set / Regular polish", fr: "Nouvelle pose / Vernis classique" },
+  "enhancement-new-shellac": { en: "New set / Shellac", fr: "Nouvelle pose / Shellac" },
+  "enhancement-refill-no-polish": { en: "Refill / No polish", fr: "Remplissage / Sans vernis" },
+  "enhancement-refill-regular-polish": { en: "Refill / Regular polish", fr: "Remplissage / Vernis classique" },
+  "enhancement-refill-shellac": { en: "Refill / Shellac", fr: "Remplissage / Shellac" },
+  "feet-pedicure-no-polish": { en: "Pedicure / No polish", fr: "Pédicure / Sans vernis" },
+  "feet-pedicure-regular-polish": { en: "Pedicure / Regular polish", fr: "Pédicure / Vernis classique" },
+  "feet-pedicure-shellac": { en: "Pedicure / Shellac", fr: "Pédicure / Shellac" },
+  "feet-touch-up-regular-polish": { en: "Feet / Touch-up / Regular polish", fr: "Pieds / Retouche / Vernis classique" },
+  "feet-touch-up-shellac": { en: "Feet / Touch-up / Shellac", fr: "Pieds / Retouche / Shellac" },
+  "removal-none": { en: "Removal / None", fr: "Dépose / Aucune" },
+  "removal-shellac": { en: "Removal / Shellac", fr: "Dépose / Shellac" },
+  "removal-enhancement": { en: "Removal / Enhancement nails", fr: "Dépose / Extensions" },
+  "repair-1-2-nails": { en: "Repair / 1–2 nails", fr: "Réparation / 1 à 2 ongles" },
+  "repair-5-nails-plus": { en: "Repair / 5+ nails", fr: "Réparation / 5 ongles et plus" },
+  "cut-nails-option-1": { en: "Cut nails / Option 1", fr: "Coupe des ongles / Option 1" },
+  "cut-nails-option-2": { en: "Cut nails / Option 2", fr: "Coupe des ongles / Option 2" },
+  "treatment-paraffin-feet": { en: "Treatment / Paraffin / Feet", fr: "Soin / Paraffine / Pieds" },
+  "treatment-paraffin-hands": { en: "Treatment / Paraffin / Hands", fr: "Soin / Paraffine / Mains" },
+  "treatment-collagen": { en: "Treatment / Collagen", fr: "Soin / Collagène" },
+  "treatment-extra-callus-remover": { en: "Treatment / Extra callus remover heels", fr: "Soin / Soin anti-callosités supplémentaire des talons" },
+  "add-on-basic-art": { en: "Add-on / Basic art (French, simple line, dots)", fr: "Supplément / Décor simple (French, lignes, pois)" },
+  "add-on-chrome-cat-eye": { en: "Add-on / Chrome, cat eye", fr: "Supplément / Chrome, œil de chat" },
+  "add-on-custom-art": { en: "Add-on / Hand painting, 3D charms, custom", fr: "Supplément / Peinture à main levée, décor 3D, création sur mesure" },
+  "add-on-cuticle-clean-up": { en: "Add-on / Cuticle clean-up", fr: "Supplément / Nettoyage des cuticules" },
+  "add-on-calcium-gel": { en: "Add-on / Extra Strong Calcium gel", fr: "Supplément / Gel calcium extra-fort" },
+};
 
-function nameOptionLeaves(nodes: ServiceNode[], parent?: ServiceBranch) {
-  nodes.forEach((node) => {
-    if (node.type === "branch") {
-      nameOptionLeaves(node.children, node);
-      return;
-    }
-    if (parent && optionGroupIds.has(parent.id)) {
-      node.displayNameEn = `${parent.nameEn} ${node.nameEn}`;
-      node.displayNameFr = `${parent.nameFr} ${node.nameFr}`;
-    }
-  });
+function buildPath(node: ServiceNode, parents: ServiceBranch[], language: "en" | "fr") {
+  const segments = [...parents.map((parent) => language === "en" ? parent.nameEn : parent.nameFr), language === "en" ? node.nameEn : node.nameFr];
+  if (node.type === "service" && node.id.startsWith("waxing-")) return segments.join(" / ");
+
+  if (node.type === "service" && parents.some((parent) => parent.id === "hands")) {
+    const omit = new Set(["hands", "natural-nails", "nail-enhancement"]);
+    return segments.filter((_, index) => !omit.has(parents[index]?.id)).join(" / ");
+  }
+  if (node.type === "service" && parents.some((parent) => parent.id === "feet")) {
+    return segments.filter((_, index) => parents[index]?.id !== "feet").join(" / ");
+  }
+  return segments.join(" / ");
 }
 
-nameOptionLeaves(serviceTree);
+function assignDisplayPaths(nodes: ServiceNode[], parents: ServiceBranch[] = []) {
+  for (const node of nodes) {
+    if (node.type === "branch") {
+      assignDisplayPaths(node.children, [...parents, node]);
+    } else {
+      const override = DISPLAY_PATH_OVERRIDES[node.id];
+      node.displayNameEn = override?.en ?? buildPath(node, parents, "en");
+      node.displayNameFr = override?.fr ?? buildPath(node, parents, "fr");
+    }
+  }
+}
+
+assignDisplayPaths(serviceTree);
 
 export function serviceDisplayName(service: ServiceLeaf, language: "en" | "fr") {
   return language === "en" ? service.displayNameEn ?? service.nameEn : service.displayNameFr ?? service.nameFr;
