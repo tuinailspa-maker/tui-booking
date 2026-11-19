@@ -203,9 +203,8 @@ export async function GET(request: Request) {
         };
       const customer = booking.customer_id ? customerById.get(booking.customer_id) : null;
       const fullName = [customer?.given_name, customer?.family_name].filter(Boolean).join(" ");
-  const groupMarker = booking.seller_note?.match(/Booking request ([^,]+), guest (\d+)\/(\d+)/);
-  const extraGuests = Math.max(0, Number(booking.seller_note?.match(/Guests: ([23])\./)?.[1] ?? 1) - 1);
-  return {
+      const groupMarker = booking.seller_note?.match(/Booking request ([^,]+), guest (\d+)\/(\d+)/);
+      return {
         id: booking.id,
         groupKey: groupMarker?.[1] ?? booking.id,
         guestIndex: Number(groupMarker?.[2] ?? 1),
