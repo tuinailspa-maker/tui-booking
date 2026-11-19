@@ -254,6 +254,12 @@ button { color: inherit; }
 .booking-page .subtotal-row span,
 .booking-page .section-label-row h2,
 .booking-page .summary-section-title { font-size: 15px; font-weight: 600; }
+.booking-page .field-hint,
+.booking-page .client-form input,
+.booking-page .client-form textarea { font-size: 12px; }
+.booking-page .client-form label { font-size: 11px; }
+.booking-page .booking-footer { font-size: 12px; font-weight: 500; }
+.booking-page .booking-footer > a:first-child { font-size: 16px; }
 .bill-tips legend span { color: var(--muted); font-weight: 400; }
 .bill-tip-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .bill-tip-option { min-height: 40px; padding: 0 8px; border: 1px solid var(--line); background: #fff; color: #615c54; font-size: 10px; cursor: pointer; }
