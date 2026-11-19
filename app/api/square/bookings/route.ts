@@ -7,7 +7,8 @@ import {
 } from "@/data/squareConfig";
 import type { Technician } from "@/data/staffSchedule";
 
-const SQUARE_BASE_URL = "https://connect.squareup.com/v2";
+const SQUARE_PRODUCTION_URL = "https://connect.squareup.com/v2";
+const SQUARE_SANDBOX_URL = "https://connect.squareupsandbox.com/v2";
 const MAX_GUESTS = 3;
 const MAX_SQUARE_NOTE_LENGTH = 500;
 const REFERENCE_PATTERN = /^[A-Za-z0-9-]{4,40}$/;
@@ -15,6 +16,29 @@ const REFERENCE_PATTERN = /^[A-Za-z0-9-]{4,40}$/;
 type BookingGuest = { serviceIds: string[]; technician: Technician };
 type BookingClient = { firstName: string; lastName: string; phone: string; email: string; notes: string };
 type BookingRequest = { reference: string; startAt: string; client: BookingClient; guests: BookingGuest[] };
+
+class SquareStepError extends Error {
+  constructor(
+    readonly step: string,
+    readonly status: number,
+    readonly code: string | null,
+    readonly detail: string,
+  ) {
+    super(`${step} failed (${status}${code ? ` ${code}` : ""}): ${detail}`);
+  }
+}
+
+function squareBaseUrl() {
+  return process.env.SQUARE_ENVIRONMENT === "sandbox" ? SQUARE_SANDBOX_URL : SQUARE_PRODUCTION_URL;
+}
+
+function toE164(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  if (phone.trim().startsWith("+")) return `+${digits}`;
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return phone;
+}
 
 function isTechnician(value: unknown): value is Technician {
   return typeof value === "string" && value in SQUARE_TEAM_MEMBER_IDS;
@@ -54,8 +78,8 @@ function parseBookingRequest(body: unknown): BookingRequest | null {
   return { reference, startAt, client: { firstName, lastName, phone, email, notes }, guests: parsedGuests };
 }
 
-async function squareRequest<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${SQUARE_BASE_URL}${path}`, {
+async function squareRequest<T>(step: string, path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${squareBaseUrl()}${path}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
@@ -64,9 +88,15 @@ async function squareRequest<T>(path: string, body: unknown): Promise<T> {
     },
     body: JSON.stringify(body),
   });
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(`Square ${path} failed: ${JSON.stringify(data.errors ?? response.status)}`);
+    const first = Array.isArray(data.errors) ? data.errors[0] : undefined;
+    throw new SquareStepError(
+      step,
+      response.status,
+      typeof first?.code === "string" ? first.code : null,
+      typeof first?.detail === "string" ? first.detail : `HTTP ${response.status}`,
+    );
   }
   return data as T;
 }
@@ -97,21 +127,22 @@ export async function POST(request: Request) {
 
   const locationId = process.env.SQUARE_LOCATION_ID;
   if (!process.env.SQUARE_ACCESS_TOKEN || !locationId) {
-    return NextResponse.json({ error: "Square is not configured." }, { status: 500 });
+    return NextResponse.json({ error: "Square is not configured.", step: "config", detail: "SQUARE_ACCESS_TOKEN or SQUARE_LOCATION_ID is missing." }, { status: 500 });
   }
 
   try {
-    const { customer } = await squareRequest<{ customer: { id: string } }>("/customers", {
+    const { customer } = await squareRequest<{ customer: { id: string } }>("create_customer", "/customers", {
       idempotency_key: `${parsed.reference}-customer`,
       given_name: parsed.client.firstName,
       family_name: parsed.client.lastName,
       email_address: parsed.client.email,
+      phone_number: toE164(parsed.client.phone),
       note: parsed.client.notes || undefined,
     });
 
     const bookings = [];
     for (const [index, guest] of parsed.guests.entries()) {
-      const { booking } = await squareRequest<{ booking: { id: string } }>("/bookings", {
+      const { booking } = await squareRequest<{ booking: { id: string } }>("create_booking", "/bookings", {
         idempotency_key: `${parsed.reference}-${index + 1}`,
         booking: {
           location_id: locationId,
@@ -134,7 +165,14 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ bookingIds: bookings });
   } catch (error) {
-    console.error("[v0] Square booking sync failed:", error instanceof Error ? error.message : error);
-    return NextResponse.json({ error: "Square booking failed." }, { status: 502 });
+    if (error instanceof SquareStepError) {
+      console.error("[v0] Square booking failed:", error.message);
+      return NextResponse.json(
+        { error: "Square booking failed.", step: error.step, status: error.status, code: error.code, detail: error.detail },
+        { status: 502 },
+      );
+    }
+    console.error("[v0] Square booking failed:", error instanceof Error ? error.message : error);
+    return NextResponse.json({ error: "Square booking failed.", step: "unknown", detail: "Unexpected server error." }, { status: 502 });
   }
 }

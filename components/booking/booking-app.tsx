@@ -63,7 +63,7 @@ export function BookingApp() {
   const [activeGuest, setActiveGuest] = useState(0);
   const [client, setClient] = useState<ClientDetailsValue>(initialClient);
   const [reference, setReference] = useState("");
-  const [bookingError, setBookingError] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
   const [showMobileSummary, setShowMobileSummary] = useState(false);
   const [serviceError, setServiceError] = useState(false);
   const [durationError, setDurationError] = useState(false);
@@ -141,10 +141,12 @@ export function BookingApp() {
       }),
     });
     if (!response.ok) {
-      setBookingError(true);
+      const failure = await response.json().catch(() => null);
+      const detail = failure?.step ? `Step: ${failure.step}. ${failure.detail ?? failure.error ?? ""}` : failure?.error;
+      setBookingError(detail || "Unknown error.");
       return;
     }
-    setBookingError(false);
+    setBookingError(null);
     setReference(nextReference);
     setStep(4);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -317,7 +319,7 @@ export function BookingApp() {
 
             {step === 3 && (
               <>
-            {bookingError && <p className="validation-note" role="alert">{copy.bookingFailed}</p>}
+            {bookingError && <p className="validation-note" role="alert">{copy.bookingFailed} {bookingError}</p>}
             <ClientDetails copy={copy} value={client} onChange={setClient} onSubmit={submitClientDetails} />
           </>
             )}
