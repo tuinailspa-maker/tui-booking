@@ -5,7 +5,7 @@ export const translations = {
     pageTagline: "A little time, just for you.",
     onlineBooking: "ONLINE BOOKING",
   salonName: "Tui Nail Spa Montreal",
-  bookingPolicy: "8:00–10:00 AM: online booking only. After 10:00 AM: walk-ins welcome.",
+  bookingPolicy: "8:00 AM – 10:00 AM: Booking online only · After 10:00 AM: Walk-ins welcome",
     backToSalon: "Back to tuinailspa.ca",
     languageLabel: "Switch language to French",
     steps: ["Date & time", "Choose services", "Your details", "Confirmation"],
