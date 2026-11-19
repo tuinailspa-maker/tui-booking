@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { selectedServiceDuration, selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import { formatSlotTime } from "@/data/staffSchedule";
@@ -13,6 +13,11 @@ type BackupBillProps = {
   time: string;
   selections: string[][];
   serviceAddOns: Record<string, ServiceAddOnKey>[];
+  customerName?: string;
+  customerPhone?: string;
+  triggerLabel?: string;
+  markCheckedOutLabel?: string;
+  onMarkCheckedOut?: () => void;
 };
 
 type TipChoice = "none" | "15" | "20" | "25" | "custom";
@@ -30,6 +35,7 @@ const labels = {
     copy: "Copy Bill",
     copied: "Copied",
     print: "Print / PDF",
+    markCheckedOut: "Mark checked out",
     guest: "GUEST",
     minutes: "min",
     subtotal: "Subtotal",
@@ -52,6 +58,7 @@ const labels = {
     copy: "Copier le reçu",
     copied: "Copié",
     print: "Imprimer / PDF",
+    markCheckedOut: "Marquer comme payé",
     guest: "CLIENT",
     minutes: "min",
     subtotal: "Sous-total",
@@ -85,8 +92,10 @@ function sanitizeCustomTip(raw: string) {
   return Number.isFinite(parsed) && parsed > 0 ? toCents(parsed) : 0;
 }
 
-export function BackupBill({ language, date, time, selections, serviceAddOns }: BackupBillProps) {
+export function BackupBill({ language, date, time, selections, serviceAddOns, customerName, customerPhone, triggerLabel, markCheckedOutLabel, onMarkCheckedOut }: BackupBillProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const tipChoiceId = useId();
   const [receiptLanguage, setReceiptLanguage] = useState<Language>(language);
   const [tipChoice, setTipChoice] = useState<TipChoice>("none");
   const [customTip, setCustomTip] = useState("");
@@ -121,6 +130,11 @@ export function BackupBill({ language, date, time, selections, serviceAddOns }: 
     dialogRef.current?.close();
   }
 
+  function markCheckedOut() {
+    onMarkCheckedOut?.();
+    closeBill();
+  }
+
   function closeOnBackdropClick(event: React.MouseEvent<HTMLDialogElement>) {
     if (event.target === dialogRef.current) closeBill();
   }
@@ -139,6 +153,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns }: 
       `${text.tps}: ${money(tps)}`,
       `${text.tvq}: ${money(tvq)}`,
       `${text.beforeTip}: ${money(totalBeforeTip)}`,
+      ...(customerName ? [`${customerName}${customerPhone ? ` · ${customerPhone}` : ""}`] : []),
       `${text.tip}: ${money(tipAmount)}`,
       `${text.grandTotal}: ${money(grandTotal)}`,
       "",
@@ -160,11 +175,11 @@ export function BackupBill({ language, date, time, selections, serviceAddOns }: 
 
   return (
     <>
-      <button className="backup-bill-trigger" type="button" onClick={openBill}>{text.trigger}</button>
+      <button className="backup-bill-trigger" type="button" onClick={openBill}>{triggerLabel ?? text.trigger}</button>
       <dialog
         ref={dialogRef}
         className="backup-bill-dialog"
-        aria-labelledby="backup-bill-title"
+        aria-labelledby={titleId}
         onClick={closeOnBackdropClick}
         onClose={() => setCopied(false)}
       >
@@ -186,7 +201,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns }: 
             </div>
           </header>
 
-          <h2 id="backup-bill-title" className="sr-only">{text.title}</h2>
+          <h2 id={titleId} className="sr-only">{text.title}</h2>
           <div className="receipt-heading">
             <address className="receipt-contact">
               <span>{RECEIPT_ADDRESS} · {RECEIPT_PHONE}</span>
@@ -195,6 +210,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns }: 
           </div>
 
           {receiptDateTime && <p className="receipt-date"><strong>{text.date}:</strong> {receiptDateTime}</p>}
+          {(customerName || customerPhone) && <p className="receipt-date"><strong>{customerName || text.guest}</strong>{customerPhone ? ` · ${customerPhone}` : ""}</p>}
 
           <div className="bill-items">
             {guests.length === 0 || subtotal === 0 ? <p className="bill-empty">{text.empty}</p> : guests.map((items, index) => items.length > 0 && (
@@ -205,7 +221,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns }: 
                     <li key={item.service.id}>
                       <span>
                         {serviceDisplayNameWithAddOn(item.service, receiptLanguage, item.addOnKey)}
-                        <small>{item.service.durationMinutes} {text.minutes}</small>
+                        <small>{selectedServiceDuration(item.service, item.addOnKey)} {text.minutes}</small>
                       </span>
                       <span>{money(selectedServicePrice(item.service, item.addOnKey))}</span>
                     </li>
@@ -226,8 +242,8 @@ export function BackupBill({ language, date, time, selections, serviceAddOns }: 
           </dl>
 
           <div className="bill-tips">
-            <label className="bill-tip-select-label" htmlFor="bill-tip-choice">{receiptLanguage === "en" ? "Tip" : "Pourboire"} · {receiptLanguage === "en" ? "Based on" : "Calculé sur"} {money(subtotal)}</label>
-            <select id="bill-tip-choice" className="bill-tip-select" value={tipChoice} onChange={(event) => setTipChoice(event.target.value as TipChoice)}>
+            <label className="bill-tip-select-label" htmlFor={tipChoiceId}>{receiptLanguage === "en" ? "Tip" : "Pourboire"} · {receiptLanguage === "en" ? "Based on" : "Calculé sur"} {money(subtotal)}</label>
+            <select id={tipChoiceId} className="bill-tip-select" value={tipChoice} onChange={(event) => setTipChoice(event.target.value as TipChoice)}>
               {TIP_CHOICES.map((choice) => <option key={choice} value={choice}>{text.tipChoices[choice]}</option>)}
             </select>
             {tipChoice === "custom" && (
@@ -256,6 +272,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns }: 
             </div>
             <div className="receipt-closing"><span>Nous apprécions vos affaires!</span><span>We appreciate your business!</span></div>
           </footer>
+          {onMarkCheckedOut && <button className="bill-mark-checked-out" type="button" onClick={markCheckedOut}>{markCheckedOutLabel ?? text.markCheckedOut}</button>}
         </div>
       </dialog>
     </>
