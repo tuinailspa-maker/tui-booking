@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { getComboDiscount } from "@/data/comboDiscount";
+import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { serviceById, serviceDisplayName } from "@/data/serviceTree";
 import type { Language } from "./copy";
 
@@ -93,7 +93,7 @@ export function BackupBill({ language, selections }: BackupBillProps) {
 
   const guests = selections.map((ids) => ids.map((id) => serviceById.get(id)).filter((item) => item !== undefined));
   const grossSubtotal = toCents(guests.flat().reduce((sum, item) => sum + item.priceCad, 0));
-  const comboDiscount = getComboDiscount(selections.flat(), grossSubtotal);
+  const comboDiscount = getComboDiscountDetails(selections).amount;
   const subtotal = toCents(grossSubtotal - comboDiscount);
   const tps = toCents(subtotal * TPS_RATE);
   const tvq = toCents(subtotal * TVQ_RATE);
@@ -123,7 +123,7 @@ export function BackupBill({ language, selections }: BackupBillProps) {
         ...items.map((item) => `  ${serviceDisplayName(item, language)} (${item.durationMinutes} ${text.minutes}) — ${money(item.priceCad)}`),
       ]).filter((line): line is string => line !== null),
       "",
-      ...(comboDiscount > 0 ? [`${text.comboDiscount}: -${money(comboDiscount)}`] : []),
+      ...(comboDiscount > 0 ? [`${text.comboDiscount}${comboDiscount > 5 ? ` (${comboDiscount / 5}x)` : ""}: -${money(comboDiscount)}`] : []),
       `${text.subtotal}: ${money(subtotal)}`,
       `${text.tps}: ${money(tps)}`,
       `${text.tvq}: ${money(tvq)}`,
@@ -179,7 +179,7 @@ export function BackupBill({ language, selections }: BackupBillProps) {
           </div>
 
           <dl className="bill-totals">
-            {comboDiscount > 0 && <div><dt>{text.comboDiscount}</dt><dd>-{money(comboDiscount)}</dd></div>}
+            {comboDiscount > 0 && <div><dt>{text.comboDiscount}{comboDiscount > 5 ? ` (${comboDiscount / 5}x)` : ""}</dt><dd>-{money(comboDiscount)}</dd></div>}
         <div><dt>{text.subtotal}</dt><dd>{money(subtotal)}</dd></div>
             <div><dt>{text.tps}</dt><dd>{money(tps)}</dd></div>
             <div><dt>{text.tvq}</dt><dd>{money(tvq)}</dd></div>

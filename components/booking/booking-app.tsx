@@ -354,7 +354,7 @@ const detail = failure?.step ? `Step: ${failure.step}. ${squareErrors || failure
           </div>
           <button className="mobile-summary-bar" type="button" aria-expanded={showMobileSummary} aria-controls="mobile-summary-details" onClick={() => setShowMobileSummary((open) => !open)}>
             <span className="mobile-summary-label"><span>{copy.summary}</span><small>{totals.serviceCount} {copy.summarySelected.toLowerCase()} · {totals.duration} min</small></span>
-            <strong>{formatCad(totals.subtotal, language)}</strong>
+            <strong>{formatCad(totals.subtotal - totals.comboDiscount, language)}</strong>
             <span className={`mobile-summary-chevron${showMobileSummary ? " is-open" : ""}`} aria-hidden="true">⌃</span>
           </button>
         </div>

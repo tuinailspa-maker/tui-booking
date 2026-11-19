@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { serviceById, serviceDisplayName } from "@/data/serviceTree";
 import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
+import { getComboDiscountDetails } from "@/data/comboDiscount";
 import type { Technician } from "@/data/staffSchedule";
 
 const SQUARE_PRODUCTION_URL = "https://connect.squareup.com/v2";
@@ -168,9 +169,12 @@ function buildSellerNote(request: BookingRequest, guest: BookingGuest, guestInde
     return service ? `${serviceDisplayName(service, "en")} $${service.priceCad} (${service.durationMinutes} min)` : id;
   });
   const total = guest.serviceIds.reduce((sum, id) => sum + (serviceById.get(id)?.priceCad ?? 0), 0);
+  const discount = getComboDiscountDetails(request.guests.map((item) => item.serviceIds));
+  const guestDiscount = discount.qualifyingGuests.find((item) => item.guestIndex === guestIndex)?.subtotal ? 5 : 0;
   const note = [
     `Ref ${request.reference}, guest ${guestIndex + 1}/${request.guests.length}.`,
-    `Services: ${lines.join("; ")}. Total $${total} CAD.`,
+    `Services: ${lines.join("; ")}. Guest subtotal $${total} CAD; guest combo discount -$${guestDiscount} CAD.`,
+    `Combo discount: ${discount.qualifyingGuests.map((item) => `Guest ${item.guestIndex + 1} -$5`).join(", ") || "none"}; total discount -$${discount.amount} CAD.`,
     `Client: ${request.client.firstName} ${request.client.lastName}, ${request.client.phone}, ${request.client.email}.`,
   ].join(" ");
   return note.slice(0, MAX_SQUARE_NOTE_LENGTH);
