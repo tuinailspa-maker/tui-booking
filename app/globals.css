@@ -35,7 +35,8 @@ button { color: inherit; }
 .salon-wordmark { display: inline-flex; align-items: center; gap: 16px; }
 .salon-logo { display: block; width: 150px; height: 104px; object-fit: contain; }
 .salon-name { color: var(--ink); font-size: 19px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
-.booking-policy { width: fit-content; max-width: 100%; margin: 18px auto 0; padding: 9px 16px; border: 1px solid var(--line); border-radius: 999px; background: #fffefa; color: var(--ink); font-size: 13px; font-weight: 600; }
+.salon-text { display: flex; flex-direction: column; gap: 6px; }
+  .salon-policy { color: var(--ink); font-size: 13px; font-weight: 600; line-height: 1.35; }
 .header-tools { display: flex; align-items: center; gap: 20px; }
 .salon-link { display: flex; align-items: center; gap: 13px; color: #625f58; font-size: 11px; transition: color .2s; }
 .salon-link:hover { color: var(--rose); }
@@ -233,7 +234,7 @@ button { color: inherit; }
 .salon-logo { width: 120px; height: 84px; }
 .salon-wordmark { gap: 10px; }
 .salon-name { font-size: 15px; white-space: normal; line-height: 1.15; }
-.booking-policy { font-size: 11px; }
+.salon-policy { font-size: 11px; }
   .header-tools { gap: 12px; }
   .salon-link { gap: 6px; font-size: 9px; }
   .booking-intro { width: calc(100% - 36px); margin: 35px auto 23px; }

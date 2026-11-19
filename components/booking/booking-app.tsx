@@ -188,7 +188,7 @@ export function BookingApp() {
       <header className="booking-header">
         <a className="salon-wordmark" href="https://tuinailspa.ca" aria-label={`${copy.salon} — tuinailspa.ca`}>
           <img src="/tui-logo.png" alt="Tui — La beauté des ongles" className="salon-logo" />
-          <span className="salon-name">{copy.salonName}</span>
+          <span className="salon-text"><span className="salon-name">{copy.salonName}</span><span className="salon-policy">{copy.bookingPolicy}</span></span>
         </a>
         <div className="header-tools">
           <a className="salon-link" href="https://tuinailspa.ca">{copy.backToSalon}<span aria-hidden="true">↗</span></a>
@@ -202,7 +202,7 @@ export function BookingApp() {
       <div className="booking-intro">
         <p className="eyebrow"><span className="eyebrow-rule" /> TUI NAIL SPA <span className="eyebrow-dot">·</span> {copy.onlineBooking}</p>
         <p className="booking-page-title">{copy.pageTagline}</p>
-        <p className="booking-policy">{copy.bookingPolicy}</p>
+        
       </div>
 
       <nav className="booking-progress" aria-label={copy.ariaProgress}>
