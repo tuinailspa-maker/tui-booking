@@ -27,8 +27,6 @@ export function Confirmation({ language, copy, reference, date, time, partySize,
       <div className="confirmation-icon" aria-hidden="true">✓</div>
       <p className="step-kicker">04 <span /> {copy.stepFour}</p>
       <h1 id="confirmation-title">{copy.stepFourTitle}</h1>
-      <p className="confirmation-demo-note" role="status">{copy.confirmationDemo}</p>
-
       <article className="confirmation-card">
         <div className="reference-row"><span>{copy.reference}</span><strong>{reference}</strong></div>
         <div className="confirmation-divider" />
