@@ -8,11 +8,11 @@ const SQUARE_PRODUCTION_URL = "https://connect.squareup.com/v2";
 const SQUARE_SANDBOX_URL = "https://connect.squareupsandbox.com/v2";
 const MAX_GUESTS = 3;
 const MAX_SQUARE_NOTE_LENGTH = 500;
-const REFERENCE_PATTERN = /^[A-Za-z0-9-]{4,40}$/;
+const REQUEST_ID_PATTERN = /^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$/;
 
 type BookingGuest = { serviceIds: string[]; addOns: Record<string, ServiceAddOnKey>; technician: Technician };
 type BookingClient = { firstName: string; lastName: string; countryCode: string; phone: string; email: string; notes: string };
-type BookingRequest = { reference: string; startAt: string; client: BookingClient; guests: BookingGuest[] };
+type BookingRequest = { requestId: string; startAt: string; client: BookingClient; guests: BookingGuest[] };
 
 type SquareApiError = { code: string | null; field: string | null; detail: string };
 
@@ -52,11 +52,11 @@ function readText(value: unknown, maxLength: number): string | null {
 function parseBookingRequest(body: unknown): BookingRequest | null {
   if (!body || typeof body !== "object") return null;
   const input = body as Record<string, unknown>;
-  const reference = readText(input.reference, 40);
+  const requestId = readText(input.requestId, 36);
   const startAt = readText(input.startAt, 40);
   const client = input.client as Record<string, unknown> | undefined;
   const guests = input.guests;
-  if (!reference || !REFERENCE_PATTERN.test(reference) || !startAt || Number.isNaN(Date.parse(startAt))) return null;
+  if (!requestId || !REQUEST_ID_PATTERN.test(requestId) || !startAt || Number.isNaN(Date.parse(startAt))) return null;
   if (!client || !Array.isArray(guests) || guests.length < 1 || guests.length > MAX_GUESTS) return null;
 
   const firstName = readText(client.firstName, 80);
@@ -84,7 +84,7 @@ function parseBookingRequest(body: unknown): BookingRequest | null {
     parsedGuests.push({ serviceIds, addOns, technician: guest.technician });
   }
 
-  return { reference, startAt, client: { firstName, lastName, countryCode, phone, email, notes }, guests: parsedGuests };
+  return { requestId, startAt, client: { firstName, lastName, countryCode, phone, email, notes }, guests: parsedGuests };
 }
 
 async function squareRequest<T>(step: string, path: string, body: unknown): Promise<T> {
@@ -185,7 +185,7 @@ function buildSellerNote(request: BookingRequest, guest: BookingGuest, guestInde
   const discount = getComboDiscountDetails(request.guests.map((item) => item.serviceIds), request.guests.map((item) => item.addOns));
   const guestDiscount = discount.qualifyingGuests.find((item) => item.guestIndex === guestIndex)?.subtotal ? 5 : 0;
   const note = [
-    `Ref ${request.reference}, guest ${guestIndex + 1}/${request.guests.length}.`,
+    `Booking request ${request.requestId}, guest ${guestIndex + 1}/${request.guests.length}.`,
     `Services: ${lines.join("; ")}. Guest subtotal $${total} CAD; guest combo discount -$${guestDiscount} CAD.`,
     `Combo discount: ${discount.qualifyingGuests.map((item) => `Guest ${item.guestIndex + 1} -$5`).join(", ") || "none"}; total discount -$${discount.amount} CAD.`,
     `Client: ${request.client.firstName} ${request.client.lastName}, ${request.client.phone}, ${request.client.email}.`,
@@ -290,7 +290,7 @@ export async function POST(request: Request) {
     }
 
     const { customer } = await squareRequest<{ customer: { id: string } }>("create_customer", "/customers", {
-      idempotency_key: `${parsed.reference}-customer`,
+      idempotency_key: `${parsed.requestId}-customer`,
       given_name: parsed.client.firstName,
       family_name: parsed.client.lastName,
       email_address: parsed.client.email,
@@ -304,7 +304,7 @@ export async function POST(request: Request) {
     for (const [index, guest] of parsed.guests.entries()) {
       const variation = resolveServiceVariation(catalogItems, locationId, guest);
       const { booking } = await squareRequest<{ booking: { id: string } }>("create_booking", "/bookings", {
-        idempotency_key: `${parsed.reference}-${index + 1}`,
+        idempotency_key: `${parsed.requestId}-${index + 1}`,
         booking: {
           location_id: locationId,
           start_at: new Date(parsed.startAt).toISOString(),
@@ -324,12 +324,12 @@ export async function POST(request: Request) {
       bookings.push(booking.id);
     }
 
-    return NextResponse.json({ bookingIds: bookings });
+    return NextResponse.json({ booking: { id: bookings[0] }, bookingIds: bookings });
   } catch (error) {
     if (error instanceof SquareStepError) {
       console.error("[v0] Square booking failed:", error.message);
       return NextResponse.json(
-        { error: "Square booking failed.", step: error.step, status: error.status, errors: error.errors },
+        { error: "Square booking failed.", step: error.step, status: error.status, errors: error.errors, detail: error.errors.map((item) => item.detail).filter(Boolean).join("; ") },
         { status: 502 },
       );
     }

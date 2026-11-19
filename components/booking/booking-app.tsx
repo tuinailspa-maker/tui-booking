@@ -18,13 +18,6 @@ function minutes(time: string) {
   return hours * 60 + mins;
 }
 
-function makeReference() {
-  const suffix = typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID().replaceAll("-", "").slice(-7)
-    : Math.random().toString(36).slice(2, 9);
-  return `TUI-${suffix.toUpperCase()}`;
-}
-
 function localTorontoDateTimeToUtc(date: string, time: string) {
   const [year, month, day] = date.split("-").map(Number);
   const [hours, mins] = time.split(":").map(Number);
@@ -65,6 +58,7 @@ export function BookingApp() {
   const [client, setClient] = useState<ClientDetailsValue>(initialClient);
   const [reference, setReference] = useState("");
   const [bookingError, setBookingError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showMobileSummary, setShowMobileSummary] = useState(false);
   const [serviceError, setServiceError] = useState(false);
   const [durationError, setDurationError] = useState(false);
@@ -153,32 +147,41 @@ export function BookingApp() {
   async function submitClientDetails(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    if (!form.reportValidity()) return;
-    const nextReference = makeReference();
-    const technicians = assignedTechnicians();
-    const response = await fetch("/api/square/bookings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        reference: nextReference,
-        startAt: localTorontoDateTimeToUtc(date, time).toISOString(),
-        client,
-        guests: selections.map((serviceIds, index) => ({ serviceIds, addOns: serviceAddOns[index] ?? {}, technician: technicians[index] })),
-      }),
-    });
-    if (!response.ok) {
-      const failure = await response.json().catch(() => null);
-      const squareErrors = Array.isArray(failure?.errors)
-  ? failure.errors.map((error: { code?: string | null; field?: string | null; detail?: string }) => [error.code, error.field && `field ${error.field}`, error.detail].filter(Boolean).join(" - ")).join("; ")
-  : "";
-const detail = failure?.step ? `Step: ${failure.step}. ${squareErrors || failure.detail || failure.error || ""}` : failure?.error;
-      setBookingError(detail || "Unknown error.");
-      return;
-    }
+    if (!form.reportValidity() || isSubmitting) return;
+
+    setIsSubmitting(true);
     setBookingError(null);
-    setReference(nextReference);
-    setStep(4);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    try {
+      const response = await fetch("/api/bookings/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId: crypto.randomUUID(),
+          startAt: localTorontoDateTimeToUtc(date, time).toISOString(),
+          client,
+          guests: selections.map((serviceIds, index) => ({ serviceIds, addOns: serviceAddOns[index] ?? {}, technician: assignedTechnicians()[index] })),
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        const squareMessage = Array.isArray(result?.errors)
+          ? result.errors.map((error: { detail?: string }) => error.detail).filter(Boolean).join("; ")
+          : "";
+        throw new Error(squareMessage || result?.detail || result?.error || "Square booking failed without an error message.");
+      }
+      const squareBookingId = result?.booking?.id;
+      if (typeof squareBookingId !== "string" || squareBookingId.length === 0) {
+        throw new Error("Square did not return a booking ID.");
+      }
+
+      setReference(squareBookingId);
+      setStep(4);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      setBookingError(error instanceof Error ? error.message : "Unable to reach Square. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function assignedTechnicians(): Technician[] {
@@ -366,7 +369,7 @@ const detail = failure?.step ? `Step: ${failure.step}. ${squareErrors || failure
                 <button className="button button-primary" type="button" onClick={continueFromServices}>{copy.continue}<span aria-hidden="true">→</span></button>
               )}
               {step === 3 && (
-                <button className="button button-primary" type="submit" form="client-details-form">{copy.confirm}<span aria-hidden="true">→</span></button>
+                <button className="button button-primary" type="submit" form="client-details-form" disabled={isSubmitting} aria-busy={isSubmitting}>{isSubmitting ? (language === "en" ? "Booking…" : "Réservation…") : copy.confirm}<span aria-hidden="true">→</span></button>
               )}
             </div>
           </div>
