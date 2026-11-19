@@ -230,6 +230,8 @@ button { color: inherit; }
 .client-form textarea { resize: vertical; line-height: 1.6; }
 .client-form input:focus, .client-form textarea:focus { border-color: #b79b72; outline: 1px solid #b79b72; }
 .client-form .notes-field { grid-column: 1 / -1; }
+.client-form .phone-field { display: grid; grid-template-columns: minmax(88px, 110px) minmax(0, 1fr); gap: 8px; }
+.client-form .phone-field select { min-height: 45px; padding: 0 28px 0 11px; border: 1px solid var(--line); border-radius: 0; background: var(--paper); color: var(--ink); font-size: 11px; }
 
 .confirmation-step { width: min(760px, calc(100% - 48px)); margin: 0 auto 78px; }
 .confirmation-icon { width: 38px; height: 38px; display: grid; place-items: center; margin-bottom: 17px; border: 1px solid #bfc8b7; border-radius: 50%; color: var(--sage); font-size: 15px; }

@@ -14,7 +14,7 @@ const MAX_SQUARE_NOTE_LENGTH = 500;
 const REFERENCE_PATTERN = /^[A-Za-z0-9-]{4,40}$/;
 
 type BookingGuest = { serviceIds: string[]; technician: Technician };
-type BookingClient = { firstName: string; lastName: string; phone: string; email: string; notes: string };
+type BookingClient = { firstName: string; lastName: string; countryCode: string; phone: string; email: string; notes: string };
 type BookingRequest = { reference: string; startAt: string; client: BookingClient; guests: BookingGuest[] };
 
 class SquareStepError extends Error {
@@ -32,12 +32,12 @@ function squareBaseUrl() {
   return process.env.SQUARE_ENVIRONMENT === "sandbox" ? SQUARE_SANDBOX_URL : SQUARE_PRODUCTION_URL;
 }
 
-function toE164(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  if (phone.trim().startsWith("+")) return `+${digits}`;
-  if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-  return phone;
+const COUNTRY_CODE_PATTERN = /^\+\d{1,4}$/;
+
+function toE164(countryCode: string, phone: string): string {
+  const trimmed = phone.trim();
+  if (trimmed.startsWith("+")) return `+${trimmed.replace(/\D/g, "")}`;
+  return `${countryCode}${trimmed.replace(/\D/g, "")}`;
 }
 
 function isTechnician(value: unknown): value is Technician {
@@ -62,10 +62,11 @@ function parseBookingRequest(body: unknown): BookingRequest | null {
 
   const firstName = readText(client.firstName, 80);
   const lastName = readText(client.lastName, 80);
+  const countryCode = readText(client.countryCode, 6) ?? "+1";
   const phone = readText(client.phone, 30);
   const email = readText(client.email, 254);
   const notes = typeof client.notes === "string" ? client.notes.trim().slice(0, 500) : "";
-  if (!firstName || !lastName || !phone || !email) return null;
+  if (!firstName || !lastName || !phone || !email || !COUNTRY_CODE_PATTERN.test(countryCode)) return null;
 
   const parsedGuests: BookingGuest[] = [];
   for (const guest of guests as Record<string, unknown>[]) {
@@ -75,7 +76,7 @@ function parseBookingRequest(body: unknown): BookingRequest | null {
     parsedGuests.push({ serviceIds, technician: guest.technician });
   }
 
-  return { reference, startAt, client: { firstName, lastName, phone, email, notes }, guests: parsedGuests };
+  return { reference, startAt, client: { firstName, lastName, countryCode, phone, email, notes }, guests: parsedGuests };
 }
 
 async function squareRequest<T>(step: string, path: string, body: unknown): Promise<T> {
@@ -136,7 +137,7 @@ export async function POST(request: Request) {
       given_name: parsed.client.firstName,
       family_name: parsed.client.lastName,
       email_address: parsed.client.email,
-      phone_number: toE164(parsed.client.phone),
+      phone_number: toE164(parsed.client.countryCode, parsed.client.phone),
       note: parsed.client.notes || undefined,
     });
 

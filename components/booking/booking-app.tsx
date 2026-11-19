@@ -11,7 +11,7 @@ import { ServiceTree } from "./service-tree";
 import { StepOne } from "./step-one";
 
 type Step = 1 | 2 | 3 | 4;
-const initialClient: ClientDetailsValue = { firstName: "", lastName: "", phone: "", email: "", notes: "" };
+const initialClient: ClientDetailsValue = { firstName: "", lastName: "", countryCode: "+1", phone: "", email: "", notes: "" };
 
 function minutes(time: string) {
   const [hours, mins] = time.split(":").map(Number);

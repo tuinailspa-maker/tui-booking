@@ -1,9 +1,12 @@
 import type { FormEvent } from "react";
 import type { BookingCopy } from "./copy";
 
+export const phoneCountryCodes = ["+1", "+33", "+44", "+84", "+86", "+39", "+34", "+49", "+52", "+506"] as const;
+
 export type ClientDetailsValue = {
   firstName: string;
   lastName: string;
+  countryCode: string;
   phone: string;
   email: string;
   notes: string;
@@ -39,7 +42,14 @@ export function ClientDetails({ copy, value, onChange, onSubmit }: ClientDetails
         </label>
         <label>
           <span>{copy.phone} <b aria-hidden="true">*</b></span>
-          <input required type="tel" autoComplete="tel" inputMode="tel" maxLength={30} value={value.phone} onChange={(event) => update("phone", event.target.value)} />
+          <span className="phone-field">
+            <select aria-label={copy.countryCode} value={value.countryCode} onChange={(event) => update("countryCode", event.target.value)}>
+              {phoneCountryCodes.map((code) => (
+                <option key={code} value={code}>{code}</option>
+              ))}
+            </select>
+            <input required type="tel" autoComplete="tel-national" inputMode="tel" maxLength={30} value={value.phone} onChange={(event) => update("phone", event.target.value)} />
+          </span>
         </label>
         <label>
           <span>{copy.email} <b aria-hidden="true">*</b></span>
