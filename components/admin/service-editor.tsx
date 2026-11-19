@@ -19,6 +19,7 @@ type ServiceEditorProps = {
   customerPhone: string;
   startAt: string;
   technician: string;
+  initialTechnicians?: string[];
   status: AppointmentStatus;
   busy?: boolean;
   checkedOut?: boolean;
@@ -31,7 +32,7 @@ type ServiceEditorProps = {
   onBookingCreated?: () => Promise<void>;
 };
 
-export function ServiceEditor({ initialServiceIds, initialAddOns, customerName, customerPhone, startAt, technician, status, busy, checkedOut, onMarkCheckedOut, walkIn, onCancel, onTechnicianChange, onStatusChange, onSave, onBookingCreated }: ServiceEditorProps) {
+export function ServiceEditor({ initialServiceIds, initialAddOns, customerName, customerPhone, startAt, technician, initialTechnicians = [], status, busy, checkedOut, onMarkCheckedOut, walkIn, onCancel, onTechnicianChange, onStatusChange, onSave, onBookingCreated }: ServiceEditorProps) {
   const guestCount = Math.max(1, initialServiceIds.length);
   const [activeGuest, setActiveGuest] = useState(0);
   const [serviceIds, setServiceIds] = useState(() => Array.from({ length: guestCount }, (_, index) => initialServiceIds[index] ?? []));
@@ -45,7 +46,7 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, customerName, 
   const [notes, setNotes] = useState("");
   const [bookingDate, setBookingDate] = useState(datePartsForTime(startAt).date);
   const [bookingTime, setBookingTime] = useState(`${datePartsForTime(startAt).hour}:${datePartsForTime(startAt).minute}`);
-  const [technicians, setTechnicians] = useState<string[]>(Array.from({ length: 3 }, (_, index) => index === 0 ? technician || "Jenny" : ["Jenny", "Melika", "Nana"].filter((name) => name !== technician)[index - 1] ?? "Jenny"));
+  const [technicians, setTechnicians] = useState<string[]>(() => Array.from({ length: 3 }, (_, index) => initialTechnicians[index] ?? (index === 0 ? technician || "Jenny" : ["Jenny", "Melika", "Nana"].filter((name) => name !== technician)[index - 1] ?? "Jenny")));
   const [submitting, setSubmitting] = useState(false);
   const visibleServices = allServices.filter((service) => serviceDisplayNameWithAddOn(service, "en").toLowerCase().includes(search.toLowerCase()) || service.nameFr.toLowerCase().includes(search.toLowerCase()));
   const activeIds = serviceIds[activeGuest] ?? [];
@@ -152,7 +153,7 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, customerName, 
       </div>
       {validation && <p className="admin-form-error" role="alert">{validation}</p>}
       <div className="admin-ticket-totals"><span>Services subtotal<strong>${subtotal.toFixed(2)}</strong></span>{discount > 0 && <span>Combo discount<strong>−${discount.toFixed(2)}</strong></span>}<span className="admin-ticket-total">Estimated total<strong>${(subtotal - discount).toFixed(2)}</strong></span></div>
-      <div className="admin-drawer-bill"><BackupBill language="en" date={billDate} time={billTime} selections={serviceIds} serviceAddOns={addOns} technicians={mode === "appointment" ? technicians.slice(0, serviceIds.length) : Array.from({ length: serviceIds.length }, () => technician || "Unassigned")} customerName={walkIn ? name : customerName} customerPhone={walkIn ? phone : customerPhone} triggerLabel={checkedOut ? "View receipt" : "Check out / Bill"} onMarkCheckedOut={checkedOut ? undefined : onMarkCheckedOut} markCheckedOutLabel="Mark checked out" /></div>
+      <div className="admin-drawer-bill"><BackupBill language="en" date={billDate} time={billTime} selections={serviceIds} serviceAddOns={addOns} technicians={mode === "appointment" ? technicians.slice(0, serviceIds.length) : Array.from({ length: serviceIds.length }, (_, index) => initialTechnicians[index] || (index === 0 ? technician : "Unassigned"))} customerName={walkIn ? name : customerName} customerPhone={walkIn ? phone : customerPhone} triggerLabel={checkedOut ? "View receipt" : "Check out / Bill"} onMarkCheckedOut={checkedOut ? undefined : onMarkCheckedOut} markCheckedOutLabel="Mark checked out" /></div>
       <div className="admin-drawer-footer"><button className="admin-secondary-button" type="button" onClick={onCancel} disabled={submitting}>Cancel</button><button className="admin-primary-button" type="button" onClick={save} disabled={submitting}>{submitting ? "Syncing to Square…" : walkIn && mode === "appointment" ? "Book appointment" : walkIn ? "Create ticket" : "Save services"}</button></div>
     </div>
   </AppointmentDrawer>;
