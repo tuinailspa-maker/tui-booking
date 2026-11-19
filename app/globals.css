@@ -267,6 +267,15 @@ button { color: inherit; }
 .booking-page .subtotal-row span,
 .booking-page .section-label-row h2,
 .booking-page .summary-section-title { font-size: 15px; font-weight: 600; }
+.booking-page .summary-meta span,
+.booking-page .summary-meta strong,
+.booking-page .summary-guest-label,
+.booking-page .summary-guest li,
+.booking-page .summary-empty,
+.booking-page .summary-totals span,
+.booking-page .summary-totals strong,
+.booking-page .tax-note { font-size: 14px; line-height: 1.5; }
+.booking-page .backup-bill-trigger { font-size: 11px; }
 .booking-page .field-hint,
 .booking-page .client-form input,
 .booking-page .client-form textarea { font-size: 12px; }
