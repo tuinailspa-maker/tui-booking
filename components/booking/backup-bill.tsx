@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { getComboDiscount } from "@/data/comboDiscount";
 import { serviceById } from "@/data/serviceTree";
 import type { Language } from "./copy";
 
@@ -27,6 +28,7 @@ const labels = {
     guest: "Guest",
     minutes: "min",
     subtotal: "Subtotal",
+    comboDiscount: "Combo Discount",
     tps: "TPS (5%)",
     tvq: "TVQ (9.975%)",
     beforeTip: "Total before tip",
@@ -52,6 +54,7 @@ const labels = {
     guest: "Client",
     minutes: "min",
     subtotal: "Sous-total",
+    comboDiscount: "Rabais combo",
     tps: "TPS (5 %)",
     tvq: "TVQ (9,975 %)",
     beforeTip: "Total avant pourboire",
@@ -89,7 +92,9 @@ export function BackupBill({ language, selections }: BackupBillProps) {
     new Intl.NumberFormat(text.currencyLocale, { style: "currency", currency: "CAD" }).format(amount);
 
   const guests = selections.map((ids) => ids.map((id) => serviceById.get(id)).filter((item) => item !== undefined));
-  const subtotal = toCents(guests.flat().reduce((sum, item) => sum + item.priceCad, 0));
+  const grossSubtotal = toCents(guests.flat().reduce((sum, item) => sum + item.priceCad, 0));
+  const comboDiscount = getComboDiscount(selections.flat(), grossSubtotal);
+  const subtotal = toCents(grossSubtotal - comboDiscount);
   const tps = toCents(subtotal * TPS_RATE);
   const tvq = toCents(subtotal * TVQ_RATE);
   const totalBeforeTip = toCents(subtotal + tps + tvq);
@@ -118,6 +123,7 @@ export function BackupBill({ language, selections }: BackupBillProps) {
         ...items.map((item) => `  ${language === "en" ? item.nameEn : item.nameFr} (${item.durationMinutes} ${text.minutes}) — ${money(item.priceCad)}`),
       ]).filter((line): line is string => line !== null),
       "",
+      ...(comboDiscount > 0 ? [`${text.comboDiscount}: -${money(comboDiscount)}`] : []),
       `${text.subtotal}: ${money(subtotal)}`,
       `${text.tps}: ${money(tps)}`,
       `${text.tvq}: ${money(tvq)}`,
@@ -173,7 +179,8 @@ export function BackupBill({ language, selections }: BackupBillProps) {
           </div>
 
           <dl className="bill-totals">
-            <div><dt>{text.subtotal}</dt><dd>{money(subtotal)}</dd></div>
+            {comboDiscount > 0 && <div><dt>{text.comboDiscount}</dt><dd>-{money(comboDiscount)}</dd></div>}
+        <div><dt>{text.subtotal}</dt><dd>{money(subtotal)}</dd></div>
             <div><dt>{text.tps}</dt><dd>{money(tps)}</dd></div>
             <div><dt>{text.tvq}</dt><dd>{money(tvq)}</dd></div>
             <div><dt>{text.beforeTip}</dt><dd>{money(totalBeforeTip)}</dd></div>

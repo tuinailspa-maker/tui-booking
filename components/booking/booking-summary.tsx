@@ -1,4 +1,5 @@
 import { serviceById } from "@/data/serviceTree";
+import { getComboDiscount } from "@/data/comboDiscount";
 import { formatSlotTime } from "@/data/staffSchedule";
 import type { BookingCopy, Language } from "./copy";
 import { BackupBill } from "./backup-bill";
@@ -15,9 +16,11 @@ type BookingSummaryProps = {
 export function getBookingTotals(selections: string[][]) {
   const guestDurations = selections.map((ids) => ids.reduce((sum, id) => sum + (serviceById.get(id)?.durationMinutes ?? 0), 0));
   const guestPrices = selections.map((ids) => ids.reduce((sum, id) => sum + (serviceById.get(id)?.priceCad ?? 0), 0));
+  const subtotal = guestPrices.reduce((sum, value) => sum + value, 0);
   return {
     serviceCount: selections.reduce((sum, ids) => sum + ids.length, 0),
-    subtotal: guestPrices.reduce((sum, value) => sum + value, 0),
+    subtotal,
+    comboDiscount: getComboDiscount(selections.flat(), subtotal),
     guestDurations,
     duration: guestDurations.length ? Math.max(...guestDurations) : 0,
   };
@@ -76,7 +79,10 @@ export function BookingSummary({ language, copy, partySize, date, time, selectio
       </div>
       <div className="summary-totals">
         <div><span>{copy.totalDuration}</span><strong>{totals.duration} min</strong></div>
-        <div className="subtotal-row"><span>{copy.subtotal}</span><strong>{formatCad(totals.subtotal, language)}</strong></div>
+        {totals.comboDiscount > 0 && (
+          <div><span>{language === "en" ? "Combo Discount" : "Rabais combo"}</span><strong>-{formatCad(totals.comboDiscount, language)}</strong></div>
+        )}
+        <div className="subtotal-row"><span>{copy.subtotal}</span><strong>{formatCad(totals.subtotal - totals.comboDiscount, language)}</strong></div>
         <p className="tax-note">{copy.taxNote}</p>
       </div>
       <BackupBill language={language} selections={selections} />
