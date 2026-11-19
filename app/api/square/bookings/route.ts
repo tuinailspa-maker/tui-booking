@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 import { serviceById, serviceDisplayName } from "@/data/serviceTree";
-import {
-  SQUARE_API_VERSION,
-  SQUARE_FALLBACK_VARIATION,
-  SQUARE_TEAM_MEMBER_IDS,
-} from "@/data/squareConfig";
+import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
 import type { Technician } from "@/data/staffSchedule";
 
 const SQUARE_PRODUCTION_URL = "https://connect.squareup.com/v2";
@@ -123,6 +119,79 @@ function guestDurationMinutes(guest: BookingGuest) {
   return guest.serviceIds.reduce((sum, id) => sum + (serviceById.get(id)?.durationMinutes ?? 0), 0);
 }
 
+type CatalogLocationScope = {
+  present_at_all_locations?: boolean;
+  present_at_location_ids?: string[];
+  absent_at_location_ids?: string[];
+};
+type CatalogVariation = CatalogLocationScope & {
+  id: string;
+  version: number;
+  item_variation_data?: { name?: string; available_for_booking?: boolean; team_member_ids?: string[] };
+};
+type CatalogItem = CatalogLocationScope & {
+  id: string;
+  item_data?: { name?: string; variations?: CatalogVariation[] };
+};
+
+function isAvailableAtLocation(scope: CatalogLocationScope, locationId: string) {
+  const present = scope.present_at_all_locations === true || (scope.present_at_location_ids ?? []).includes(locationId);
+  return present && !(scope.absent_at_location_ids ?? []).includes(locationId);
+}
+
+function normalizeName(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+async function fetchCatalogItems(): Promise<CatalogItem[]> {
+  const items: CatalogItem[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await squareRequest<{ objects?: CatalogItem[]; cursor?: string }>("catalog_search", "/catalog/search", {
+      object_types: ["ITEM"],
+      include_deleted_objects: false,
+      limit: 100,
+      cursor,
+    });
+    items.push(...(page.objects ?? []));
+    cursor = page.cursor;
+  } while (cursor);
+  return items;
+}
+
+function resolveServiceVariation(items: CatalogItem[], locationId: string, guest: BookingGuest): CatalogVariation {
+  const memberId = SQUARE_TEAM_MEMBER_IDS[guest.technician];
+  const candidates = items
+    .filter((item) => isAvailableAtLocation(item, locationId))
+    .flatMap((item) =>
+      (item.item_data?.variations ?? [])
+        .filter((variation) => {
+          const data = variation.item_variation_data;
+          const teamIds = data?.team_member_ids ?? [];
+          return (
+            isAvailableAtLocation(variation, locationId) &&
+            data?.available_for_booking === true &&
+            (teamIds.length === 0 || teamIds.includes(memberId))
+          );
+        })
+        .map((variation) => ({
+          variation,
+          name: normalizeName(`${item.item_data?.name ?? ""} ${variation.item_variation_data?.name ?? ""}`),
+        })),
+    );
+
+  if (candidates.length === 0) {
+    throw new SquareStepError("find_service_variation", 422, [
+      { code: "NOT_FOUND", field: null, detail: `No bookable Square variation for ${guest.technician} at location ${locationId}.` },
+    ]);
+  }
+
+  const service = serviceById.get(guest.serviceIds[0]);
+  const target = service ? normalizeName(service.nameEn) : "";
+  const match = candidates.find((candidate) => candidate.name === target) ?? candidates.find((candidate) => target && candidate.name.includes(target));
+  return (match ?? candidates[0]).variation;
+}
+
 export async function POST(request: Request) {
   const parsed = parseBookingRequest(await request.json().catch(() => null));
   if (!parsed) {
@@ -144,8 +213,11 @@ export async function POST(request: Request) {
       note: parsed.client.notes || undefined,
     });
 
+    const catalogItems = await fetchCatalogItems();
+
     const bookings = [];
     for (const [index, guest] of parsed.guests.entries()) {
+      const variation = resolveServiceVariation(catalogItems, locationId, guest);
       const { booking } = await squareRequest<{ booking: { id: string } }>("create_booking", "/bookings", {
         idempotency_key: `${parsed.reference}-${index + 1}`,
         booking: {
@@ -157,8 +229,8 @@ export async function POST(request: Request) {
           appointment_segments: [
             {
               duration_minutes: guestDurationMinutes(guest),
-              service_variation_id: SQUARE_FALLBACK_VARIATION.id,
-              service_variation_version: SQUARE_FALLBACK_VARIATION.version,
+              service_variation_id: variation.id,
+              service_variation_version: variation.version,
               team_member_id: SQUARE_TEAM_MEMBER_IDS[guest.technician],
             },
           ],
