@@ -1,4 +1,4 @@
-import { selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
+import { selectedServiceDuration, selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { formatSlotTime } from "@/data/staffSchedule";
 import type { BookingCopy, Language } from "./copy";
@@ -15,7 +15,10 @@ type BookingSummaryProps = {
 };
 
 export function getBookingTotals(selections: string[][], serviceAddOns: Record<string, ServiceAddOnKey>[] = []) {
-  const guestDurations = selections.map((ids) => ids.reduce((sum, id) => sum + (serviceById.get(id)?.durationMinutes ?? 0), 0));
+  const guestDurations = selections.map((ids, guestIndex) => ids.reduce((sum, id) => {
+    const service = serviceById.get(id);
+    return sum + (service ? selectedServiceDuration(service, serviceAddOns[guestIndex]?.[id]) : 0);
+  }, 0));
   const guestPrices = selections.map((ids, guestIndex) => ids.reduce((sum, id) => {
     const service = serviceById.get(id);
     return sum + (service ? selectedServicePrice(service, serviceAddOns[guestIndex]?.[id]) : 0);

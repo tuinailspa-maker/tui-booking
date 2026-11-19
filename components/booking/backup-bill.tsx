@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useRef, useState } from "react";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
-import { selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
+import { selectedServiceDuration, selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import { formatSlotTime } from "@/data/staffSchedule";
 import type { Language } from "./copy";
 
@@ -131,7 +131,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns }: 
       ...(receiptDateTime ? [`${text.date}: ${receiptDateTime}`] : []),
       ...guests.flatMap((items, index) => [
         `${text.guest} ${index + 1}`,
-        ...items.map((item) => `  ${serviceDisplayNameWithAddOn(item.service, receiptLanguage, item.addOnKey)} (${item.service.durationMinutes} ${text.minutes}) — ${money(selectedServicePrice(item.service, item.addOnKey))}`),
+        ...items.map((item) => `  ${serviceDisplayNameWithAddOn(item.service, receiptLanguage, item.addOnKey)} (${selectedServiceDuration(item.service, item.addOnKey)} ${text.minutes}) — ${money(selectedServicePrice(item.service, item.addOnKey))}`),
       ]),
       "",
       ...(comboDiscount > 0 ? [`${text.comboDiscount}${comboDiscount > 5 ? ` (${comboDiscount / 5}x)` : ""}: -${money(comboDiscount)}`] : []),

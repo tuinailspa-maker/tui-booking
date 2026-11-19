@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { selectedServicePrice, serviceTree, type ServiceAddOnKey, type ServiceBranch, type ServiceLeaf, type ServiceNode } from "@/data/serviceTree";
+import { selectedServiceDuration, selectedServicePrice, serviceTree, type ServiceAddOnKey, type ServiceBranch, type ServiceLeaf, type ServiceNode } from "@/data/serviceTree";
 import type { BookingCopy, Language } from "./copy";
 
 type ServiceTreeProps = {
@@ -83,7 +83,7 @@ export function ServiceTree({ language, copy, selectedIds, selectedAddOns, onTog
         <div className={`service-leaf${checked ? " is-added" : ""}`} key={node.id} style={{ "--depth": depth } as CSSProperties}>
           <input id={`service-${node.id}`} type="checkbox" checked={checked} onChange={() => onToggleService(node.id)} />
           <label className="leaf-name" htmlFor={`service-${node.id}`}>{name}</label>
-          <span className="leaf-duration">{node.durationMinutes} min</span>
+          <span className="leaf-duration">{selectedServiceDuration(node, selectedAddOn)} min</span>
           <span className="leaf-price">{node.priceLabel && !addOnSelected ? node.priceLabel : formatPrice(price, language)}</span>
           {node.addOn ? (
             <button

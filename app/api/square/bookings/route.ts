@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
+import { selectedServiceDuration, selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import type { Technician } from "@/data/staffSchedule";
@@ -176,7 +176,7 @@ function buildSellerNote(request: BookingRequest, guest: BookingGuest, guestInde
   const lines = guest.serviceIds.map((id) => {
     const service = serviceById.get(id);
     const addOnKey = guest.addOns[id];
-    return service ? `${serviceDisplayNameWithAddOn(service, "en", addOnKey)} — $${selectedServicePrice(service, addOnKey)} (${service.durationMinutes} min)` : id;
+    return service ? `${serviceDisplayNameWithAddOn(service, "en", addOnKey)} — $${selectedServicePrice(service, addOnKey)} (${selectedServiceDuration(service, addOnKey)} min)` : id;
   });
   const total = guest.serviceIds.reduce((sum, id) => {
     const service = serviceById.get(id);
@@ -194,7 +194,10 @@ function buildSellerNote(request: BookingRequest, guest: BookingGuest, guestInde
 }
 
 function guestDurationMinutes(guest: BookingGuest) {
-  return guest.serviceIds.reduce((sum, id) => sum + (serviceById.get(id)?.durationMinutes ?? 0), 0);
+  return guest.serviceIds.reduce((sum, id) => {
+    const service = serviceById.get(id);
+    return sum + (service ? selectedServiceDuration(service, guest.addOns[id]) : 0);
+  }, 0);
 }
 
 type CatalogLocationScope = {

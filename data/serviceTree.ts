@@ -1,4 +1,4 @@
-export type ServiceAddOnKey = "length-ml" | "over-3-weeks";
+export type ServiceAddOnKey = "length-ml" | "over-3-weeks" | "extra-calcium";
 
 export type ServiceAddOn = {
   key: ServiceAddOnKey;
@@ -39,6 +39,7 @@ const branch = (id: string, nameEn: string, nameFr: string, children: ServiceNod
 const service = (id: string, nameEn: string, nameFr: string, price: number, durationMinutes: number, priceLabel?: string, addOn?: ServiceAddOn): ServiceLeaf => ({ type: "service", id, name: nameEn, nameEn, nameFr, price, priceCad: price, durationMinutes, ...(priceLabel ? { priceLabel } : {}), ...(addOn ? { addOn } : {}) });
 const lengthMlAddOn: ServiceAddOn = { key: "length-ml", nameEn: "Length M/L", nameFr: "Longueur M/L", priceCad: 10 };
 const overThreeWeeksAddOn: ServiceAddOn = { key: "over-3-weeks", nameEn: "Nails over 3 weeks", nameFr: "Ongles de plus de 3 semaines", priceCad: 5 };
+const extraCalciumAddOn: ServiceAddOn = { key: "extra-calcium", nameEn: "Extra Calcium", nameFr: "Calcium supplémentaire", priceCad: 5 };
 
 export const serviceTree: ServiceBranch[] = [
   branch("hands", "Hands", "Mains", [
@@ -46,7 +47,7 @@ export const serviceTree: ServiceBranch[] = [
       branch("manicure", "Manicure", "Manucure", [
         service("hands-manicure-no-polish", "No polish", "Sans vernis", 20, 15),
         service("hands-manicure-regular-polish", "Regular polish", "Vernis classique", 25, 20),
-        service("hands-manicure-shellac", "Shellac", "Shellac", 35, 20),
+        service("hands-manicure-shellac", "Shellac", "Shellac", 35, 20, undefined, extraCalciumAddOn),
       ]),
       branch("natural-nails-touch-up", "Touch-up", "Retouche", [
         service("hands-touch-up-regular", "Regular", "Classique", 18, 15),
@@ -214,6 +215,10 @@ export function serviceDisplayName(service: ServiceLeaf, language: "en" | "fr") 
 
 export function selectedServicePrice(service: ServiceLeaf, addOnKey?: ServiceAddOnKey) {
   return service.priceCad + (service.addOn && service.addOn.key === addOnKey ? service.addOn.priceCad : 0);
+}
+
+export function selectedServiceDuration(service: ServiceLeaf, addOnKey?: ServiceAddOnKey) {
+  return service.durationMinutes + (service.addOn && service.addOn.key === addOnKey ? 5 : 0);
 }
 
 export function serviceDisplayNameWithAddOn(service: ServiceLeaf, language: "en" | "fr", addOnKey?: ServiceAddOnKey) {
