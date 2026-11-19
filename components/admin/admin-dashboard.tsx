@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useSyncExternalStore } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import useSWR from "swr";
 import { AppointmentCalendar } from "./appointment-calendar";
@@ -98,12 +99,18 @@ function formatAppointmentDate(iso: string) {
   return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${parts.hour}:${parts.minute}` };
 }
 
-function totalFor(booking: AdminBooking) {
+function subtotalFor(booking: AdminBooking) {
   const grossSubtotal = booking.serviceIds.reduce((sum, guestIds, guestIndex) => sum + guestIds.reduce((guestSum, id) => {
     const service = allServices.find((item) => item.id === id);
     return guestSum + (service ? selectedServicePrice(service, booking.addOns[guestIndex]?.[id]) : 0);
   }, 0), 0);
-  return grossSubtotal - getComboDiscountDetails(booking.serviceIds, booking.addOns).amount;
+  return Math.max(0, grossSubtotal - getComboDiscountDetails(booking.serviceIds, booking.addOns).amount);
+}
+
+function totalFor(booking: AdminBooking) {
+  const subtotal = subtotalFor(booking);
+  const taxes = Math.round(subtotal * 0.05 * 100) / 100 + Math.round(subtotal * 0.09975 * 100) / 100;
+  return subtotal + taxes;
 }
 
 export function AdminDashboard({ initialDate }: { initialDate: string }) {
@@ -127,6 +134,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
   const bookings = useSWR<BookingPayload, FetchError>(bookingKey, jsonFetcher, { revalidateOnFocus: true, refreshInterval: 60000 });
 
   const appointments = [...(bookings.data?.date === date ? bookings.data.bookings : []), ...walkIns.filter((item) => formatAppointmentDate(item.startAt).date === date)]
+    .map((booking) => ({ ...booking, estimatedSubtotal: subtotalFor(serviceOverrides[booking.id] ? { ...booking, ...serviceOverrides[booking.id] } : booking) }))
     .sort((left, right) => left.startAt.localeCompare(right.startAt));
   const queueBookings = appointments.filter((booking) => !checkedOut[booking.id] && booking.status !== "CHECKED_OUT" && (booking.status === "CHECKED_IN" || booking.status === "IN_SERVICE" || booking.status.startsWith("WALK_IN")));
   const displayBookings = activeTab === "queue" ? queueBookings : appointments;
@@ -288,13 +296,13 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
 
     <div className="admin-workspace">
       <header className="admin-app-header">
-        <div className="admin-app-heading"><p className="admin-eyebrow">TUI NAIL SPA</p><h1>{activeTab === "queue" ? "Check-in & walk-ins" : activeTab === "summary" ? "Daily summary" : "Appointments"}</h1></div>
+        <div className="admin-app-heading"><Image className="admin-header-logo" src="/tui-logo.png" alt="" width={44} height={44} priority /><div><p className="admin-eyebrow">TUI NAIL SPA</p><h1>Tui Dashboard</h1></div></div>
         <div className="admin-topbar-actions"><span className={`admin-live-indicator${bookings.error ? " is-error" : bookings.isLoading ? " is-syncing" : ""}`}><i /> {bookings.error ? "Square unavailable" : bookings.isLoading ? "Syncing Square" : "Square connected"}</span><button type="button" className="admin-lock-text" onClick={logOut}>Lock screen</button></div>
       </header>
 
       <section className="admin-calendar-toolbar" aria-label="Calendar controls">
         <div className="admin-date-controls"><div className="admin-date-nav"><button type="button" aria-label="Previous day" onClick={() => moveDate(-1)}>‹</button><button type="button" onClick={() => setDate(initialDate)}>Today</button><button type="button" aria-label="Next day" onClick={() => moveDate(1)}>›</button></div><label className="admin-date-picker"><span>{dateLabel}</span><input aria-label="Choose calendar date" type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label></div>
-        <div className="admin-calendar-actions">{activeTab === "schedule" && <div className="admin-view-toggle" role="group" aria-label="Calendar view"><button type="button" aria-pressed={scheduleView === "day"} onClick={() => setScheduleView("day")}>Day</button><button type="button" aria-pressed={scheduleView === "list"} onClick={() => setScheduleView("list")}>List</button></div>}<button className="admin-secondary-button admin-refresh-button" type="button" onClick={() => bookings.mutate()} disabled={bookings.isValidating} aria-label="Refresh appointments">{bookings.isValidating ? "Refreshing…" : "Refresh"}<span aria-hidden="true">↻</span></button><button className="admin-primary-button admin-new-button" type="button" onClick={() => openWalkInEditor()}>+ New / Walk-in</button></div>
+        <div className="admin-calendar-actions">{activeTab === "schedule" && <div className="admin-view-toggle" role="group" aria-label="Calendar view"><button type="button" aria-pressed={scheduleView === "day"} onClick={() => setScheduleView("day")}>By Technician</button><button type="button" aria-pressed={scheduleView === "list"} onClick={() => setScheduleView("list")}>Timeline List</button></div>}<button className="admin-secondary-button admin-refresh-button" type="button" onClick={() => bookings.mutate()} disabled={bookings.isValidating} aria-label="Refresh appointments">{bookings.isValidating ? "Refreshing…" : "Refresh"}<span aria-hidden="true">↻</span></button><button className="admin-primary-button admin-new-button" type="button" onClick={() => openWalkInEditor()}>+ New / Walk-in</button></div>
       </section>
 
       <div className="admin-page-content">

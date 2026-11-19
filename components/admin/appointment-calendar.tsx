@@ -8,6 +8,8 @@ export type CalendarBooking = {
   status: string;
   startAt: string;
   customerName: string;
+  phone?: string;
+  estimatedSubtotal?: number;
   technicians: string[];
   durationMinutes: number;
   serviceIds: string[][];
@@ -74,8 +76,8 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
         const status = statusInfo(booking, checkedOut[booking.id] === true);
         return <button type="button" className={`admin-list-booking ${status.className}`} key={booking.id} onClick={() => onSelectBooking(booking)}>
           <strong>{timeLabel(localMinutes(booking.startAt))}</strong>
-          <span><b>{booking.customerName || "Walk-in guest"}</b><small>{booking.technicians.filter((name) => name !== "Unassigned").join(", ") || "Unassigned"} · {serviceSummary(booking)}</small></span>
-          <em>{status.label}</em>
+          <span><b>{booking.customerName || "Walk-in guest"}</b><small>{booking.phone ? `${booking.phone} · ` : ""}{booking.technicians.filter((name) => name !== "Unassigned").join(", ") || "Unassigned"} · {serviceSummary(booking)}</small></span>
+          <em>{status.label}{booking.estimatedSubtotal !== undefined ? ` · $${booking.estimatedSubtotal.toFixed(2)}` : ""}</em>
         </button>;
       })}
     </div>;
@@ -113,6 +115,7 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
               <strong>{timeLabel(start)} – {timeLabel(start + duration)}</strong>
               <b>{booking.customerName || "Walk-in guest"}</b>
               <small>{serviceSummary(booking)}</small>
+              <small>{[booking.phone, booking.technicians.filter((name) => name !== "Unassigned").join(", ") || "Unassigned", booking.estimatedSubtotal !== undefined ? `$${booking.estimatedSubtotal.toFixed(2)}` : ""].filter(Boolean).join(" · ")}</small>
               <span>{status.label}</span>
             </button>;
           })}
