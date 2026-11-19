@@ -11,7 +11,7 @@ const MAX_SQUARE_NOTE_LENGTH = 500;
 const REQUEST_ID_PATTERN = /^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$/;
 
 type BookingGuest = { serviceIds: string[]; addOns: Record<string, ServiceAddOnKey>; technician: Technician };
-type BookingClient = { firstName: string; lastName: string; countryCode: string; phone: string; email: string; notes: string };
+type BookingClient = { firstName: string; lastName: string; countryCode: string; phone: string; email?: string; notes: string };
 type BookingRequest = { requestId: string; startAt: string; client: BookingClient; guests: BookingGuest[] };
 
 type SquareApiError = { code: string | null; field: string | null; detail: string };
@@ -65,7 +65,7 @@ function parseBookingRequest(body: unknown): BookingRequest | null {
   const phone = readText(client.phone, 30);
   const email = readText(client.email, 254);
   const notes = typeof client.notes === "string" ? client.notes.trim().slice(0, 500) : "";
-  if (!firstName || !lastName || !phone || !email || !COUNTRY_CODE_PATTERN.test(countryCode)) return null;
+  if (!firstName || !lastName || !phone || (client.email !== undefined && !email) || !COUNTRY_CODE_PATTERN.test(countryCode)) return null;
 
   const parsedGuests: BookingGuest[] = [];
   for (const guest of guests as Record<string, unknown>[]) {
@@ -84,7 +84,7 @@ function parseBookingRequest(body: unknown): BookingRequest | null {
     parsedGuests.push({ serviceIds, addOns, technician: guest.technician });
   }
 
-  return { requestId, startAt, client: { firstName, lastName, countryCode, phone, email, notes }, guests: parsedGuests };
+  return { requestId, startAt, client: { firstName, lastName, countryCode, phone, email: email ?? undefined, notes }, guests: parsedGuests };
 }
 
 async function squareRequest<T>(step: string, path: string, body: unknown): Promise<T> {
@@ -293,7 +293,7 @@ export async function POST(request: Request) {
       idempotency_key: `${parsed.requestId}-customer`,
       given_name: parsed.client.firstName,
       family_name: parsed.client.lastName,
-      email_address: parsed.client.email,
+      ...(parsed.client.email ? { email_address: parsed.client.email } : {}),
       phone_number: toE164(parsed.client.countryCode, parsed.client.phone),
       note: parsed.client.notes || undefined,
     });
