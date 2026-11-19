@@ -190,36 +190,36 @@ button { color: inherit; }
 .backup-bill-dialog::backdrop { background: rgb(28 25 23 / .45); }
 .bill-sheet { display: grid; gap: 16px; padding: 24px; }
 .bill-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.bill-header-brand { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 9px; }
+.bill-header-brand { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 10px; }
 .bill-header-brand img { display: block; width: 52px; height: 52px; object-fit: contain; }
 .bill-header-controls { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
-.bill-header-controls > .button { min-height: 30px; padding: 0 9px; white-space: nowrap; font-size: 10px; }
+.bill-header-controls > .button { min-height: 30px; padding: 0 9px; white-space: nowrap; font-size: 8px; }
 .bill-close { flex: 0 0 28px; width: 28px; height: 30px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 22px; cursor: pointer; }
-.receipt-language { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 10px; }
+.receipt-language { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 8px; }
 .receipt-language button { padding: 5px 2px; border: 0; background: none; color: var(--muted); cursor: pointer; }
 .receipt-language button[aria-pressed="true"] { color: var(--ink); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .receipt-heading { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 8px 0; border-top: 1px solid var(--soft-line); border-bottom: 1px solid var(--soft-line); }
-.receipt-contact { display: grid; gap: 4px; font-size: 9px; font-style: normal; line-height: 1.35; }
-.receipt-date { margin: 0; font-size: 10px; }
+.receipt-contact { display: grid; gap: 3px; font-size: 10px; font-style: normal; line-height: 1.35; text-align: center; }
+.receipt-date { margin: 0; font-size: 11px; }
 .bill-items { display: grid; gap: 16px; }
-.bill-guest h3 { margin: 0 0 8px; color: var(--muted); font-size: 9px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600; }
+.bill-guest h3 { margin: 0 0 8px; color: var(--muted); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600; }
 .bill-guest ul { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
-.bill-guest li { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; }
-.bill-guest li small { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; }
-.bill-empty { margin: 0; color: var(--muted); font-size: 11px; }
+.bill-guest li { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
+.bill-guest li small { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+.bill-empty { margin: 0; color: var(--muted); font-size: 12px; }
 .bill-totals { display: grid; gap: 10px; margin: 0; padding-top: 16px; border-top: 1px solid var(--soft-line); }
-.bill-totals > div { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; }
+.bill-totals > div { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
 .bill-totals dt, .bill-totals dd { margin: 0; }
 .bill-totals dd { font-weight: 600; }
-.bill-grand-total { padding-top: 10px; border-top: 1px solid var(--ink); font-size: 13px !important; }
+.bill-grand-total { padding-top: 10px; border-top: 1px solid var(--ink); font-size: 14px !important; }
 .bill-tips { display: grid; gap: 7px; }
-.bill-tip-select-label { font-size: 10px; font-weight: 600; }
-.bill-tip-select { min-height: 34px; padding: 0 9px; border: 1px solid var(--line); background: white; font-size: 11px; }
+.bill-tip-select-label { font-size: 11px; font-weight: 600; }
+.bill-tip-select { min-height: 34px; padding: 0 9px; border: 1px solid var(--line); background: white; font-size: 12px; }
 .receipt-footer { display: grid; gap: 12px; padding-top: 12px; border-top: 1px solid var(--soft-line); }
-.receipt-social { display: grid; gap: 3px; justify-items: center; font-size: 9px; filter: grayscale(1); }
-.receipt-policy { display: grid; gap: 4px; font-size: 9px; line-height: 1.35; }
+.receipt-social { display: grid; gap: 3px; justify-items: center; font-size: 10px; filter: grayscale(1); }
+.receipt-policy { display: grid; gap: 4px; font-size: 10px; line-height: 1.35; }
 .receipt-policy p { margin: 0; }
-.receipt-closing { display: grid; gap: 3px; justify-items: center; font-size: 10px; font-weight: 600; }
+.receipt-closing { display: grid; gap: 3px; justify-items: center; font-size: 11px; font-weight: 600; }
 
 .booking-page { font-size: 16px; font-weight: 500; }
 .booking-page .salon-link { font-size: 15px; font-weight: 600; }
@@ -274,16 +274,18 @@ button { color: inherit; }
 .booking-page .client-form label { font-size: 11px; }
 .booking-page .booking-footer { font-size: 12px; font-weight: 500; }
 .booking-page .booking-footer > a:first-child { font-size: 16px; }
+.backup-bill-dialog .bill-header-controls .receipt-language,
+.backup-bill-dialog .bill-header-controls .receipt-language button,
+.backup-bill-dialog .bill-header-controls > .button { font-size: 8px; }
 .bill-tips legend span { color: var(--muted); font-weight: 400; }
 .bill-tip-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.bill-tip-option { min-height: 40px; padding: 0 8px; border: 1px solid var(--line); background: #fff; color: #615c54; font-size: 10px; cursor: pointer; }
+.bill-tip-option { min-height: 40px; padding: 0 8px; border: 1px solid var(--line); background: #fff; color: #615c54; font-size: 11px; cursor: pointer; }
 .bill-tip-option.is-selected, .bill-tip-option[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: #fff; }
-.bill-custom-tip { display: grid; gap: 6px; font-size: 10px; color: var(--muted); }
+.bill-custom-tip { display: grid; gap: 6px; font-size: 11px; color: var(--muted); }
 .bill-custom-input { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); padding: 0 10px; min-height: 40px; color: var(--ink); }
-.bill-custom-input input { width: 100%; border: 0; outline: none; background: transparent; font-size: 12px; color: var(--ink); }
-.bill-location { display: grid; gap: 4px; font-style: normal; font-size: 10px; color: var(--muted); padding-top: 16px; border-top: 1px solid var(--soft-line); }
+.bill-custom-input input { width: 100%; border: 0; outline: none; background: transparent; font-size: 13px; color: var(--ink); }
+.bill-location { display: grid; gap: 4px; font-style: normal; font-size: 11px; color: var(--muted); padding-top: 16px; border-top: 1px solid var(--soft-line); }
 .bill-location strong { color: var(--ink); font-weight: 600; }
-
 @media print {
   @page { size: 58mm auto; margin: 2mm; }
   html, body { width: 58mm; margin: 0; background: #fff; }
@@ -292,21 +294,21 @@ button { color: inherit; }
   .backup-bill-dialog { position: absolute; inset: 0; width: 54mm; max-width: 54mm; max-height: none; margin: 0; border: 0; overflow: visible; }
   .bill-sheet { display: grid; gap: 3mm; padding: 0; color: #000; font-family: Arial, Helvetica, sans-serif; }
   .bill-header { justify-content: flex-start; gap: 2mm; }
-  .bill-header-brand { gap: 1mm; font-size: 7px; }
+  .bill-header-brand { gap: 1mm; font-size: 8px; }
   .bill-header-brand img { width: 14mm; height: 14mm; filter: grayscale(1) contrast(2); }
   .bill-header-controls { display: none !important; }
   .bill-tips { display: none !important; }
   .receipt-heading { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 1mm 0; border-color: #000; }
-  .receipt-contact { gap: 1mm; font-size: 7px; overflow-wrap: anywhere; }
-  .receipt-date, .bill-guest li, .bill-totals > div { font-size: 8px; }
-  .bill-guest h3 { font-size: 8px; }
+  .receipt-contact { gap: 1mm; font-size: 8px; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
+  .receipt-date, .bill-guest li, .bill-totals > div { font-size: 9px; }
+  .bill-guest h3 { font-size: 9px; }
   .bill-guest ul { gap: 2mm; }
-  .bill-guest li small { font-size: 7px; }
+  .bill-guest li small { font-size: 8px; }
   .bill-totals { gap: 2mm; padding-top: 2mm; border-color: #000; }
   .bill-grand-total { border-color: #000; }
   .receipt-footer { gap: 2mm; padding-top: 2mm; border-color: #000; }
-  .receipt-social, .receipt-closing { font-size: 7px; }
-  .receipt-policy { gap: 1mm; font-size: 9px; line-height: 1.2; }
+  .receipt-social, .receipt-closing { font-size: 8px; }
+  .receipt-policy { gap: 1mm; font-size: 10px; line-height: 1.2; }
   .receipt-policy p { overflow-wrap: anywhere; }
   .receipt-heading, .bill-guest, .bill-totals, .receipt-footer { break-inside: avoid; }
 }

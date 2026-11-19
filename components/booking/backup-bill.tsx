@@ -166,7 +166,7 @@ export function BackupBill({ language, date, time, selections }: BackupBillProps
           <header className="bill-header">
             <div className="bill-header-brand">
               <Image src="/tui-logo.png" alt="Tui Nail Spa logo" width={809} height={811} />
-              <strong>Tui Nail Spa Montreal</strong>
+              <strong style={{ fontSize: "12px" }}>Tui Nail Spa Montreal</strong>
             </div>
             <div className="bill-header-controls">
               <div className="receipt-language" role="group" aria-label={receiptLanguage === "en" ? "Receipt language" : "Langue du reçu"}>
@@ -183,10 +183,8 @@ export function BackupBill({ language, date, time, selections }: BackupBillProps
           <h2 id="backup-bill-title" className="sr-only">{text.title}</h2>
           <div className="receipt-heading">
             <address className="receipt-contact">
-              <span>{RECEIPT_ADDRESS}</span>
-              <span>{RECEIPT_PHONE}</span>
-              <span>{RECEIPT_GST}</span>
-              <span>{RECEIPT_QST}</span>
+              <span>{RECEIPT_ADDRESS} · {RECEIPT_PHONE}</span>
+              <span>{RECEIPT_GST} · {RECEIPT_QST}</span>
             </address>
           </div>
 
