@@ -10,6 +10,7 @@ const ADMIN_LOCATION_ID = "R73A64VPAR34X";
 const INACTIVE_STATUSES = new Set(["CANCELLED_BY_CUSTOMER", "CANCELLED_BY_SELLER", "DECLINED", "COMPLETED", "NO_SHOW"]);
 const NO_SERVICE_MARKER = "[TUI_NO_SERVICE]";
 
+
 type SquareBooking = {
   id: string;
   version?: number;

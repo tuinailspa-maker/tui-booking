@@ -92,6 +92,10 @@ function sanitizeCustomTip(raw: string) {
   return Number.isFinite(parsed) && parsed > 0 ? toCents(parsed) : 0;
 }
 
+function escapeHtml(value: string) {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
 export function BackupBill({ language, date, time, selections, serviceAddOns, customerName, customerPhone, triggerLabel, markCheckedOutLabel, onMarkCheckedOut }: BackupBillProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -133,6 +137,15 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, cu
   function markCheckedOut() {
     onMarkCheckedOut?.();
     closeBill();
+  }
+
+  function print58mm() {
+    const receiptHtml = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{width:58mm;margin:0 auto;padding:3mm;font:12px Arial,sans-serif;color:#111}h1{text-align:center;font-size:16px}p{margin:5px 0}hr{border:0;border-top:1px dashed #555}ul{list-style:none;padding:0}li{display:flex;justify-content:space-between;gap:8px;margin:7px 0}.total{font-weight:bold}</style></head><body><h1>Tui Nail Spa</h1><p>${escapeHtml(receiptDateTime)}</p><p>${escapeHtml(customerName ?? "")} ${escapeHtml(customerPhone ?? "")}</p><hr>${guests.map((items, index) => `<p><strong>${text.guest} ${index + 1}</strong></p><ul>${items.map((item) => `<li><span>${escapeHtml(serviceDisplayNameWithAddOn(item.service, receiptLanguage, item.addOnKey))}<br>${selectedServiceDuration(item.service, item.addOnKey)} ${text.minutes}</span><span>${money(selectedServicePrice(item.service, item.addOnKey))}</span></li>`).join("")}</ul>`).join("")}<hr><p>${text.subtotal}: ${money(subtotal)}</p>${comboDiscount > 0 ? `<p>${text.comboDiscount}: -${money(comboDiscount)}</p>` : ""}<p>${text.tps}: ${money(tps)}</p><p>${text.tvq}: ${money(tvq)}</p><p>${text.tip}: ${money(tipAmount)}</p><p class="total">${text.grandTotal}: ${money(grandTotal)}</p><hr><p>${RECEIPT_ADDRESS}</p><p>${RECEIPT_PHONE}</p><p>We appreciate your business!</p></body></html>`;
+    if (/iPad|iPhone|iPod/i.test(navigator.userAgent)) {
+      window.location.href = `starpassprnt://v1/print/nopreview?data=${encodeURIComponent(receiptHtml)}`;
+    } else {
+      window.print();
+    }
   }
 
   function closeOnBackdropClick(event: React.MouseEvent<HTMLDialogElement>) {
@@ -196,7 +209,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, cu
                 <button type="button" aria-pressed={receiptLanguage === "fr"} onClick={() => setReceiptLanguage("fr")}>FR</button>
               </div>
               <button className="button button-back" type="button" onClick={copyBill}>{copied ? text.copied : text.copy}</button>
-              <button className="button button-primary" type="button" onClick={() => window.print()}>{text.print}</button>
+              <button className="button button-primary" type="button" onClick={print58mm}>Print 58mm (Star PassPRNT)</button>
               <button className="bill-close" type="button" onClick={closeBill} aria-label={text.close}>×</button>
             </div>
           </header>
