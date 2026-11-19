@@ -500,11 +500,29 @@ button { color: inherit; }
 .admin-metrics article > span { color: var(--muted); font-size: 9px; }
 .admin-metrics article > strong { font: 25px/1 Georgia, serif; }
 .admin-metrics article > small { color: #989184; font-size: 8px; }
+.admin-tabs { display: flex; gap: 8px; margin-top: 28px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.admin-tabs button { flex: 0 0 auto; min-height: 42px; padding: 0 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); cursor: pointer; font-size: 10px; }
+.admin-tabs button.is-active { border-bottom-color: var(--sage); color: var(--ink); }
+.admin-tabs button span { margin-left: 5px; padding: 2px 6px; border-radius: 12px; background: #edf1e8; color: #53634e; }
+.admin-schedule-tools, .admin-view-toggle { display: flex; align-items: center; gap: 8px; }
+.admin-view-toggle { padding: 3px; border: 1px solid var(--line); background: var(--paper); }
+.admin-view-toggle button { min-height: 29px; padding: 0 9px; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 8px; }
+.admin-view-toggle button[aria-pressed="true"] { background: #e9eee5; color: #4e604b; }
+.admin-summary-panel { margin-top: 28px; padding: 25px; border: 1px solid var(--line); background: var(--paper); }
+.admin-summary-panel h2 { margin: 0; font: 22px Georgia, serif; }
+.admin-summary-panel > p { color: var(--muted); font-size: 11px; }
+.admin-summary-panel > div { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.admin-summary-panel > div span { padding: 12px 14px; border: 1px solid var(--soft-line); background: #fcfaf6; color: #625d54; font-size: 10px; }
 .admin-schedule-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin: 35px 0 13px; }
 .admin-schedule-heading h2 { margin: 0; font: 21px/1.2 Georgia, serif; }
 .admin-schedule-heading p { margin: 6px 0 0; color: var(--muted); font-size: 10px; }
 .admin-count-pill { padding: 7px 10px; border: 1px solid var(--line); border-radius: 20px; background: var(--paper); color: #70695e; font-size: 9px; }
 .admin-appointment-list { display: grid; gap: 10px; }
+.admin-appointment-list.is-technician-view { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+.admin-appointment-list.is-technician-view .admin-appointment-card { grid-template-columns: 1fr; }
+.admin-appointment-list.is-technician-view .admin-time-column { align-items: flex-start; flex-direction: row; padding: 11px 14px; border-right: 0; border-bottom: 1px solid var(--soft-line); text-align: left; }
+.admin-appointment-list.is-technician-view .admin-time-column i { display: none; }
+.admin-appointment-list.is-technician-view .admin-appointment-main { padding: 14px; }
 .admin-appointment-card { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 0; border: 1px solid var(--line); background: var(--paper); box-shadow: 0 3px 10px rgba(46, 39, 31, .025); }
 .admin-appointment-card.is-checked-out { border-color: #cbd4c6; }
 .admin-time-column { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 23px 12px; border-right: 1px solid var(--soft-line); color: var(--gold); text-align: center; }
@@ -519,6 +537,7 @@ button { color: inherit; }
 .admin-status.is-paid { border-color: #d3ddce; background: #eef2eb; color: #5e735a; }
 .admin-appointment-meta { display: flex; flex-wrap: wrap; gap: 24px; margin: 14px 0 12px; }
 .admin-appointment-meta > span { display: grid; gap: 4px; color: #625d54; font-size: 10px; }
+.admin-appointment-meta select { width: fit-content; min-height: 30px; padding: 3px 8px; border: 1px solid #ddd4c7; background: #fffdf9; color: #484238; font: inherit; }
 .admin-appointment-meta small, .admin-card-total small { color: #948d81; font-size: 7px; letter-spacing: .13em; }
 .admin-appointment-services { display: flex; align-items: end; justify-content: space-between; gap: 15px; padding: 11px 0; border-top: 1px solid var(--soft-line); border-bottom: 1px solid var(--soft-line); }
 .admin-service-lines { min-width: 0; display: grid; gap: 6px; }
@@ -592,6 +611,10 @@ button { color: inherit; }
 @media (max-width: 760px) {
   .admin-content { width: min(100% - 32px, 640px); padding-top: 28px; }
   .admin-page-heading { align-items: flex-start; flex-direction: column; }
+  .admin-appointment-list.is-technician-view { grid-template-columns: 1fr; }
+  .admin-schedule-heading { align-items: flex-start; flex-direction: column; }
+  .admin-schedule-tools { width: 100%; justify-content: space-between; flex-wrap: wrap; }
+  .admin-summary-panel { padding: 18px; }
   .admin-toolbar { width: 100%; flex-wrap: wrap; }
   .admin-toolbar label { flex: 1 1 140px; }
   .admin-toolbar input { width: 100%; }
