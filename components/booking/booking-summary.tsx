@@ -85,7 +85,7 @@ export function BookingSummary({ language, copy, partySize, date, time, selectio
         <div className="subtotal-row"><span>{copy.subtotal}</span><strong>{formatCad(totals.subtotal - totals.comboDiscount, language)}</strong></div>
         <p className="tax-note">{copy.taxNote}</p>
       </div>
-      <BackupBill language={language} selections={selections} />
+      <BackupBill language={language} date={date} time={time} selections={selections} />
     </div>
   );
 }

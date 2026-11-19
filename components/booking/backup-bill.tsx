@@ -1,12 +1,16 @@
 "use client";
 
+import Image from "next/image";
 import { useRef, useState } from "react";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { serviceById, serviceDisplayName } from "@/data/serviceTree";
+import { formatSlotTime } from "@/data/staffSchedule";
 import type { Language } from "./copy";
 
 type BackupBillProps = {
   language: Language;
+  date: string;
+  time: string;
   selections: string[][];
 };
 
@@ -19,58 +23,55 @@ const TIP_CHOICES: TipChoice[] = ["none", "15", "20", "25", "custom"];
 
 const labels = {
   en: {
-    open: "Backup Bill",
-    title: "TUI Backup Bill",
+    title: "Tui Nail Spa",
     close: "Close",
     copy: "Copy Bill",
     copied: "Copied",
     print: "Print / PDF",
-    guest: "Guest",
+    guest: "GUEST",
     minutes: "min",
     subtotal: "Subtotal",
     comboDiscount: "Combo Discount",
-    tps: "TPS (5%)",
-    tvq: "TVQ (9.975%)",
+    tps: "GST / TPS (5%)",
+    tvq: "QST / TVQ (9.975%)",
     beforeTip: "Total before tip",
     tip: "Tip",
     grandTotal: "Grand Total",
-    location: "Location",
-    tipTitle: "Tip selection",
-    basedOn: "Based on",
-    tipChoices: { none: "No Tip", "15": "15%", "20": "20%", "25": "25%", custom: "Custom Tip" } as Record<TipChoice, string>,
+    tipChoices: { none: "No Tip (0%)", "15": "15%", "20": "20%", "25": "25%", custom: "Custom" } as Record<TipChoice, string>,
     customLabel: "Custom tip amount",
     empty: "No services selected.",
-    address: "1570 Saint Timothee, H2L3N9",
-    phone: "Tel: 438-777-7043",
+    date: "Date",
     currencyLocale: "en-CA",
   },
   fr: {
-    open: "Facture de secours",
-    title: "Facture de secours TUI",
+    title: "Tui Nail Spa",
     close: "Fermer",
-    copy: "Copier la facture",
+    copy: "Copier le reçu",
     copied: "Copié",
     print: "Imprimer / PDF",
-    guest: "Client",
+    guest: "CLIENT",
     minutes: "min",
     subtotal: "Sous-total",
     comboDiscount: "Rabais combo",
-    tps: "TPS (5 %)",
-    tvq: "TVQ (9,975 %)",
+    tps: "GST / TPS (5%)",
+    tvq: "QST / TVQ (9.975%)",
     beforeTip: "Total avant pourboire",
     tip: "Pourboire",
-    grandTotal: "Total général",
-    location: "Emplacement",
-    tipTitle: "Pourboire",
-    basedOn: "Basé sur",
-    tipChoices: { none: "Aucun pourboire", "15": "15 %", "20": "20 %", "25": "25 %", custom: "Pourboire personnalisé" } as Record<TipChoice, string>,
-    customLabel: "Montant du pourboire personnalisé",
+    grandTotal: "Total",
+    tipChoices: { none: "Sans pourboire (0%)", "15": "15%", "20": "20%", "25": "25%", custom: "Autre" } as Record<TipChoice, string>,
+    customLabel: "Montant du pourboire",
     empty: "Aucun service sélectionné.",
-    address: "1570 Saint Timothee, H2L3N9",
-    phone: "Tél. : 438-777-7043",
+    date: "Date",
     currencyLocale: "fr-CA",
   },
 };
+
+const RECEIPT_ADDRESS = "100-1570 Rue Saint-Timothée, Montréal, QC H2L 3N9";
+const RECEIPT_PHONE = "(438) 777-7043";
+const RECEIPT_GST = "GST/HST: 770848539RT0001";
+const RECEIPT_QST = "PST/RST/QST: 4019625996TQ0001";
+const RETURN_POLICY_FR = "Nous avons une politique de NON-REMBOURSEMENT pour tous les services du salon. Dans le cas où vous n'êtes pas entièrement satisfait, merci de nous le faire savoir au moment de votre prestation ou au plus tard 48h après.";
+const RETURN_POLICY_EN = "We have a NO REFUND policy for all salon services. In the event that you are not completely satisfied, please let us know at the time of your service or no later than 48 hours after.";
 
 function toCents(amount: number) {
   return Math.round(amount * 100) / 100;
@@ -81,12 +82,15 @@ function sanitizeCustomTip(raw: string) {
   return Number.isFinite(parsed) && parsed > 0 ? toCents(parsed) : 0;
 }
 
-export function BackupBill({ language, selections }: BackupBillProps) {
+export function BackupBill({ language, date, time, selections }: BackupBillProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const [receiptLanguage, setReceiptLanguage] = useState<Language>(language);
   const [tipChoice, setTipChoice] = useState<TipChoice>("none");
   const [customTip, setCustomTip] = useState("");
   const [copied, setCopied] = useState(false);
-  const text = labels[language];
+  const text = labels[receiptLanguage];
+  const receiptDate = date ? new Intl.DateTimeFormat(receiptLanguage === "en" ? "en-CA" : "fr-CA", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`)) : "";
+  const receiptDateTime = [receiptDate, time ? formatSlotTime(time, receiptLanguage) : ""].filter(Boolean).join(" · ");
 
   const money = (amount: number) =>
     new Intl.NumberFormat(text.currencyLocale, { style: "currency", currency: "CAD" }).format(amount);
@@ -117,11 +121,12 @@ export function BackupBill({ language, selections }: BackupBillProps) {
 
   async function copyBill() {
     const lines = [
-      `${text.title} — TUI Nail Spa Montreal`,
+      `${text.title} — Tui Nail Spa Montreal`,
+      ...(receiptDateTime ? [`${text.date}: ${receiptDateTime}`] : []),
       ...guests.flatMap((items, index) => [
-        guests.length > 1 ? `${text.guest} ${index + 1}` : null,
-        ...items.map((item) => `  ${serviceDisplayName(item, language)} (${item.durationMinutes} ${text.minutes}) — ${money(item.priceCad)}`),
-      ]).filter((line): line is string => line !== null),
+        `${text.guest} ${index + 1}`,
+        ...items.map((item) => `  ${serviceDisplayName(item, receiptLanguage)} (${item.durationMinutes} ${text.minutes}) — ${money(item.priceCad)}`),
+      ]),
       "",
       ...(comboDiscount > 0 ? [`${text.comboDiscount}${comboDiscount > 5 ? ` (${comboDiscount / 5}x)` : ""}: -${money(comboDiscount)}`] : []),
       `${text.subtotal}: ${money(subtotal)}`,
@@ -131,7 +136,16 @@ export function BackupBill({ language, selections }: BackupBillProps) {
       `${text.tip}: ${money(tipAmount)}`,
       `${text.grandTotal}: ${money(grandTotal)}`,
       "",
-      `${text.location}: ${text.address} · ${text.phone}`,
+      RECEIPT_ADDRESS,
+      RECEIPT_PHONE,
+      RECEIPT_GST,
+      RECEIPT_QST,
+      "www.tuinailspa.ca | Instagram @tuinailspa | Facebook Tui Nail Spa",
+      "Politique de retour / Return Policy:",
+      RETURN_POLICY_FR,
+      RETURN_POLICY_EN,
+      "Nous apprécions vos affaires!",
+      "We appreciate your business!",
     ];
     await navigator.clipboard.writeText(lines.join("\n"));
     setCopied(true);
@@ -140,7 +154,7 @@ export function BackupBill({ language, selections }: BackupBillProps) {
 
   return (
     <>
-      <button className="backup-bill-trigger" type="button" onClick={openBill}>{text.open}</button>
+      <button className="backup-bill-trigger" type="button" onClick={openBill}>{text.title}</button>
       <dialog
         ref={dialogRef}
         className="backup-bill-dialog"
@@ -155,19 +169,39 @@ export function BackupBill({ language, selections }: BackupBillProps) {
           </header>
 
           <div className="bill-actions">
+            <div className="receipt-language" role="group" aria-label={receiptLanguage === "en" ? "Receipt language" : "Langue du reçu"}>
+              <button type="button" aria-pressed={receiptLanguage === "en"} onClick={() => setReceiptLanguage("en")}>EN</button>
+              <span aria-hidden="true">|</span>
+              <button type="button" aria-pressed={receiptLanguage === "fr"} onClick={() => setReceiptLanguage("fr")}>FR</button>
+            </div>
             <button className="button button-back" type="button" onClick={copyBill}>{copied ? text.copied : text.copy}</button>
             <button className="button button-primary" type="button" onClick={() => window.print()}>{text.print}</button>
           </div>
 
+          <div className="receipt-heading">
+            <div className="receipt-brand">
+              <Image src="/tui-logo.png" alt="Tui Nail Spa logo" width={809} height={811} />
+              <strong>Tui Nail Spa Montreal</strong>
+            </div>
+            <address className="receipt-contact">
+              <span>{RECEIPT_ADDRESS}</span>
+              <span>{RECEIPT_PHONE}</span>
+              <span>{RECEIPT_GST}</span>
+              <span>{RECEIPT_QST}</span>
+            </address>
+          </div>
+
+          {receiptDateTime && <p className="receipt-date"><strong>{text.date}:</strong> {receiptDateTime}</p>}
+
           <div className="bill-items">
             {guests.length === 0 || subtotal === 0 ? <p className="bill-empty">{text.empty}</p> : guests.map((items, index) => items.length > 0 && (
               <section key={index} className="bill-guest">
-                {guests.length > 1 && <h3>{text.guest} {index + 1}</h3>}
+                <h3>{text.guest} {index + 1}</h3>
                 <ul>
                   {items.map((item) => (
                     <li key={item.id}>
                       <span>
-                        {serviceDisplayName(item, language)}
+                        {serviceDisplayName(item, receiptLanguage)}
                         <small>{item.durationMinutes} {text.minutes}</small>
                       </span>
                       <span>{money(item.priceCad)}</span>
@@ -180,7 +214,7 @@ export function BackupBill({ language, selections }: BackupBillProps) {
 
           <dl className="bill-totals">
             {comboDiscount > 0 && <div><dt>{text.comboDiscount}{comboDiscount > 5 ? ` (${comboDiscount / 5}x)` : ""}</dt><dd>-{money(comboDiscount)}</dd></div>}
-        <div><dt>{text.subtotal}</dt><dd>{money(subtotal)}</dd></div>
+            <div><dt>{text.subtotal}</dt><dd>{money(subtotal)}</dd></div>
             <div><dt>{text.tps}</dt><dd>{money(tps)}</dd></div>
             <div><dt>{text.tvq}</dt><dd>{money(tvq)}</dd></div>
             <div><dt>{text.beforeTip}</dt><dd>{money(totalBeforeTip)}</dd></div>
@@ -188,21 +222,11 @@ export function BackupBill({ language, selections }: BackupBillProps) {
             <div className="bill-grand-total"><dt>{text.grandTotal}</dt><dd>{money(grandTotal)}</dd></div>
           </dl>
 
-          <fieldset className="bill-tips">
-            <legend>{text.tipTitle} <span>· {text.basedOn} {money(subtotal)}</span></legend>
-            <div className="bill-tip-options">
-              {TIP_CHOICES.map((choice) => (
-                <button
-                  key={choice}
-                  type="button"
-                  aria-pressed={tipChoice === choice}
-                  className={`bill-tip-option${tipChoice === choice ? " is-selected" : ""}`}
-                  onClick={() => setTipChoice(choice)}
-                >
-                  {text.tipChoices[choice]}
-                </button>
-              ))}
-            </div>
+          <div className="bill-tips">
+            <label className="bill-tip-select-label" htmlFor="bill-tip-choice">{receiptLanguage === "en" ? "Tip" : "Pourboire"} · {receiptLanguage === "en" ? "Based on" : "Calculé sur"} {money(subtotal)}</label>
+            <select id="bill-tip-choice" className="bill-tip-select" value={tipChoice} onChange={(event) => setTipChoice(event.target.value as TipChoice)}>
+              {TIP_CHOICES.map((choice) => <option key={choice} value={choice}>{text.tipChoices[choice]}</option>)}
+            </select>
             {tipChoice === "custom" && (
               <label className="bill-custom-tip">
                 <span>{text.customLabel}</span>
@@ -218,13 +242,17 @@ export function BackupBill({ language, selections }: BackupBillProps) {
                 </span>
               </label>
             )}
-          </fieldset>
+          </div>
 
-          <address className="bill-location">
-            <strong>{text.location}</strong>
-            <span>{text.address}</span>
-            <span>{text.phone}</span>
-          </address>
+          <footer className="receipt-footer">
+            <div className="receipt-social"><strong>www.tuinailspa.ca</strong><span>Instagram @tuinailspa</span><span>Facebook Tui Nail Spa</span></div>
+            <div className="receipt-policy">
+              <strong>Politique de retour / Return Policy:</strong>
+              <p>{RETURN_POLICY_FR}</p>
+              <p>{RETURN_POLICY_EN}</p>
+            </div>
+            <div className="receipt-closing"><span>Nous apprécions vos affaires!</span><span>We appreciate your business!</span></div>
+          </footer>
         </div>
       </dialog>
     </>
