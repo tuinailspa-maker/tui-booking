@@ -189,16 +189,16 @@ button { color: inherit; }
 .backup-bill-dialog { width: min(520px, calc(100% - 32px)); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--line); background: #fff; color: var(--ink); }
 .backup-bill-dialog::backdrop { background: rgb(28 25 23 / .45); }
 .bill-sheet { display: grid; gap: 16px; padding: 24px; }
-.bill-header { display: flex; justify-content: space-between; align-items: center; }
-.bill-header h2 { margin: 0; font-family: var(--font-serif, serif); font-size: 22px; font-weight: 500; }
-.bill-close { width: 32px; height: 32px; border: 0; background: transparent; color: var(--muted); font-size: 22px; cursor: pointer; }
-.bill-actions { display: grid; grid-template-columns: auto 1fr 1fr; align-items: center; gap: 10px; }
-.receipt-language { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 11px; }
+.bill-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.bill-header-brand { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 9px; }
+.bill-header-brand img { display: block; width: 52px; height: 52px; object-fit: contain; }
+.bill-header-controls { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+.bill-header-controls > .button { min-height: 30px; padding: 0 9px; white-space: nowrap; font-size: 10px; }
+.bill-close { flex: 0 0 28px; width: 28px; height: 30px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 22px; cursor: pointer; }
+.receipt-language { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 10px; }
 .receipt-language button { padding: 5px 2px; border: 0; background: none; color: var(--muted); cursor: pointer; }
 .receipt-language button[aria-pressed="true"] { color: var(--ink); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
-.receipt-heading { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); align-items: center; gap: 12px; padding: 14px 0; border-top: 1px solid var(--soft-line); border-bottom: 1px solid var(--soft-line); }
-.receipt-brand { display: grid; gap: 6px; text-align: center; font-size: 10px; }
-.receipt-brand img { display: block; width: 100%; height: auto; filter: grayscale(1) contrast(1.2); }
+.receipt-heading { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 8px 0; border-top: 1px solid var(--soft-line); border-bottom: 1px solid var(--soft-line); }
 .receipt-contact { display: grid; gap: 4px; font-size: 9px; font-style: normal; line-height: 1.35; }
 .receipt-date { margin: 0; font-size: 10px; }
 .bill-items { display: grid; gap: 16px; }
@@ -291,12 +291,12 @@ button { color: inherit; }
   .backup-bill-dialog, .backup-bill-dialog * { visibility: visible; }
   .backup-bill-dialog { position: absolute; inset: 0; width: 54mm; max-width: 54mm; max-height: none; margin: 0; border: 0; overflow: visible; }
   .bill-sheet { display: grid; gap: 3mm; padding: 0; color: #000; font-family: Arial, Helvetica, sans-serif; }
-  .bill-header { justify-content: center; }
-  .bill-header h2 { font-size: 13px; font-weight: 700; text-align: center; }
-  .bill-actions, .bill-close, .bill-tips { display: none !important; }
-  .receipt-heading { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 2mm; padding: 2mm 0; border-color: #000; }
-  .receipt-brand { font-size: 8px; }
-  .receipt-brand img { filter: grayscale(1) contrast(2); }
+  .bill-header { justify-content: flex-start; gap: 2mm; }
+  .bill-header-brand { gap: 1mm; font-size: 7px; }
+  .bill-header-brand img { width: 14mm; height: 14mm; filter: grayscale(1) contrast(2); }
+  .bill-header-controls { display: none !important; }
+  .bill-tips { display: none !important; }
+  .receipt-heading { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 1mm 0; border-color: #000; }
   .receipt-contact { gap: 1mm; font-size: 7px; overflow-wrap: anywhere; }
   .receipt-date, .bill-guest li, .bill-totals > div { font-size: 8px; }
   .bill-guest h3 { font-size: 8px; }

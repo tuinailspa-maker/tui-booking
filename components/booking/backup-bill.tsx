@@ -164,25 +164,24 @@ export function BackupBill({ language, date, time, selections }: BackupBillProps
       >
         <div className="bill-sheet">
           <header className="bill-header">
-            <h2 id="backup-bill-title">{text.title}</h2>
-            <button className="bill-close" type="button" onClick={closeBill} aria-label={text.close}>×</button>
-          </header>
-
-          <div className="bill-actions">
-            <div className="receipt-language" role="group" aria-label={receiptLanguage === "en" ? "Receipt language" : "Langue du reçu"}>
-              <button type="button" aria-pressed={receiptLanguage === "en"} onClick={() => setReceiptLanguage("en")}>EN</button>
-              <span aria-hidden="true">|</span>
-              <button type="button" aria-pressed={receiptLanguage === "fr"} onClick={() => setReceiptLanguage("fr")}>FR</button>
-            </div>
-            <button className="button button-back" type="button" onClick={copyBill}>{copied ? text.copied : text.copy}</button>
-            <button className="button button-primary" type="button" onClick={() => window.print()}>{text.print}</button>
-          </div>
-
-          <div className="receipt-heading">
-            <div className="receipt-brand">
+            <div className="bill-header-brand">
               <Image src="/tui-logo.png" alt="Tui Nail Spa logo" width={809} height={811} />
               <strong>Tui Nail Spa Montreal</strong>
             </div>
+            <div className="bill-header-controls">
+              <div className="receipt-language" role="group" aria-label={receiptLanguage === "en" ? "Receipt language" : "Langue du reçu"}>
+                <button type="button" aria-pressed={receiptLanguage === "en"} onClick={() => setReceiptLanguage("en")}>EN</button>
+                <span aria-hidden="true">|</span>
+                <button type="button" aria-pressed={receiptLanguage === "fr"} onClick={() => setReceiptLanguage("fr")}>FR</button>
+              </div>
+              <button className="button button-back" type="button" onClick={copyBill}>{copied ? text.copied : text.copy}</button>
+              <button className="button button-primary" type="button" onClick={() => window.print()}>{text.print}</button>
+              <button className="bill-close" type="button" onClick={closeBill} aria-label={text.close}>×</button>
+            </div>
+          </header>
+
+          <h2 id="backup-bill-title" className="sr-only">{text.title}</h2>
+          <div className="receipt-heading">
             <address className="receipt-contact">
               <span>{RECEIPT_ADDRESS}</span>
               <span>{RECEIPT_PHONE}</span>
