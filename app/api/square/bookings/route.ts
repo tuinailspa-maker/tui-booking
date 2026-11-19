@@ -17,14 +17,16 @@ type BookingGuest = { serviceIds: string[]; technician: Technician };
 type BookingClient = { firstName: string; lastName: string; countryCode: string; phone: string; email: string; notes: string };
 type BookingRequest = { reference: string; startAt: string; client: BookingClient; guests: BookingGuest[] };
 
+type SquareApiError = { code: string | null; field: string | null; detail: string };
+
 class SquareStepError extends Error {
   constructor(
     readonly step: string,
     readonly status: number,
-    readonly code: string | null,
-    readonly detail: string,
+    readonly errors: SquareApiError[],
   ) {
-    super(`${step} failed (${status}${code ? ` ${code}` : ""}): ${detail}`);
+    const summary = errors.map((error) => [error.code, error.field && `field ${error.field}`, error.detail].filter(Boolean).join(" - ")).join("; ");
+    super(`${step} failed (${status}): ${summary || `HTTP ${status}`}`);
   }
 }
 
@@ -91,13 +93,14 @@ async function squareRequest<T>(step: string, path: string, body: unknown): Prom
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const first = Array.isArray(data.errors) ? data.errors[0] : undefined;
-    throw new SquareStepError(
-      step,
-      response.status,
-      typeof first?.code === "string" ? first.code : null,
-      typeof first?.detail === "string" ? first.detail : `HTTP ${response.status}`,
-    );
+    const errors: SquareApiError[] = Array.isArray(data.errors)
+      ? data.errors.map((error: Record<string, unknown>) => ({
+          code: typeof error.code === "string" ? error.code : null,
+          field: typeof error.field === "string" ? error.field : null,
+          detail: typeof error.detail === "string" ? error.detail : `HTTP ${response.status}`,
+        }))
+      : [];
+    throw new SquareStepError(step, response.status, errors);
   }
   return data as T;
 }
@@ -169,7 +172,7 @@ export async function POST(request: Request) {
     if (error instanceof SquareStepError) {
       console.error("[v0] Square booking failed:", error.message);
       return NextResponse.json(
-        { error: "Square booking failed.", step: error.step, status: error.status, code: error.code, detail: error.detail },
+        { error: "Square booking failed.", step: error.step, status: error.status, errors: error.errors },
         { status: 502 },
       );
     }

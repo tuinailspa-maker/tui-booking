@@ -142,7 +142,10 @@ export function BookingApp() {
     });
     if (!response.ok) {
       const failure = await response.json().catch(() => null);
-      const detail = failure?.step ? `Step: ${failure.step}. ${failure.detail ?? failure.error ?? ""}` : failure?.error;
+      const squareErrors = Array.isArray(failure?.errors)
+  ? failure.errors.map((error: { code?: string | null; field?: string | null; detail?: string }) => [error.code, error.field && `field ${error.field}`, error.detail].filter(Boolean).join(" - ")).join("; ")
+  : "";
+const detail = failure?.step ? `Step: ${failure.step}. ${squareErrors || failure.detail || failure.error || ""}` : failure?.error;
       setBookingError(detail || "Unknown error.");
       return;
     }
