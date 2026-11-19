@@ -97,7 +97,6 @@ function statusLabel(status: string) {
   if (status === "ACCEPTED" || status === "BOOKED") return "Confirmed";
   if (status === "PENDING") return "Pending";
   if (status === "MIXED") return "Partially confirmed";
-  if (status === "CHECKED_IN") return "Checked-in";
   return status.replaceAll("_", " ").toLowerCase().replace(/^\w/, (letter) => letter.toUpperCase());
 }
 
@@ -123,7 +122,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
   const session = useSWR<{ authenticated: boolean }, FetchError>(sessionHint ? "/api/admin/session" : null, jsonFetcher, { shouldRetryOnError: false, revalidateOnFocus: false });
   const isAuthenticated = sessionHint && session.data?.authenticated === true;
   const bookingKey = isAuthenticated && date ? `/api/admin/bookings?date=${encodeURIComponent(date)}` : null;
-  const bookings = useSWR<BookingPayload, FetchError>(bookingKey, jsonFetcher, { revalidateOnFocus: true, refreshInterval: 15000 });
+  const bookings = useSWR<BookingPayload, FetchError>(bookingKey, jsonFetcher, { revalidateOnFocus: false });
 
   const appointments = [...(bookings.data?.date === date ? bookings.data.bookings : []), ...walkIns.filter((item) => formatAppointmentDate(item.startAt).date === date)]
     .sort((left, right) => left.startAt.localeCompare(right.startAt));
@@ -260,7 +259,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
           return <article className={`admin-appointment-card${isCheckedOut ? " is-checked-out" : ""}`} key={booking.id}>
             <div className="admin-time-column"><strong>{formatAppointmentTime(booking.startAt)}</strong><span>{displayDuration ? `${displayDuration} min` : "Walk-in"}</span><i /></div>
             <div className="admin-appointment-main">
-              <div className="admin-appointment-person"><div><h3>{booking.customerName || "Walk-in guest"}</h3><p>{booking.phone || "No phone on file"}</p></div><span className={`admin-status${isCheckedOut ? " is-paid" : ""}`}>{isCheckedOut ? "Checked out" : isWalkIn ? "Checked-in (Walk-in)" : statusLabel(booking.status)}</span></div>
+              <div className="admin-appointment-person"><div><h3>{booking.customerName || "Walk-in guest"}</h3><p>{booking.phone || "No phone on file"}</p></div><span className={`admin-status${isCheckedOut ? " is-paid" : ""}`}>{isCheckedOut ? "Checked out" : isWalkIn ? "Walk-in" : statusLabel(booking.status)}</span></div>
               <div className="admin-appointment-meta"><span><small>TECHNICIAN</small>{Array.from(new Set(booking.technicians)).join(", ") || "Unassigned"}</span><span><small>SQUARE REF</small>{booking.squareBookingIds[0] ?? "Walk-in"}</span></div>
               <div className="admin-appointment-services"><div className="admin-service-lines"><strong>Services</strong>{serviceList.length > 0 ? serviceList.map((service) => <span key={service.id}>{selection.serviceIds.length > 1 ? <small>Guest {service.guestIndex + 1} · </small> : null}{service.label}<b>${service.amount}</b></span>) : <span className="admin-unmapped-service">Services weren&apos;t recognized. Add them before checkout.</span>}</div><div className="admin-card-total"><small>ESTIMATED</small><strong>${totalFor({ ...booking, ...selection }).toFixed(2)}</strong></div></div>
               <div className="admin-card-actions"><button type="button" className="admin-edit-button" onClick={() => openAppointmentEditor(booking)}>Edit services</button><BackupBill language="en" date={dateTime.date} time={dateTime.time} selections={selection.serviceIds} serviceAddOns={selection.addOns} customerName={booking.customerName} customerPhone={booking.phone} triggerLabel={isCheckedOut ? "View receipt" : "Check out / Bill"} onMarkCheckedOut={isCheckedOut ? undefined : () => setCheckedOutStatus(booking.id)} markCheckedOutLabel="Mark checked out" /></div>
