@@ -209,7 +209,7 @@ export async function GET(request: Request) {
         id: booking.id,
         groupKey: groupMarker?.[1] ?? booking.id,
         guestIndex: Number(groupMarker?.[2] ?? 1),
-        status: booking.seller_note?.includes("[TUI_WALK_IN]") ? "WALK_IN_WAITING" : booking.seller_note?.includes("[TUI_CHECKED_IN:") || booking.seller_note?.includes("[TUI_CHECKED_IN]") ? "CHECKED_IN" : booking.status ?? "UNKNOWN",
+        status: booking.seller_note?.match(/\[TUI_STATUS:(BOOKED|CHECKED_IN|IN_SERVICE|CHECKED_OUT)\]/)?.[1] ?? (booking.seller_note?.includes("[TUI_WALK_IN]") ? "WALK_IN_WAITING" : booking.seller_note?.includes("[TUI_CHECKED_IN:") || booking.seller_note?.includes("[TUI_CHECKED_IN]") ? "CHECKED_IN" : booking.status ?? "UNKNOWN"),
         arrivalAt: booking.seller_note?.match(/\[TUI_CHECKED_IN:(\d{4}-\d{2}-\d{2}T[^\]]+)\]/)?.[1] ?? null,
         startAt: booking.seller_note?.match(/\[TUI_QUEUE_AT:(\d{4}-\d{2}-\d{2}T[^\]]+)\]/)?.[1] ?? booking.start_at ?? "",
         customerName: `${fullName || "Square customer"}${extraGuests ? ` + ${extraGuests} ${extraGuests === 1 ? "guest" : "guests"}` : ""}`,
@@ -262,23 +262,33 @@ export async function PATCH(request: Request) {
   const body = await request.json().catch(() => null);
   const bookingId = typeof body?.bookingId === "string" ? body.bookingId : "";
   const teamMemberId = typeof body?.teamMemberId === "string" ? body.teamMemberId : "";
-  if (!bookingId || !Object.values(SQUARE_TEAM_MEMBER_IDS).includes(teamMemberId)) {
-    return NextResponse.json({ error: "Choose a valid appointment and technician." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+  const status = typeof body?.status === "string" && ["BOOKED", "CHECKED_IN", "IN_SERVICE", "CHECKED_OUT"].includes(body.status) ? body.status : "";
+  const shouldAssign = Boolean(teamMemberId && Object.values(SQUARE_TEAM_MEMBER_IDS).includes(teamMemberId));
+  if (!bookingId || (!status && !shouldAssign) || (teamMemberId && !shouldAssign)) {
+    return NextResponse.json({ error: "Choose a valid appointment, technician, or status." }, { status: 400, headers: { "Cache-Control": "no-store" } });
   }
   try {
     const current = await squareRequest<{ booking?: SquareBooking }>(`/bookings/${encodeURIComponent(bookingId)}`);
-    if (!current.booking || typeof current.booking.version !== "number" || !current.booking.appointment_segments?.length) {
+    if (!current.booking || typeof current.booking.version !== "number") {
       return NextResponse.json({ error: "Appointment could not be found." }, { status: 404, headers: { "Cache-Control": "no-store" } });
     }
-    const result = await squareRequest<{ booking: SquareBooking }>(`/bookings/${encodeURIComponent(bookingId)}`, "PUT", {
-      booking: {
-        version: current.booking.version,
-        appointment_segments: current.booking.appointment_segments.map((segment) => ({ ...segment, team_member_id: teamMemberId })),
-      },
-    });
+    if (shouldAssign && !current.booking.appointment_segments?.length) {
+      return NextResponse.json({ error: "This appointment has no assignable service segments." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    }
+    const patch: Record<string, unknown> = { version: current.booking.version };
+    if (shouldAssign) patch.appointment_segments = current.booking.appointment_segments?.map((segment) => ({ ...segment, team_member_id: teamMemberId }));
+    if (status) {
+      const marker = `[TUI_STATUS:${status}]`;
+      let note = (current.booking.seller_note ?? "").replace(/\s?\[TUI_STATUS:(?:BOOKED|CHECKED_IN|IN_SERVICE|CHECKED_OUT)\]/g, "").trim();
+      if (status === "CHECKED_IN" && !note.includes("[TUI_CHECKED_IN")) note = `${note} [TUI_CHECKED_IN:${new Date().toISOString()}]`.trim();
+      if (status === "BOOKED") note = note.replace(/\s?\[TUI_CHECKED_IN(?::[^\]]+)?\]/g, "").trim();
+      note = `${note.slice(0, Math.max(0, 500 - marker.length - 1)).trim()} ${marker}`.trim();
+      patch.seller_note = note;
+    }
+    const result = await squareRequest<{ booking: SquareBooking }>(`/bookings/${encodeURIComponent(bookingId)}`, "PUT", { booking: patch });
     return NextResponse.json({ success: true, version: result.booking.version }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to assign technician.";
+    const message = error instanceof Error ? error.message : "Unable to update appointment.";
     return NextResponse.json({ error: message }, { status: 502, headers: { "Cache-Control": "no-store" } });
   }
 }
