@@ -46,12 +46,12 @@ export const serviceTree: ServiceBranch[] = [
         service("enhancement-new-no-polish", "No polish", "Sans vernis", 40, 60),
         service("enhancement-new-regular-polish", "Regular polish", "Vernis classique", 50, 60),
         service("enhancement-new-shellac", "Shellac", "Shellac", 55, 60),
-      ], "(M/L, +$10)", "(M/L, +10 $)"),
+      ]),
       branch("enhancement-refill", "Refill", "Remplissage", [
         service("enhancement-refill-no-polish", "No polish", "Sans vernis", 32, 50),
         service("enhancement-refill-regular-polish", "Regular polish", "Vernis classique", 42, 50),
         service("enhancement-refill-shellac", "Shellac", "Shellac", 47, 50),
-      ], "(If nails are over 3 weeks +$3)", "(Si la pose date de plus de 3 semaines : +3 $)"),
+      ]),
     ]),
   ]),
   branch("feet", "Feet", "Pieds", [
