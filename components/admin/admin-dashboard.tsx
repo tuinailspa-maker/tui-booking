@@ -7,9 +7,11 @@ import useSWR from "swr";
 import { AppointmentCalendar } from "./appointment-calendar";
 import type { AppointmentStatus } from "./appointment-drawer";
 import { PinLockScreen } from "./pin-lock-screen";
-import { allServices, selectedServiceDuration, selectedServicePrice, type ServiceAddOnKey } from "@/data/serviceTree";
+import { allServices, selectedServiceDuration, selectedServicePrice, serviceById, type ServiceAddOnKey } from "@/data/serviceTree";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { ServiceEditor } from "./service-editor";
+import { ReportsDashboard } from "./reports-dashboard";
+import { formatSlotTime, getClosingTimeForDate } from "@/data/staffSchedule";
 
 type AdminBooking = {
   id: string;
@@ -119,7 +121,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
   const [pinError, setPinError] = useState("");
   const [pinBusy, setPinBusy] = useState(false);
   const [date, setDate] = useState(initialDate);
-  const [activeTab, setActiveTab] = useState<"schedule" | "queue" | "summary">("schedule");
+  const [activeTab, setActiveTab] = useState<"schedule" | "queue" | "summary" | "reports">("schedule");
   const [scheduleView, setScheduleView] = useState<"day" | "list">("day");
   const checkedOutSnapshot = useSyncExternalStore(subscribeToCheckedOut, readCheckedOutSnapshot, () => "{}");
   const checkedOut = useMemo<Record<string, boolean>>(() => JSON.parse(checkedOutSnapshot), [checkedOutSnapshot]);
@@ -252,6 +254,14 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
     await assignWalkInTechnician(booking, technician);
   }
 
+  function saveBillingSelection(booking: AdminBooking, serviceIds: string[][], addOns: Record<string, ServiceAddOnKey>[]) {
+    if (booking.squareBookingIds.length > 0) {
+      setServiceOverrides((current) => ({ ...current, [booking.id]: { serviceIds, addOns } }));
+      return;
+    }
+    setWalkIns((current) => current.map((item) => item.id === booking.id ? { ...item, serviceIds, addOns } : item));
+  }
+
   function saveServices(value: ServiceDraft) {
     if (!editor) return;
     if (editor.walkIn && editor.booking) {
@@ -290,6 +300,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
         <button type="button" className={activeTab === "schedule" ? "is-active" : ""} aria-current={activeTab === "schedule" ? "page" : undefined} onClick={() => setActiveTab("schedule")}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="16" rx="2" /><path d="M8 2.8v3.5M16 2.8v3.5M3.5 9.5h17M8 13h2M13 13h3M8 16.5h2" /></svg><small>Calendar</small></button>
         <button type="button" className={activeTab === "queue" ? "is-active" : ""} aria-current={activeTab === "queue" ? "page" : undefined} onClick={() => setActiveTab("queue")}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="3.5" width="15" height="17" rx="2" /><path d="M8 8h8M8 12h5M8 16l2 2 5-5" /></svg><small>Check-in</small>{queueBookings.length > 0 && <b>{queueBookings.length}</b>}</button>
         <button type="button" className={activeTab === "summary" ? "is-active" : ""} aria-current={activeTab === "summary" ? "page" : undefined} onClick={() => setActiveTab("summary")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5h16M6.5 16V11M12 16V5M17.5 16V8" /></svg><small>Summary</small></button>
+        <button type="button" className={activeTab === "reports" ? "is-active" : ""} aria-current={activeTab === "reports" ? "page" : undefined} onClick={() => setActiveTab("reports")}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5h16M6 16v-4M11 16V7M16 16V4M20 16V9" /><path d="M5 8.5 10 5l5 2 4-3" /></svg><small>Reports</small></button>
       </nav>
       <button className="admin-rail-lock" type="button" onClick={logOut} aria-label="Lock dashboard"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="10" width="13" height="11" rx="2" /><path d="M8.5 10V7a3.5 3.5 0 0 1 7 0v3" /></svg><small>Lock</small></button>
     </aside>
@@ -316,8 +327,8 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
             <article><span>Walk-ins waiting</span><strong>{appointments.filter((booking) => booking.status.startsWith("WALK_IN")).length}</strong><small>arrival queue</small></article>
             <article><span>Checked out</span><strong>${totalSales.toFixed(2)}</strong><small>{checkedOutCount} completed tickets</small></article>
           </section>
-        </> : <>
-          <div className="admin-schedule-heading"><div><h2>{activeTab === "queue" ? "Arrival queue" : "Daily schedule"}</h2><p>{displayBookings.length} {displayBookings.length === 1 ? "appointment" : "appointments"} · 8:00 AM–8:00 PM</p></div><span className="admin-sync-note">Auto-refreshes every 60 seconds</span></div>
+        </> : activeTab === "reports" ? <ReportsDashboard /> : <>
+          <div className="admin-schedule-heading"><div><h2>{activeTab === "queue" ? "Arrival queue" : "Daily schedule"}</h2><p>{displayBookings.length} {displayBookings.length === 1 ? "appointment" : "appointments"} · 8:00 AM–{formatSlotTime(getClosingTimeForDate(date), "en")}</p></div><span className="admin-sync-note">Auto-refreshes every 60 seconds</span></div>
           {bookings.isLoading && <div className="admin-loading" role="status"><span className="admin-spinner" />Loading Square appointments…</div>}
           {!bookings.isLoading && !bookings.error && displayBookings.length === 0 && <div className="admin-empty"><span aria-hidden="true">—</span><h3>{activeTab === "queue" ? "The arrival queue is clear" : "No appointments for this day"}</h3><p>{activeTab === "queue" ? "Checked-in guests and waiting walk-ins will appear here." : "Square has no active bookings for the selected date. Add a walk-in ticket when a guest arrives."}</p><button className="admin-primary-button" type="button" onClick={() => openWalkInEditor()}>+ New / Walk-in</button></div>}
           {displayBookings.length > 0 && <AppointmentCalendar date={date} bookings={displayBookings} view={activeTab === "queue" ? "list" : scheduleView} checkedOut={checkedOut} onOpenSlot={openWalkInEditor} onSelectBooking={(booking) => openAppointmentEditor(booking as AdminBooking)} />}
@@ -326,6 +337,6 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
       </div>
     </div>
 
-    {drawerBooking && <ServiceEditor key={drawerBooking.id} initialServiceIds={currentEditorDraft?.serviceIds ?? drawerBooking.serviceIds} initialAddOns={currentEditorDraft?.addOns ?? drawerBooking.addOns} guestNames={drawerBooking.guestNames} customerName={drawerBooking.customerName} customerPhone={drawerBooking.phone} startAt={drawerBooking.startAt} technician={drawerTechnician} initialTechnicians={drawerBooking.technicians} status={drawerStatus} busy={assignmentBusy === drawerBooking.id} checkedOut={drawerStatus === "CHECKED_OUT"} onMarkCheckedOut={() => void updateBookingStatus(drawerBooking, "CHECKED_OUT")} walkIn={Boolean(editor?.walkIn)} onCancel={() => setEditor(null)} onTechnicianChange={(technician) => void updateBookingTechnician(drawerBooking, technician)} onStatusChange={(status) => void updateBookingStatus(drawerBooking, status)} onSave={saveServices} onBookingCreated={async () => { setEditor(null); await bookings.mutate(); }} />}
+    {drawerBooking && <ServiceEditor key={drawerBooking.id} initialServiceIds={currentEditorDraft?.serviceIds ?? drawerBooking.serviceIds} initialAddOns={currentEditorDraft?.addOns ?? drawerBooking.addOns} bookingId={drawerBooking.id} squareServiceReference={drawerBooking.squareBookingIds.length ? drawerBooking.serviceIds.flatMap((guestIds) => guestIds.map((id) => serviceById.get(id)?.nameEn).filter((name): name is string => Boolean(name))) : []} guestNames={drawerBooking.guestNames} customerName={drawerBooking.customerName} customerPhone={drawerBooking.phone} startAt={drawerBooking.startAt} technician={drawerTechnician} initialTechnicians={drawerBooking.technicians} status={drawerStatus} busy={assignmentBusy === drawerBooking.id} checkedOut={drawerStatus === "CHECKED_OUT"} onMarkCheckedOut={async () => { await updateBookingStatus(drawerBooking, "CHECKED_OUT"); }} onBillSelectionChange={(serviceIds, addOns) => saveBillingSelection(drawerBooking, serviceIds, addOns)} walkIn={Boolean(editor?.walkIn)} onCancel={() => setEditor(null)} onTechnicianChange={(technician) => void updateBookingTechnician(drawerBooking, technician)} onStatusChange={(status) => void updateBookingStatus(drawerBooking, status)} onSave={saveServices} onBookingCreated={async () => { setEditor(null); await bookings.mutate(); }} />}
   </main>;
 }

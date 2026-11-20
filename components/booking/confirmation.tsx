@@ -48,7 +48,7 @@ export function Confirmation({ language, copy, reference, date, time, partySize,
           {comboDiscount.amount > 0 && <div><dt>{language === "en" ? `Combo discount${comboDiscount.qualifyingGuests.length > 1 ? ` (${comboDiscount.qualifyingGuests.length}x)` : ""}` : `Rabais combo${comboDiscount.qualifyingGuests.length > 1 ? ` (${comboDiscount.qualifyingGuests.length}x)` : ""}`}</dt><dd>-{new Intl.NumberFormat(language === "en" ? "en-CA" : "fr-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }).format(comboDiscount.amount)}</dd></div>}
           <div><dt>{copy.subtotal}</dt><dd>{formatCad(totals.subtotal - comboDiscount.amount, language)}</dd></div>
         </dl>
-        {hasOnlineOnlyTime && <p className="online-only-banner"><span aria-hidden="true">i</span>{copy.onlineOnly}</p>}
+        <p className="online-only-banner"><span aria-hidden="true">i</span>{hasOnlineOnlyTime ? copy.onlineOnly : copy.onlineAndWalkIns}</p>
         <div className="confirmation-divider" />
         <div className="salon-contact">
           <strong>{copy.salon}</strong>

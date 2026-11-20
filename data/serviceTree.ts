@@ -1,10 +1,11 @@
-export type ServiceAddOnKey = "length-ml" | "over-3-weeks" | "extra-calcium";
+export type ServiceAddOnKey = "length-ml" | "over-3-weeks";
 
 export type ServiceAddOn = {
   key: ServiceAddOnKey;
   nameEn: string;
   nameFr: string;
   priceCad: number;
+  durationMinutes?: number;
 };
 
 export type ServiceLeaf = {
@@ -37,9 +38,8 @@ export type ServiceNode = ServiceBranch | ServiceLeaf;
 
 const branch = (id: string, nameEn: string, nameFr: string, children: ServiceNode[], noteEn?: string, noteFr?: string): ServiceBranch => ({ type: "branch", id, nameEn, nameFr, children, ...(noteEn ? { noteEn } : {}), ...(noteFr ? { noteFr } : {}) });
 const service = (id: string, nameEn: string, nameFr: string, price: number, durationMinutes: number, priceLabel?: string, addOn?: ServiceAddOn): ServiceLeaf => ({ type: "service", id, name: nameEn, nameEn, nameFr, price, priceCad: price, durationMinutes, ...(priceLabel ? { priceLabel } : {}), ...(addOn ? { addOn } : {}) });
-const lengthMlAddOn: ServiceAddOn = { key: "length-ml", nameEn: "Length M/L", nameFr: "Longueur M/L", priceCad: 10 };
-const overThreeWeeksAddOn: ServiceAddOn = { key: "over-3-weeks", nameEn: "Nails over 3 weeks", nameFr: "Ongles de plus de 3 semaines", priceCad: 5 };
-const extraCalciumAddOn: ServiceAddOn = { key: "extra-calcium", nameEn: "Extra Calcium", nameFr: "Calcium supplémentaire", priceCad: 5 };
+const lengthMlAddOn: ServiceAddOn = { key: "length-ml", nameEn: "M/L, + 10$", nameFr: "M/L, + 10$", priceCad: 10 };
+const overThreeWeeksAddOn: ServiceAddOn = { key: "over-3-weeks", nameEn: "If nails are over 3 weeks + 3$", nameFr: "Ongles de plus de 3 semaines + 3$", priceCad: 3 };
 
 export const serviceTree: ServiceBranch[] = [
   branch("hands", "Hands", "Mains", [
@@ -47,14 +47,14 @@ export const serviceTree: ServiceBranch[] = [
       branch("manicure", "Manicure", "Manucure", [
         service("hands-manicure-no-polish", "No polish", "Sans vernis", 20, 15),
         service("hands-manicure-regular-polish", "Regular polish", "Vernis classique", 25, 20),
-        service("hands-manicure-shellac", "Shellac", "Shellac", 35, 20, undefined, extraCalciumAddOn),
+        service("hands-manicure-shellac", "Shellac", "Shellac", 35, 20),
       ]),
       branch("natural-nails-touch-up", "Touch-up", "Retouche", [
         service("hands-touch-up-regular", "Regular", "Classique", 18, 15),
         service("hands-touch-up-shellac", "Shellac", "Shellac", 30, 20),
       ]),
     ]),
-    branch("nail-enhancement", "Nail Enhancement (Acrylic, Builder gel, Gel X)", "Extensions (acrylique, gel de construction, Gel X)", [
+    branch("nail-enhancement", "Nail Enhancement ( Acrylic, Builder gel, Gel X )", "Extensions (acrylique, gel de construction, Gel X)", [
       branch("enhancement-new-set", "New set", "Nouvelle pose", [
         service("enhancement-new-no-polish", "No polish", "Sans vernis", 40, 60, undefined, lengthMlAddOn),
         service("enhancement-new-regular-polish", "Regular polish", "Vernis classique", 50, 60, undefined, lengthMlAddOn),
@@ -67,7 +67,7 @@ export const serviceTree: ServiceBranch[] = [
       ]),
     ]),
   ]),
-  branch("feet", "Feet", "Pieds", [
+  branch("feet", "Feets", "Pieds", [
     branch("pedicure", "Pedicure", "Pédicure", [
       service("feet-pedicure-no-polish", "No polish", "Sans vernis", 35, 30),
       service("feet-pedicure-regular-polish", "Regular polish", "Vernis classique", 40, 35),
@@ -80,28 +80,28 @@ export const serviceTree: ServiceBranch[] = [
   ]),
   branch("waxing", "Waxing", "Épilation", [
     branch("waxing-body", "Body", "Corps", [
-      service("waxing-underarm", "Underarm", "Aisselles", 15, 10),
+      service("waxing-underarm", "Under arm", "Aisselles", 15, 10),
       branch("waxing-arm", "Arm", "Bras", [
-        service("waxing-half-arm", "Half arm", "Demi-bras", 25, 20),
+        service("waxing-half-arm", "Haft arm", "Demi-bras", 25, 20),
         service("waxing-full-arm", "Full arm", "Bras complet", 30, 25),
       ]),
       service("waxing-back", "Back", "Dos", 35, 30),
       branch("waxing-chest", "Chest", "Torse", [
-        service("waxing-half-chest", "Half chest", "Demi-torse", 25, 15),
+        service("waxing-half-chest", "Haft chest", "Demi-torse", 25, 15),
         service("waxing-full-chest", "Full chest", "Torse complet", 40, 25),
       ]),
       branch("waxing-leg", "Leg", "Jambe", [
-        service("waxing-half-leg", "Half leg", "Demi-jambe", 30, 20),
-        service("waxing-half-leg-extra", "Half leg extra time", "Demi-jambe, temps supplémentaire", 35, 25),
-        service("waxing-full-leg", "Full leg", "Jambe complète", 40, 30),
-        service("waxing-full-leg-extra", "Full leg extra time", "Jambe complète, temps supplémentaire", 45, 35),
+        service("waxing-half-leg", "haft leg", "Demi-jambe", 30, 20),
+        service("waxing-half-leg-extra", "haft leg extra time", "Demi-jambe, temps supplémentaire", 35, 25),
+        service("waxing-full-leg", "full leg", "Jambe complète", 40, 30),
+        service("waxing-full-leg-extra", "full leg extra time", "Jambe complète, temps supplémentaire", 45, 35),
       ]),
       service("waxing-neck", "Neck", "Cou", 15, 15),
     ]),
     branch("waxing-facial", "Facial", "Visage", [
       service("waxing-chin", "Chin", "Menton", 15, 10),
       service("waxing-upper-lip", "Upper lip", "Lèvre supérieure", 10, 5),
-      service("waxing-eyebrow", "Eyebrow", "Sourcils", 12, 10),
+      service("waxing-eyebrow", "Eye brow", "Sourcils", 12, 10),
     ]),
     branch("waxing-intimate", "Intimate", "Intime", [
       branch("waxing-bikini", "Bikini", "Maillot", [
@@ -114,32 +114,32 @@ export const serviceTree: ServiceBranch[] = [
       ]),
     ]),
   ]),
-  branch("variable-add-ons", "Option add-on / Variable", "Options / variables", [
-    branch("removal", "Removal", "Dépose", [
+  branch("variable-add-ons", "Option add-on/ Variable", "Options / variables", [
+    branch("removal", "removal", "Dépose", [
       service("removal-none", "None", "Aucune", 0, 0),
       service("removal-shellac", "Shellac", "Shellac", 15, 15),
       service("removal-enhancement", "Enhancement nails", "Extensions", 20, 30),
     ]),
     branch("repair", "Repair", "Réparation", [
       service("repair-1-2-nails", "1-2 nails", "1 à 2 ongles", 10, 15),
-      service("repair-5-nails-plus", "5 nails +", "5 ongles et plus", 15, 25),
+      service("repair-5-nails-plus", "5nails +", "5 ongles et plus", 15, 25),
     ]),
     branch("cut-nails", "Cut nails", "Coupe des ongles", [
-      service("cut-nails-option-1", "Option 1", "Option 1", 15, 10),
-      service("cut-nails-option-2", "Option 2", "Option 2", 20, 10),
+      service("cut-nails-option-1", "Option1,", "Option 1", 15, 10),
+      service("cut-nails-option-2", "Option2,", "Option 2", 20, 10),
     ]),
     branch("treatment", "Treatment", "Soin", [
       branch("paraffin", "Paraffin", "Paraffine", [
         service("treatment-paraffin-feet", "Feet", "Pieds", 15, 10),
         service("treatment-paraffin-hands", "Hands", "Mains", 12, 10),
       ]),
-      service("treatment-collagen", "Collagen", "Collagène", 10, 10),
+      service("treatment-collagen", "Colagen.", "Collagène", 10, 10),
       service("treatment-extra-callus-remover", "Extra callus remover heels", "Soin anti-callosités supplémentaire des talons", 20, 15),
     ]),
     branch("add-on", "Add-on", "Supplément", [
-      service("add-on-basic-art", "Basic art: French, simple line, dots", "Décor simple : french, lignes, pois", 10, 15),
+      service("add-on-basic-art", "Bacsic art ; french, simple line, dots", "Décor simple : french, lignes, pois", 10, 15),
       service("add-on-chrome-cat-eye", "Chrome, cat eye", "Chrome, œil de chat", 15, 15),
-      service("add-on-custom-art", "Hand painting, 3D charms, custom", "Peinture à main levée, décor 3D, création sur mesure", 25, 45, "$25+"),
+      service("add-on-custom-art", "hand painting 3D charms, custom", "Peinture à main levée, décor 3D, création sur mesure", 25, 45, "$25+"),
       service("add-on-cuticle-clean-up", "Cuticle clean-up", "Nettoyage des cuticules", 10, 5),
       service("add-on-calcium-gel", "Extra Strong Calcium gel", "Gel calcium extra-fort", 5, 5, "+$5"),
     ]),
@@ -163,20 +163,20 @@ const DISPLAY_PATH_OVERRIDES: Record<string, { en: string; fr: string }> = {
   "feet-pedicure-shellac": { en: "Pedicure / Shellac", fr: "Pédicure / Shellac" },
   "feet-touch-up-regular-polish": { en: "Feet / Touch-up / Regular polish", fr: "Pieds / Retouche / Vernis classique" },
   "feet-touch-up-shellac": { en: "Feet / Touch-up / Shellac", fr: "Pieds / Retouche / Shellac" },
-  "removal-none": { en: "Removal / None", fr: "Dépose / Aucune" },
-  "removal-shellac": { en: "Removal / Shellac", fr: "Dépose / Shellac" },
-  "removal-enhancement": { en: "Removal / Enhancement nails", fr: "Dépose / Extensions" },
-  "repair-1-2-nails": { en: "Repair / 1–2 nails", fr: "Réparation / 1 à 2 ongles" },
-  "repair-5-nails-plus": { en: "Repair / 5+ nails", fr: "Réparation / 5 ongles et plus" },
-  "cut-nails-option-1": { en: "Cut nails / Option 1", fr: "Coupe des ongles / Option 1" },
-  "cut-nails-option-2": { en: "Cut nails / Option 2", fr: "Coupe des ongles / Option 2" },
+  "removal-none": { en: "removal / None", fr: "Dépose / Aucune" },
+  "removal-shellac": { en: "removal / Shellac", fr: "Dépose / Shellac" },
+  "removal-enhancement": { en: "removal / Enhancement nails", fr: "Dépose / Extensions" },
+  "repair-1-2-nails": { en: "Repair / 1-2 nails", fr: "Réparation / 1 à 2 ongles" },
+  "repair-5-nails-plus": { en: "Repair / 5nails +", fr: "Réparation / 5 ongles et plus" },
+  "cut-nails-option-1": { en: "Cut nails / Option1,", fr: "Coupe des ongles / Option 1" },
+  "cut-nails-option-2": { en: "Cut nails / Option2,", fr: "Coupe des ongles / Option 2" },
   "treatment-paraffin-feet": { en: "Treatment / Paraffin / Feet", fr: "Soin / Paraffine / Pieds" },
   "treatment-paraffin-hands": { en: "Treatment / Paraffin / Hands", fr: "Soin / Paraffine / Mains" },
-  "treatment-collagen": { en: "Treatment / Collagen", fr: "Soin / Collagène" },
+  "treatment-collagen": { en: "Treatment / Colagen.", fr: "Soin / Collagène" },
   "treatment-extra-callus-remover": { en: "Treatment / Extra callus remover heels", fr: "Soin / Soin anti-callosités supplémentaire des talons" },
-  "add-on-basic-art": { en: "Add-on / Basic art (French, simple line, dots)", fr: "Supplément / Décor simple (French, lignes, pois)" },
+  "add-on-basic-art": { en: "Add-on / Bacsic art ; french, simple line, dots", fr: "Supplément / Décor simple (French, lignes, pois)" },
   "add-on-chrome-cat-eye": { en: "Add-on / Chrome, cat eye", fr: "Supplément / Chrome, œil de chat" },
-  "add-on-custom-art": { en: "Add-on / Hand painting, 3D charms, custom", fr: "Supplément / Peinture à main levée, décor 3D, création sur mesure" },
+  "add-on-custom-art": { en: "Add-on / hand painting 3D charms, custom", fr: "Supplément / Peinture à main levée, décor 3D, création sur mesure" },
   "add-on-cuticle-clean-up": { en: "Add-on / Cuticle clean-up", fr: "Supplément / Nettoyage des cuticules" },
   "add-on-calcium-gel": { en: "Add-on / Extra Strong Calcium gel", fr: "Supplément / Gel calcium extra-fort" },
 };
@@ -218,7 +218,7 @@ export function selectedServicePrice(service: ServiceLeaf, addOnKey?: ServiceAdd
 }
 
 export function selectedServiceDuration(service: ServiceLeaf, addOnKey?: ServiceAddOnKey) {
-  return service.durationMinutes + (service.addOn && service.addOn.key === addOnKey ? 5 : 0);
+  return service.durationMinutes + (service.addOn && service.addOn.key === addOnKey ? service.addOn.durationMinutes ?? 0 : 0);
 }
 
 export function serviceDisplayNameWithAddOn(service: ServiceLeaf, language: "en" | "fr", addOnKey?: ServiceAddOnKey) {
