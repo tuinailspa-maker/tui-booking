@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import useSWR from "swr";
 import Image from "next/image";
-import { assignTechnicians, BUSINESS_TIME_ZONE, getSlotsForDate, isOnlineOnlyTime, type PublicTechnician, type Technician } from "@/data/staffSchedule";
+import { BUSINESS_TIME_ZONE, getSlotsForDate, isOnlineOnlyTime, type PublicTechnician, type Technician } from "@/data/staffSchedule";
 import { serviceById, type ServiceAddOnKey } from "@/data/serviceTree";
 import { BookingSummary, formatCad, getBookingTotals } from "./booking-summary";
 import { ClientDetails, type ClientDetailsValue } from "./client-details";
@@ -63,9 +64,27 @@ export function BookingApp() {
   const [showMobileSummary, setShowMobileSummary] = useState(false);
   const [serviceError, setServiceError] = useState(false);
   const [durationError, setDurationError] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState(false);
   const copy = translations[language];
   const totals = useMemo(() => getBookingTotals(selections, serviceAddOns), [selections, serviceAddOns]);
-  const slots = useMemo(() => getSlotsForDate(date, partySize), [date, partySize]);
+  const requestedSlotDuration = Math.max(30, ...totals.guestDurations);
+  const availabilityKey = date ? ["/api/bookings/availability", date, partySize, requestedSlotDuration] as const : null;
+  const { data: slotAvailability, isLoading: isAvailabilityLoading } = useSWR(
+    availabilityKey,
+    async ([url, requestedDate, requestedPartySize, durationMinutes]) => {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: requestedDate, partySize: requestedPartySize, durationMinutes }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.error || "Could not load live availability.");
+      return result as { slots: Record<string, Technician[]> };
+    },
+    { revalidateOnFocus: false },
+  );
+  const availabilitySlots = slotAvailability?.slots ?? {};
+  const slots = useMemo(() => getSlotsForDate(date, 1), [date]);
   const selectedSlot = slots.find((slot) => slot.time === time);
   const remainingMinutes = selectedSlot ? minutes(selectedSlot.shift.end) - minutes(time) : 0;
   const everyGuestHasTimedService = selections.length === partySize && selections.every((ids) => ids.some((id) => (serviceById.get(id)?.durationMinutes ?? 0) > 0));
@@ -91,6 +110,7 @@ export function BookingApp() {
 
   function changeTime(nextTime: string) {
     setTime(nextTime);
+    setAvailabilityError(false);
     setTechnicianPreferences(Array.from({ length: partySize }, () => ""));
   }
 
@@ -132,6 +152,11 @@ export function BookingApp() {
   }
 
   function continueFromServices() {
+    if (!availabilitySlots[time] || assignedTechnicians().length !== partySize) {
+      setAvailabilityError(true);
+      return;
+    }
+    setAvailabilityError(false);
     if (!everyGuestHasTimedService) {
       setServiceError(true);
       return;
@@ -191,7 +216,24 @@ export function BookingApp() {
 
   function assignedTechnicians(): Technician[] {
     if (!selectedSlot) return [];
-    return assignTechnicians(selectedSlot.shift, partySize, technicianPreferences);
+    const available = availabilitySlots[time] ?? [];
+    const assignments: (Technician | undefined)[] = Array(partySize).fill(undefined);
+    const used = new Set<Technician>();
+    technicianPreferences.slice(0, partySize).forEach((preference, index) => {
+      if (preference && available.includes(preference) && !used.has(preference)) {
+        assignments[index] = preference;
+        used.add(preference);
+      }
+    });
+    for (let index = 0; index < partySize; index += 1) {
+      if (assignments[index]) continue;
+      const candidate = available.find((technician) => !used.has(technician));
+      if (candidate) {
+        assignments[index] = candidate;
+        used.add(candidate);
+      }
+    }
+    return assignments.filter((technician): technician is Technician => Boolean(technician));
   }
 
   function addToCalendar() {
@@ -305,6 +347,8 @@ export function BookingApp() {
                 onDateChange={changeDate}
                 time={time}
                 onTimeChange={changeTime}
+                availabilitySlots={availabilitySlots}
+                isAvailabilityLoading={isAvailabilityLoading}
               />
             )}
 
@@ -340,7 +384,7 @@ export function BookingApp() {
                       <span>{copy.technician}{partySize > 1 ? ` · ${copy.guest} ${activeGuest + 1}` : ""}</span>
                       <select value={technicianPreferences[activeGuest] ?? ""} onChange={(event) => changeTechnician(activeGuest, event.target.value as PublicTechnician | "")}>
                         <option value="">{copy.anyTechnician}</option>
-                        {selectedSlot.shift.primaryTechnicians.map((technician) => <option key={technician} value={technician}>{technician}</option>)}
+                        {(availabilitySlots[time] ?? []).filter((technician): technician is PublicTechnician => technician !== "Option 2").map((technician) => <option key={technician} value={technician}>{technician}</option>)}
                       </select>
                     </label>
                   )}
@@ -355,6 +399,7 @@ export function BookingApp() {
                 </div>
                 {serviceError && <p className="validation-note" role="alert">{copy.selectOneService}</p>}
                 {durationError && <p className="validation-note" role="alert">{copy.durationTooLong}</p>}
+                {availabilityError && <p className="validation-note" role="alert">{language === "en" ? "This time no longer fits the selected services or available technicians. Go back and choose another time." : "Cette heure ne convient plus aux services ou aux techniciennes disponibles. Revenez en arrière et choisissez une autre heure."}</p>}
               </section>
             )}
 

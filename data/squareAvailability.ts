@@ -17,26 +17,7 @@ function headers() {
   };
 }
 
-export async function listActiveSquareTeamMemberIds(locationId: string): Promise<Set<string>> {
-  const activeIds = new Set<string>();
-  let cursor: string | undefined;
-  do {
-    const params = new URLSearchParams({ status: "ACTIVE", limit: "100" });
-    if (cursor) params.set("cursor", cursor);
-    const response = await fetch(`${squareBaseUrl()}/team-members?${params}`, { headers: headers() });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error("Square could not list active team members.");
-    for (const member of data.team_members ?? []) {
-      if (member.status === "ACTIVE" && (!Array.isArray(member.location_ids) || member.location_ids.includes(locationId))) {
-        activeIds.add(member.id);
-      }
-    }
-    cursor = data.cursor;
-  } while (cursor);
-  return activeIds;
-}
-
-export async function isSquareSlotAvailable(teamMemberId: string, startMs: number, durationMinutes: number, locationId: string): Promise<boolean> {
+export async function getSquareAvailableStarts(teamMemberId: string, rangeStartMs: number, rangeEndMs: number, locationId: string): Promise<Map<number, number>> {
   const variation = await resolveSquareBookingVariation();
   const response = await fetch(`${squareBaseUrl()}/bookings/availability/search`, {
     method: "POST",
@@ -45,8 +26,8 @@ export async function isSquareSlotAvailable(teamMemberId: string, startMs: numbe
       query: {
         filter: {
           start_at_range: {
-            start_at: new Date(startMs - DAY_MS / 2).toISOString(),
-            end_at: new Date(startMs + DAY_MS / 2).toISOString(),
+            start_at: new Date(rangeStartMs).toISOString(),
+            end_at: new Date(rangeEndMs).toISOString(),
           },
           location_id: locationId,
           segment_filters: [{
@@ -60,13 +41,21 @@ export async function isSquareSlotAvailable(teamMemberId: string, startMs: numbe
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.errors?.map((error: { detail?: string }) => error.detail).filter(Boolean).join("; ") || "Square availability search failed.");
 
-  return (data.availabilities ?? []).some((availability: {
+  return new Map<number, number>((data.availabilities ?? []).flatMap((availability: {
     start_at?: string;
     appointment_segments?: { duration_minutes?: number; team_member_id?: string }[];
   }) => {
-    const slotStart = Date.parse(availability.start_at ?? "");
+    const start = Date.parse(availability.start_at ?? "");
     const segment = availability.appointment_segments?.find((item) => item.team_member_id === teamMemberId);
-    const slotDuration = segment?.duration_minutes ?? 0;
-    return slotStart === startMs && slotDuration >= durationMinutes;
-  });
+    return Number.isFinite(start) && segment ? [[start, segment.duration_minutes ?? 0]] : [];
+  }));
+}
+
+export async function isSquareSlotAvailable(teamMemberId: string, startMs: number, durationMinutes: number, locationId: string): Promise<boolean> {
+  const rangeStart = Math.max(Date.now(), startMs - DAY_MS / 2);
+  const starts = await getSquareAvailableStarts(teamMemberId, rangeStart, rangeStart + DAY_MS, locationId);
+  for (let offsetMinutes = 0; offsetMinutes < durationMinutes; offsetMinutes += 30) {
+    if (!starts.has(startMs + offsetMinutes * 60_000)) return false;
+  }
+  return true;
 }

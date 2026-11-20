@@ -9,6 +9,7 @@ import {
   staffSchedule,
   type DateOption,
 } from "@/data/staffSchedule";
+import type { Technician } from "@/data/staffSchedule";
 import type { Language, BookingCopy } from "./copy";
 
 type StepOneProps = {
@@ -20,6 +21,8 @@ type StepOneProps = {
   onDateChange: (date: string) => void;
   time: string;
   onTimeChange: (time: string) => void;
+  availabilitySlots: Record<string, Technician[]>;
+  isAvailabilityLoading: boolean;
 };
 
 function fullDateLabel(iso: string, language: Language) {
@@ -31,13 +34,13 @@ function fullDateLabel(iso: string, language: Language) {
   }).format(new Date(`${iso}T12:00:00Z`));
 }
 
-export function StepOne({ language, copy, partySize, onPartySizeChange, date, onDateChange, time, onTimeChange }: StepOneProps) {
+export function StepOne({ language, copy, partySize, onPartySizeChange, date, onDateChange, time, onTimeChange, availabilitySlots, isAvailabilityLoading }: StepOneProps) {
   const [dates, setDates] = useState<DateOption[]>([]);
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setDates(getUpcomingDates(language)));
     return () => window.cancelAnimationFrame(frame);
   }, [language]);
-  const slots = getSlotsForDate(date, partySize);
+  const slots = getSlotsForDate(date, 1).filter((slot) => Boolean(availabilitySlots[slot.time]));
   const selectedSlot = slots.find((slot) => slot.time === time);
   const closingTime = getClosingTimeForDate(date);
 
@@ -79,7 +82,7 @@ export function StepOne({ language, copy, partySize, onPartySizeChange, date, on
         </div>
         <div className="date-picker" role="group" aria-label={copy.upcomingDates}>
           {dates.map((option) => {
-            const isUnavailable = !staffSchedule[option.dayOfWeek].some((shift) => shift.maxGuests >= partySize);
+            const isUnavailable = !staffSchedule[option.dayOfWeek].length;
             return (
               <button
                 className={`date-option${date === option.iso ? " is-selected" : ""}${isUnavailable ? " is-closed" : ""}`}
@@ -110,6 +113,8 @@ export function StepOne({ language, copy, partySize, onPartySizeChange, date, on
         </div>
         {!date ? (
           <p className="empty-state">{copy.date}</p>
+        ) : isAvailabilityLoading ? (
+          <p className="empty-state" role="status">{language === "en" ? "Checking live availability…" : "Vérification des disponibilités…"}</p>
         ) : slots.length === 0 ? (
           <p className="empty-state">{copy.noSlots}</p>
         ) : (
