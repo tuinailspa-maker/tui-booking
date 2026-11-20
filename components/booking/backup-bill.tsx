@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useId, useRef, useState } from "react";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { selectedServiceDuration, selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
@@ -21,12 +20,12 @@ type BackupBillProps = {
   onMarkCheckedOut?: () => void;
 };
 
-type TipChoice = "none" | "15" | "20" | "25" | "custom";
+type TipChoice = "none" | "15" | "18" | "20" | "custom";
 
 const TPS_RATE = 0.05;
 const TVQ_RATE = 0.09975;
-const TIP_PERCENTS: Partial<Record<TipChoice, number>> = { "15": 0.15, "20": 0.2, "25": 0.25 };
-const TIP_CHOICES: TipChoice[] = ["none", "15", "20", "25", "custom"];
+const TIP_PERCENTS: Partial<Record<TipChoice, number>> = { "15": 0.15, "18": 0.18, "20": 0.2 };
+const TIP_CHOICES: TipChoice[] = ["15", "18", "20", "custom", "none"];
 
 const labels = {
   en: {
@@ -35,8 +34,8 @@ const labels = {
     close: "Close",
     copy: "Copy Bill",
     copied: "Copied",
-    print: "Browser Print / PDF",
-    printStar: "Print 58mm (Star mPOP)",
+    print: "Print / PDF (Mac)",
+    printStar: "Print Star mPOP (iPad)",
     technician: "Technician",
     markCheckedOut: "Mark checked out",
     guest: "GUEST",
@@ -48,7 +47,7 @@ const labels = {
     beforeTip: "Total before tip",
     tip: "Tip",
     grandTotal: "Grand Total",
-    tipChoices: { none: "No Tip (0%)", "15": "15%", "20": "20%", "25": "25%", custom: "Custom" } as Record<TipChoice, string>,
+    tipChoices: { none: "No Tip", "15": "15%", "18": "18%", "20": "20%", custom: "Custom" } as Record<TipChoice, string>,
     customLabel: "Custom tip amount",
     empty: "No services selected.",
     date: "Date",
@@ -60,8 +59,8 @@ const labels = {
     close: "Fermer",
     copy: "Copier le reçu",
     copied: "Copié",
-    print: "Imprimer / PDF (navigateur)",
-    printStar: "Imprimer 58 mm (Star mPOP)",
+    print: "Imprimer / PDF (Mac)",
+    printStar: "Imprimer Star mPOP (iPad)",
     technician: "Technicienne",
     markCheckedOut: "Marquer comme payé",
     guest: "CLIENT",
@@ -73,7 +72,7 @@ const labels = {
     beforeTip: "Total avant pourboire",
     tip: "Pourboire",
     grandTotal: "Total",
-    tipChoices: { none: "Sans pourboire (0%)", "15": "15%", "20": "20%", "25": "25%", custom: "Autre" } as Record<TipChoice, string>,
+    tipChoices: { none: "Sans pourboire", "15": "15%", "18": "18%", "20": "20%", custom: "Autre" } as Record<TipChoice, string>,
     customLabel: "Montant du pourboire",
     empty: "Aucun service sélectionné.",
     date: "Date",
@@ -117,7 +116,20 @@ type StarReceiptData = {
   grandTotal: number;
 };
 
+export function buildPrintableReceiptHtml(receiptData: StarReceiptData, lang: Language) {
+  const copy = lang === "en"
+    ? { date: "Date / Time", guest: "Guest", technician: "Technician", minutes: "min", discount: "Combo Discount", subtotal: "Subtotal", tps: "GST 5%", tvq: "QST 9.975%", beforeTip: "Total before tip", tip: "Tip", total: "TOTAL", hours: "8:00 AM – 10:00 AM: Booking online only · After 10:00 AM: Walk-ins welcome", thanks: "Thank you for visiting!", thanksFr: "Merci de votre visite !", policyEn: "We have a NO REFUND policy for all salon services. Please tell us at the time of service or within 48 hours if you are not completely satisfied.", policyFr: "Nous avons une politique de NON-REMBOURSEMENT pour tous les services du salon. Merci de nous le faire savoir pendant votre prestation ou dans les 48 heures." }
+    : { date: "Date / heure", guest: "Client", technician: "Technicienne", minutes: "min", discount: "Rabais combo", subtotal: "Sous-total", tps: "TPS 5%", tvq: "TVQ 9,975%", beforeTip: "Total avant pourboire", tip: "Pourboire", total: "TOTAL", hours: "8 h–10 h : Réservation en ligne seulement · Après 10 h : Clients sans rendez-vous bienvenus", thanks: "Merci de votre visite !", thanksFr: "Thank you for visiting!", policyEn: "We have a NO REFUND policy for all salon services. Please let us know at the time of service or within 48 hours.", policyFr: "Nous avons une politique de NON-REMBOURSEMENT pour tous les services du salon. Avisez-nous pendant votre prestation ou dans les 48 heures." };
+  const money = (amount: number) => new Intl.NumberFormat(lang === "en" ? "en-CA" : "fr-CA", { style: "currency", currency: "CAD" }).format(amount);
+  const guestRows = receiptData.guests.map((guest, index) => `<section class="guest"><strong>${copy.guest} ${index + 1}</strong><div class="meta">${copy.technician}: ${escapeHtml(guest.technician || "—")}</div>${guest.items.map((item) => `<div class="row item"><span>${escapeHtml(item.name)}${item.addOnName ? `<small>${escapeHtml(item.addOnName)} +${money(item.addOnPrice ?? 0)}</small>` : ""}<small>${item.duration} ${copy.minutes}</small></span><b>${money(item.price)}</b></div>`).join("")}${guest.discount > 0 ? `<div class="row"><span>${copy.discount}</span><b>-${money(guest.discount)}</b></div>` : ""}</section>`).join("");
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tui Nail Spa receipt</title><style>@page{size:58mm auto;margin:0}*{box-sizing:border-box}html,body{width:58mm;margin:0;padding:0;background:#fff;color:#000}body{font:10px/1.3 Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}.receipt{width:58mm;padding:2.5mm 3mm 12px}.brand{display:grid;grid-template-columns:1fr 2fr;align-items:center;gap:2mm;padding-bottom:2mm;border-bottom:1px dashed #000}.mark{display:grid;place-items:center;width:100%;aspect-ratio:1;border:2px solid #000;border-radius:50%;font:bold 22px Georgia,serif}.store b{display:block;font-size:12px}.store address,.store a{color:#000;font:normal 8px/1.3 Arial,sans-serif;text-decoration:none}.hours,.meta-line{padding:2mm 0;border-bottom:1px dashed #000;font-size:8px}.row{display:flex;justify-content:space-between;gap:2mm;margin:1.2mm 0}.row span{min-width:0;overflow-wrap:anywhere}.row b{white-space:nowrap;font-variant-numeric:tabular-nums}.item{align-items:flex-start}.item small{display:block;font-size:8px}.guest{padding:1.5mm 0;border-bottom:1px dashed #000}.guest>strong{font-size:9px}.meta{font-size:8px}.totals{padding-top:2mm}.tax-id{padding-top:2mm;border-top:1px dashed #000;font-size:8px}.grand{margin-top:2mm;padding-top:2mm;border-top:1px dashed #000;font-size:12px;font-weight:700}.footer{padding-top:2mm;text-align:center;font-size:8px}.footer b{display:block;font-size:10px}.policy{margin-top:2mm;text-align:left;font-size:7px}.site{font-weight:700}</style></head><body><main class="receipt"><header class="brand"><span class="mark" aria-label="Tui Nail Spa">T</span><div class="store"><b>Tui Nail Spa</b><address>1570 Rue Saint-Timothée, Ste 100<br>Montréal, QC H2L 3N9<br><a href="tel:4387777043">438-777-7043</a><br><span class="site">www.tuinailspa.ca</span></address></div></header><div class="hours">${copy.hours}</div><div class="meta-line"><b>${copy.date}:</b> ${escapeHtml(receiptData.dateTime)}${receiptData.customerName ? `<br><b>${copy.guest}:</b> ${escapeHtml(receiptData.customerName)}` : ""}${receiptData.customerPhone ? `<br>${escapeHtml(receiptData.customerPhone)}` : ""}</div>${guestRows}<section class="totals"><div class="row"><span>${copy.subtotal}</span><b>${money(receiptData.subtotal)}</b></div><div class="row"><span>${copy.tps}</span><b>${money(receiptData.tps)}</b></div><div class="row"><span>${copy.tvq}</span><b>${money(receiptData.tvq)}</b></div><div class="tax-id">GST/HST 770848539RT0001<br>QST 4019625996TQ0001</div><div class="row"><span>${copy.beforeTip}</span><b>${money(receiptData.subtotal + receiptData.tps + receiptData.tvq)}</b></div><div class="row"><span>${copy.tip}</span><b>${money(receiptData.tip)}</b></div><div class="row grand"><span>${copy.total}</span><b>${money(receiptData.grandTotal)}</b></div></section><footer class="footer"><b>${copy.thanks}</b><div>${copy.thanksFr}</div><div>Nous apprécions vos affaires !<br>We appreciate your business!</div><div class="policy">${copy.policyFr}<br>${copy.policyEn}</div></footer></main></body></html>`;
+}
+
 export function buildStarMpopReceiptHtml(receiptData: StarReceiptData, lang: Language) {
+  return buildPrintableReceiptHtml(receiptData, lang);
+}
+
+export function buildLegacyStarMpopReceiptHtml(receiptData: StarReceiptData, lang: Language) {
   const copy = lang === "en"
     ? { dateTime: "Date / Time", guest: "Guest", technician: "Technician", minutes: "min", discount: "Combo Discount", subtotal: "Subtotal", tps: "GST 5%", tvq: "QST 9.975%", tip: "Tip", total: "Grand Total", hours: "8:00 AM – 10:00 AM: Booking online only · After 10:00 AM: Walk-ins welcome", thanks: "Thank you for visiting!" }
     : { dateTime: "Date / heure", guest: "Client", technician: "Technicienne", minutes: "min", discount: "Rabais combo", subtotal: "Sous-total", tps: "TPS 5%", tvq: "TVQ 9,975%", tip: "Pourboire", total: "Total", hours: "8 h – 10 h : Réservation en ligne seulement · Après 10 h : Clients sans rendez-vous bienvenus", thanks: "Merci de votre visite !" };
@@ -191,24 +203,13 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
   };
 
   function printInBrowser() {
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-    const receiptHtml = buildStarMpopReceiptHtml(receiptData, receiptLanguage);
-    printWindow.addEventListener("load", () => printWindow.print(), { once: true });
-    printWindow.document.open();
-    printWindow.document.write(receiptHtml);
-    printWindow.document.close();
+    window.print();
   }
 
   function print58mm() {
-    const receiptHtml = buildStarMpopReceiptHtml(receiptData, receiptLanguage);
-    const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    if (isIOS) {
-      const back = encodeURIComponent(window.location.href);
-      window.location.href = `starpassprnt://v1/print/nopreview?html=${encodeURIComponent(receiptHtml)}&size=2&drawer=off&back=${back}`;
-      return;
-    }
-    printInBrowser();
+    const receiptHtml = buildPrintableReceiptHtml(receiptData, receiptLanguage);
+    const back = encodeURIComponent(window.location.href);
+    window.location.href = `starpassprnt://v1/print/nopreview?html=${encodeURIComponent(receiptHtml)}&size=2&drawer=off&back=${back}`;
   }
 
   function closeOnBackdropClick(event: React.MouseEvent<HTMLDialogElement>) {
@@ -261,10 +262,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
       >
         <div className="bill-sheet">
           <header className="bill-header">
-            <div className="bill-header-brand">
-              <Image src="/tui-logo.png" alt="Tui Nail Spa logo" width={809} height={811} />
-              <strong style={{ fontSize: "12px" }}>Tui Nail Spa Montreal</strong>
-            </div>
+            <h2 id={titleId} className="sr-only">{text.title}</h2>
             <div className="bill-header-controls">
               <div className="receipt-language" role="group" aria-label={receiptLanguage === "en" ? "Receipt language" : "Langue du reçu"}>
                 <button type="button" aria-pressed={receiptLanguage === "en"} onClick={() => setReceiptLanguage("en")}>EN</button>
@@ -278,45 +276,45 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
             </div>
           </header>
 
-          <h2 id={titleId} className="sr-only">{text.title}</h2>
-          <div className="receipt-heading">
-            <address className="receipt-contact">
-              <span>{RECEIPT_ADDRESS} · {RECEIPT_PHONE}</span>
-              <span>{RECEIPT_GST} · {RECEIPT_QST}</span>
-            </address>
-          </div>
-
-          {receiptDateTime && <p className="receipt-date"><strong>{text.date}:</strong> {receiptDateTime}</p>}
-          {(customerName || customerPhone) && <p className="receipt-date"><strong>{customerName || text.guest}</strong>{customerPhone ? ` · ${customerPhone}` : ""}</p>}
-
-          <div className="bill-items">
-            {guests.length === 0 || subtotal === 0 ? <p className="bill-empty">{text.empty}</p> : guests.map((items, index) => items.length > 0 && (
-              <section key={index} className="bill-guest">
-                <h3>{text.guest} {index + 1}</h3>
-                <ul>
-                  {items.map((item) => (
-                    <li key={item.service.id}>
-                      <span>
-                        {serviceDisplayNameWithAddOn(item.service, receiptLanguage, item.addOnKey)}
-                        <small>{selectedServiceDuration(item.service, item.addOnKey)} {text.minutes}</small>
-                      </span>
-                      <span>{money(selectedServicePrice(item.service, item.addOnKey))}</span>
-                    </li>
-                  ))}
-                </ul>
+          <section id="printable-receipt" className="printable-receipt" aria-label={text.title}>
+            <header className="print-receipt-brand">
+              <span className="print-receipt-logo" aria-hidden="true">T</span>
+              <div><strong>Tui Nail Spa</strong><address>{RECEIPT_ADDRESS}<br />{RECEIPT_PHONE}<br />www.tuinailspa.ca</address></div>
+            </header>
+            <p className="print-receipt-hours">{receiptLanguage === "en" ? "8:00 AM – 10:00 AM: Booking online only · After 10:00 AM: Walk-ins welcome" : "8 h–10 h : Réservation en ligne seulement · Après 10 h : Clients sans rendez-vous bienvenus"}</p>
+            {(receiptDateTime || customerName || customerPhone) && <div className="print-receipt-meta">
+              {receiptDateTime && <div><strong>{receiptLanguage === "en" ? "Date / Time" : "Date / heure"}:</strong> {receiptDateTime}</div>}
+              {customerName && <div><strong>{receiptLanguage === "en" ? "Guest" : "Client"}:</strong> {customerName}</div>}
+              {customerPhone && <div>{customerPhone}</div>}
+            </div>}
+            {guests.map((items, index) => (
+              <section key={index} className="print-receipt-guest">
+                <strong>{text.guest} {index + 1}</strong>
+                <div className="print-receipt-technician">{text.technician}: {technicians[index] || "—"}</div>
+                {items.map((item) => (
+                  <div className="print-receipt-row" key={item.service.id}>
+                    <span>{serviceDisplayNameWithAddOn(item.service, receiptLanguage)}{item.service.addOn?.key === item.addOnKey && <small>{receiptLanguage === "en" ? item.service.addOn.nameEn : item.service.addOn.nameFr} +{money(item.service.addOn.priceCad)}</small>}<small>{selectedServiceDuration(item.service, item.addOnKey)} {text.minutes}</small></span>
+                    <strong>{money(selectedServicePrice(item.service, item.addOnKey))}</strong>
+                  </div>
+                ))}
+                {getComboDiscountDetails([selections[index] ?? []], [serviceAddOns[index] ?? {}]).amount > 0 && <div className="print-receipt-row"><span>{text.comboDiscount}</span><strong>-{money(getComboDiscountDetails([selections[index] ?? []], [serviceAddOns[index] ?? {}]).amount)}</strong></div>}
               </section>
             ))}
-          </div>
-
-          <dl className="bill-totals">
-            {comboDiscount > 0 && <div><dt>{text.comboDiscount}{comboDiscount > 5 ? ` (${comboDiscount / 5}x)` : ""}</dt><dd>-{money(comboDiscount)}</dd></div>}
-            <div><dt>{text.subtotal}</dt><dd>{money(subtotal)}</dd></div>
-            <div><dt>{text.tps}</dt><dd>{money(tps)}</dd></div>
-            <div><dt>{text.tvq}</dt><dd>{money(tvq)}</dd></div>
-            <div><dt>{text.beforeTip}</dt><dd>{money(totalBeforeTip)}</dd></div>
-            <div><dt>{text.tip}</dt><dd>{money(tipAmount)}</dd></div>
-            <div className="bill-grand-total"><dt>{text.grandTotal}</dt><dd>{money(grandTotal)}</dd></div>
-          </dl>
+            <section className="print-receipt-totals">
+              <div className="print-receipt-row"><span>{text.subtotal}</span><strong>{money(subtotal)}</strong></div>
+              <div className="print-receipt-row"><span>{text.tps}</span><strong>{money(tps)}</strong></div>
+              <div className="print-receipt-row"><span>{text.tvq}</span><strong>{money(tvq)}</strong></div>
+              <div className="print-receipt-tax-ids">GST 5% · 770848539RT0001<br />QST 9.975% · 4019625996TQ0001</div>
+              <div className="print-receipt-row"><span>{text.beforeTip}</span><strong>{money(totalBeforeTip)}</strong></div>
+              <div className="print-receipt-row"><span>{text.tip}</span><strong>{money(tipAmount)}</strong></div>
+              <div className="print-receipt-row print-receipt-grand"><strong>{text.grandTotal}</strong><strong>{money(grandTotal)}</strong></div>
+            </section>
+            <footer className="print-receipt-footer">
+              <strong>{receiptLanguage === "en" ? "Thank you for visiting!" : "Merci de votre visite !"}</strong>
+              <div>Nous apprécions vos affaires !<br />We appreciate your business!</div>
+              <p>{RETURN_POLICY_FR}</p><p>{RETURN_POLICY_EN}</p>
+            </footer>
+          </section>
 
           <div className="bill-tips">
             <label className="bill-tip-select-label" htmlFor={tipChoiceId}>{receiptLanguage === "en" ? "Tip" : "Pourboire"} · {receiptLanguage === "en" ? "Based on" : "Calculé sur"} {money(subtotal)}</label>
@@ -340,15 +338,6 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
             )}
           </div>
 
-          <footer className="receipt-footer">
-            <div className="receipt-social"><strong>www.tuinailspa.ca</strong><span>Instagram @tuinailspa</span><span>Facebook Tui Nail Spa</span></div>
-            <div className="receipt-policy">
-              <strong>Politique de retour / Return Policy:</strong>
-              <p>{RETURN_POLICY_FR}</p>
-              <p>{RETURN_POLICY_EN}</p>
-            </div>
-            <div className="receipt-closing"><span>Nous apprécions vos affaires!</span><span>We appreciate your business!</span></div>
-          </footer>
           {onMarkCheckedOut && <button className="bill-mark-checked-out" type="button" onClick={markCheckedOut}>{markCheckedOutLabel ?? text.markCheckedOut}</button>}
         </div>
       </dialog>
