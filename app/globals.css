@@ -864,6 +864,8 @@ button { color: inherit; }
  .admin-tree-branch-toggle { width: 100%; min-height: 35px; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 0; background: #fff; color: #424850; cursor: pointer; text-align: left; font-size: 9px; }
  .admin-tree-branch-toggle:hover { background: #f8f9fa; }
  .admin-tree-branch-toggle.is-root { min-height: 40px; background: #f7f8f9; color: #20242a; font-size: 10px; font-weight: 650; }
+ .admin-tree-branch-label { min-width: 0; display: grid; gap: 2px; }
+ .admin-tree-branch-label small { color: #7b828b; font-size: 7px; font-weight: 400; }
  .admin-tree-chevron { color: #89919a; font-size: 13px; transform: rotate(-90deg); transition: transform .15s ease; }
  .admin-tree-chevron.is-open { transform: rotate(0); }
  .admin-tree-count { min-width: 17px; height: 17px; display: grid; place-items: center; margin-left: auto; border-radius: 50%; background: #edf3f9; color: #41678d; font-size: 8px; }
@@ -878,6 +880,7 @@ button { color: inherit; }
  .admin-drawer-services .admin-service-check { flex: 0 0 17px; width: 17px; height: 17px; border: 1px solid #d7dce1; border-radius: 4px; display: grid; place-items: center; color: #52785a; font-size: 10px; }
  .admin-tree-service.is-selected .admin-service-check { border-color: #b6d8ff; background: #eaf4ff; }
  .admin-drawer-services .admin-service-price { margin-left: auto; color: #20242a; font: 12px Georgia, serif; white-space: nowrap; }
+ .admin-drawer-services .admin-service-price small { color: #7b828b; font: 8px Arial, sans-serif; }
  .admin-drawer-services .admin-addon-choice { display: grid; gap: 5px; padding: 0 8px 8px 33px; color: #68717c; font-size: 8px; }
  .admin-drawer-services .admin-addon-choice select { min-height: 29px; padding: 0 6px; border: 1px solid #dfe3e8; border-radius: 4px; background: #fff; color: #20242a; font-size: 8px; }
  .admin-tree-empty { margin: 0; padding: 18px 12px; color: #737b85; font-size: 9px; }

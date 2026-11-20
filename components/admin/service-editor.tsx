@@ -69,7 +69,7 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
   const [name, setName] = useState(customerName);
   const [phone, setPhone] = useState(customerPhone);
   const [search, setSearch] = useState("");
-  const [expandedServiceBranches, setExpandedServiceBranches] = useState(["hands", "feet", "waxing", "variable-add-ons"]);
+  const [expandedServiceBranches, setExpandedServiceBranches] = useState<string[]>([]);
   const [validation, setValidation] = useState("");
   const [mode, setMode] = useState<"walkin" | "appointment">("walkin");
   const [partySize, setPartySize] = useState(guestCount);
@@ -263,7 +263,7 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
         <button className="admin-tree-service-toggle" type="button" aria-pressed={selected} onClick={() => toggleService(node.id)} disabled={Boolean(squareOrderId)}>
           <span className="admin-service-check" aria-hidden="true">{selected ? "✓" : "+"}</span>
           <span className="admin-tree-service-name"><strong>{node.nameEn}</strong><small>{node.displayNameEn}</small></span>
-          <span className="admin-service-price">${selectedServicePrice(node, selectedAddOn)}</span>
+          <span className="admin-service-price">{selectedAddOn ? `$${selectedServicePrice(node, selectedAddOn)}` : node.priceLabel ?? `$${selectedServicePrice(node)}`}{selectedServiceDuration(node, selectedAddOn) > 0 && <small> · {selectedServiceDuration(node, selectedAddOn)} min</small>}</span>
         </button>
         {selected && node.addOn && <label className="admin-addon-choice">Optional: {node.addOn.nameEn}
           <select value={selectedAddOn} onChange={(event) => changeAddOn(node.id, event.target.value as ServiceAddOnKey | "")} disabled={Boolean(squareOrderId)}>
@@ -282,7 +282,7 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
     return <section className={`admin-tree-branch depth-${Math.min(depth, 3)}`} key={node.id}>
       <button className={`admin-tree-branch-toggle${depth === 0 ? " is-root" : ""}`} type="button" aria-expanded={isExpanded} onClick={() => setExpandedServiceBranches((current) => current.includes(node.id) ? current.filter((id) => id !== node.id) : [...current, node.id])}>
         <span className={`admin-tree-chevron${isExpanded ? " is-open" : ""}`} aria-hidden="true">⌄</span>
-        <span>{node.nameEn}</span>
+        <span className="admin-tree-branch-label">{node.nameEn}{node.noteEn && <small>{node.noteEn}</small>}</span>
         {selectedCount > 0 && <span className="admin-tree-count">{selectedCount}</span>}
       </button>
       {isExpanded && <div className="admin-tree-children">{node.children.map((child) => renderServiceNode(child, depth + 1))}</div>}
