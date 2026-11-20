@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
-import type { Technician } from "@/data/staffSchedule";
+import { isWithinBusinessHours, type Technician } from "@/data/staffSchedule";
 
 const baseUrl = () => process.env.SQUARE_ENVIRONMENT === "sandbox" ? "https://connect.squareupsandbox.com/v2" : "https://connect.squareup.com/v2";
 
@@ -17,6 +17,9 @@ export async function POST(request: Request) {
   const locationId = process.env.SQUARE_LOCATION_ID;
   if (!token || !locationId) return NextResponse.json({ error: "Square is not configured." }, { status: 500 });
   const requestedGuests = guests as { technician: Technician; durationMinutes: number }[];
+  if (!isWithinBusinessHours(new Date(startMs), Math.max(...requestedGuests.map((guest) => guest.durationMinutes)))) {
+    return NextResponse.json({ available: false, availableTechnicians: [] });
+  }
   const names = requestedGuests.map((guest) => guest.technician);
   if (new Set(names).size !== names.length) return NextResponse.json({ available: false, availableTechnicians: [] });
   const results = await Promise.all(requestedGuests.map(async ({ technician: name, durationMinutes }) => {

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { allServices, selectedServicePrice, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
+import { allServices, selectedServiceDuration, selectedServicePrice, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
+import { getClosingTimeForDate } from "@/data/staffSchedule";
 import { BackupBill } from "@/components/booking/backup-bill";
 import { AppointmentDrawer, type AppointmentStatus } from "./appointment-drawer";
 
@@ -58,6 +59,10 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
   const [notes, setNotes] = useState("");
   const [bookingDate, setBookingDate] = useState(datePartsForTime(startAt).date);
   const [bookingTime, setBookingTime] = useState(`${datePartsForTime(startAt).hour}:${datePartsForTime(startAt).minute}`);
+  const closingTime = getClosingTimeForDate(bookingDate);
+  const [closingHour, closingMinute] = closingTime.split(":").map(Number);
+  const closingMinutes = closingHour * 60 + closingMinute;
+  const lastStartTime = `${String(Math.floor((closingMinutes - 30) / 60)).padStart(2, "0")}:${String((closingMinutes - 30) % 60).padStart(2, "0")}`;
   const [technicians, setTechnicians] = useState<string[]>(() => Array.from({ length: 3 }, (_, index) => initialTechnicians[index] ?? (index === 0 ? technician || "Jenny" : ["Jenny", "Melika", "Nana"].filter((name) => name !== technician)[index - 1] ?? "Jenny")));
   const [submitting, setSubmitting] = useState(false);
   const [sendingToSquare, setSendingToSquare] = useState(false);
@@ -106,6 +111,16 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
     const assigned = technicians.slice(0, partySize);
     if (new Set(assigned).size !== partySize) { setValidation("Choose a different technician for each guest."); return; }
     if (!bookingDate || !bookingTime) { setValidation("Choose an appointment date and start time."); return; }
+    const [startHour, startMinute] = bookingTime.split(":").map(Number);
+    const longestGuestDuration = Math.max(...selected.map((ids, index) => ids.reduce((total, id) => {
+      const service = allServices.find((item) => item.id === id);
+      return total + (service ? selectedServiceDuration(service, addOns[index]?.[id]) : 0);
+    }, 0)));
+    const startMinutes = startHour * 60 + startMinute;
+    if (startMinutes < 8 * 60 || startMinutes >= closingMinutes || startMinutes + longestGuestDuration > closingMinutes) {
+      setValidation("Appointments must start between 8:00 AM and the daily closing time, and finish by closing.");
+      return;
+    }
     setSubmitting(true); setValidation("");
     try {
       const localAsUtc = Date.parse(`${bookingDate}T${bookingTime}:00Z`);
@@ -233,7 +248,7 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
       </div>}
       {walkIn && mode === "appointment" && <div className="admin-booking-fields">
         <label>Appointment date<input type="date" value={bookingDate} onChange={(event) => setBookingDate(event.target.value)} /></label>
-        <label>Start time<input type="time" value={bookingTime} onChange={(event) => setBookingTime(event.target.value)} /></label>
+        <label>Start time<input type="time" min="08:00" max={lastStartTime} step="1800" value={bookingTime} onChange={(event) => setBookingTime(event.target.value)} /></label>
         <label>Party size<select value={partySize} onChange={(event) => { const size = Number(event.target.value); setPartySize(size); setServiceIds((current) => Array.from({ length: size }, (_, index) => current[index] ?? [])); setAddOns((current) => Array.from({ length: size }, (_, index) => current[index] ?? {})); setActiveGuest(Math.min(activeGuest, size - 1)); }}>{[1, 2, 3].map((size) => <option key={size} value={size}>{size} {size === 1 ? "guest" : "guests"}</option>)}</select></label>
       </div>}
       {walkIn && mode === "appointment" && <label className="admin-search-label">Notes<textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={500} placeholder="Anything the team should know?" /></label>}

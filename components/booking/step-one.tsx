@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   BUSINESS_TIME_ZONE,
   formatSlotTime,
+  getClosingTimeForDate,
   getSlotsForDate,
   getUpcomingDates,
   isOnlineOnlyTime,
@@ -38,6 +39,7 @@ export function StepOne({ language, copy, partySize, onPartySizeChange, date, on
   }, [language]);
   const slots = getSlotsForDate(date, partySize);
   const selectedSlot = slots.find((slot) => slot.time === time);
+  const closingTime = getClosingTimeForDate(date);
 
   return (
     <section className="booking-step" aria-labelledby="step-one-title">
@@ -101,6 +103,10 @@ export function StepOne({ language, copy, partySize, onPartySizeChange, date, on
         <div className="section-label-row">
           <h2>{copy.time}</h2>
           <span className="field-hint">{BUSINESS_TIME_ZONE}</span>
+        </div>
+        <div className="booking-window-notes" aria-label={copy.time}>
+          <p className="booking-window-note is-online-only"><span aria-hidden="true" />{copy.slotOnlineOnly}</p>
+          <p className="booking-window-note is-walk-ins"><span aria-hidden="true" />{copy.slotWalkInsWelcome.replace("{closeTime}", formatSlotTime(closingTime, language))}</p>
         </div>
         {!date ? (
           <p className="empty-state">{copy.date}</p>

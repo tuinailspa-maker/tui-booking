@@ -1,4 +1,7 @@
 export const BUSINESS_TIME_ZONE = "America/Toronto";
+export const BUSINESS_OPEN_TIME = "08:00";
+const BUSINESS_OPEN_MINUTES = 8 * 60;
+const BUSINESS_CLOSE_TIMES = ["19:00", "19:00", "19:00", "19:00", "20:00", "20:00", "19:00"] as const;
 
 export type PublicTechnician = "Jenny" | "Melika" | "Nana" | "Option 1";
 type InternalTechnician = "Option 2";
@@ -13,14 +16,20 @@ export type ShiftBlock = {
 };
 
 export const staffSchedule: Record<number, ShiftBlock[]> = {
-  0: [{ start: "07:00", end: "21:00", primaryTechnicians: ["Jenny"], maxGuests: 1 }],
-  1: [{ start: "07:00", end: "21:00", primaryTechnicians: ["Jenny"], maxGuests: 1 }],
-  2: [{ start: "07:00", end: "21:00", primaryTechnicians: ["Jenny", "Melika"], overflowTechnician: "Option 2", maxGuests: 3 }],
-  3: [{ start: "07:00", end: "21:00", primaryTechnicians: ["Jenny", "Nana"], overflowTechnician: "Option 2", maxGuests: 3 }],
-  4: [{ start: "07:00", end: "21:00", primaryTechnicians: ["Jenny", "Melika", "Nana"], overflowTechnician: "Option 2", maxGuests: 3 }],
-  5: [{ start: "07:00", end: "21:00", primaryTechnicians: ["Jenny", "Melika", "Nana"], overflowTechnician: "Option 2", maxGuests: 3 }],
-  6: [{ start: "07:00", end: "21:00", primaryTechnicians: ["Jenny", "Option 1"], overflowTechnician: "Option 2", maxGuests: 3 }],
+  0: [{ start: BUSINESS_OPEN_TIME, end: BUSINESS_CLOSE_TIMES[0], primaryTechnicians: ["Jenny"], maxGuests: 1 }],
+  1: [{ start: BUSINESS_OPEN_TIME, end: BUSINESS_CLOSE_TIMES[1], primaryTechnicians: ["Jenny"], maxGuests: 1 }],
+  2: [{ start: BUSINESS_OPEN_TIME, end: BUSINESS_CLOSE_TIMES[2], primaryTechnicians: ["Jenny", "Melika"], overflowTechnician: "Option 2", maxGuests: 3 }],
+  3: [{ start: BUSINESS_OPEN_TIME, end: BUSINESS_CLOSE_TIMES[3], primaryTechnicians: ["Jenny", "Nana"], overflowTechnician: "Option 2", maxGuests: 3 }],
+  4: [{ start: BUSINESS_OPEN_TIME, end: BUSINESS_CLOSE_TIMES[4], primaryTechnicians: ["Jenny", "Melika", "Nana"], overflowTechnician: "Option 2", maxGuests: 3 }],
+  5: [{ start: BUSINESS_OPEN_TIME, end: BUSINESS_CLOSE_TIMES[5], primaryTechnicians: ["Jenny", "Melika", "Nana"], overflowTechnician: "Option 2", maxGuests: 3 }],
+  6: [{ start: BUSINESS_OPEN_TIME, end: BUSINESS_CLOSE_TIMES[6], primaryTechnicians: ["Jenny", "Option 1"], overflowTechnician: "Option 2", maxGuests: 3 }],
 };
+
+export function getClosingTimeForDate(date: string): string {
+  if (!date) return BUSINESS_CLOSE_TIMES[0];
+  const dayOfWeek = new Date(`${date}T12:00:00Z`).getUTCDay();
+  return staffSchedule[dayOfWeek]?.map((shift) => shift.end).sort().at(-1) ?? "19:00";
+}
 
 export type DateOption = {
   iso: string;
@@ -82,6 +91,30 @@ function fromMinutes(minutes: number): string {
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 }
 
+export function getTorontoMinutesOfDay(value: Date | string): number {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return Number.NaN;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: BUSINESS_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return Number(values.hour) * 60 + Number(values.minute);
+}
+
+export function isWithinBusinessHours(value: Date | string, durationMinutes = 0): boolean {
+  const date = value instanceof Date ? value : new Date(value);
+  const startMinutes = getTorontoMinutesOfDay(date);
+  if (!Number.isFinite(startMinutes) || !Number.isFinite(durationMinutes) || durationMinutes < 0) return false;
+  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: BUSINESS_TIME_ZONE, weekday: "short" }).format(date);
+  const weekdayIndex = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday);
+  const closingMinutes = toMinutes(BUSINESS_CLOSE_TIMES[weekdayIndex] ?? "00:00");
+  return startMinutes >= BUSINESS_OPEN_MINUTES && startMinutes < closingMinutes &&
+    startMinutes + durationMinutes <= closingMinutes;
+}
+
 export function getSlotsForDate(date: string, partySize: number): TimeSlot[] {
   if (!date) return [];
   const dayOfWeek = new Date(`${date}T12:00:00Z`).getUTCDay();
@@ -107,8 +140,8 @@ export function getSlotsForDate(date: string, partySize: number): TimeSlot[] {
 }
 
 export function isOnlineOnlyTime(time: string): boolean {
-  void time;
-  return false;
+  const minutes = toMinutes(time);
+  return minutes >= BUSINESS_OPEN_MINUTES && minutes < 10 * 60;
 }
 
 export function assignTechnicians(shift: ShiftBlock, partySize: number, preferences: (PublicTechnician | "")[]): Technician[] {

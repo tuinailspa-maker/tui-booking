@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { serviceById } from "@/data/serviceTree";
+import { getClosingTimeForDate } from "@/data/staffSchedule";
 
 export type CalendarBooking = {
   id: string;
@@ -26,7 +27,6 @@ type AppointmentCalendarProps = {
 
 const STAFF = ["Jenny", "Melika", "Nana", "Walk-in"];
 const START_MINUTE = 8 * 60;
-const END_MINUTE = 20 * 60;
 const HALF_HOUR_HEIGHT = 48;
 
 function localMinutes(iso: string) {
@@ -66,9 +66,12 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
   const nowParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
   const nowValues = Object.fromEntries(nowParts.map((part) => [part.type, part.value]));
   const nowMinute = Number(nowValues.hour) * 60 + Number(nowValues.minute);
+  const closingTime = getClosingTimeForDate(date);
+  const [closingHour, closingMinute] = closingTime.split(":").map(Number);
+  const endMinute = closingHour * 60 + closingMinute;
   const timeZoneLabel = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", timeZoneName: "short" }).formatToParts(new Date(`${date}T12:00:00Z`)).find((part) => part.type === "timeZoneName")?.value ?? "ET";
-  const showNow = date === today && nowMinute >= START_MINUTE && nowMinute <= END_MINUTE;
-  const ticks = useMemo(() => Array.from({ length: (END_MINUTE - START_MINUTE) / 30 + 1 }, (_, index) => START_MINUTE + index * 30), []);
+  const showNow = date === today && nowMinute >= START_MINUTE && nowMinute <= endMinute;
+  const ticks = useMemo(() => Array.from({ length: (endMinute - START_MINUTE) / 30 + 1 }, (_, index) => START_MINUTE + index * 30), [endMinute]);
 
   if (view === "list") {
     return <div className="admin-appointment-list">
@@ -98,7 +101,7 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
       {STAFF.map((staff) => {
         const assigned = bookings.filter((booking) => {
           const start = localMinutes(booking.startAt);
-          if (start < START_MINUTE || start >= END_MINUTE) return false;
+          if (start < START_MINUTE || start >= endMinute) return false;
           return staff === "Walk-in"
             ? booking.status.startsWith("WALK_IN") || booking.technicians.includes("Walk-in") || isUnassigned(booking)
             : booking.technicians.includes(staff) && !booking.status.startsWith("WALK_IN");

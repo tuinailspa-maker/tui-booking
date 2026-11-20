@@ -3,7 +3,7 @@ import { selectedServiceDuration, selectedServicePrice, serviceById, serviceDisp
 import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
 import { resolveSquareBookingVariation } from "@/data/squareVariations";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
-import type { Technician } from "@/data/staffSchedule";
+import { isWithinBusinessHours, type Technician } from "@/data/staffSchedule";
 
 const SQUARE_PRODUCTION_URL = "https://connect.squareup.com/v2";
 const SQUARE_SANDBOX_URL = "https://connect.squareupsandbox.com/v2";
@@ -207,6 +207,10 @@ export async function POST(request: Request) {
   const parsed = parseBookingRequest(await request.json().catch(() => null));
   if (!parsed) {
     return NextResponse.json({ error: "Invalid booking request." }, { status: 400 });
+  }
+  const longestGuestDuration = Math.max(...parsed.guests.map(guestDurationMinutes));
+  if (!isWithinBusinessHours(parsed.startAt, longestGuestDuration)) {
+    return NextResponse.json({ error: "Appointments must start between 8:00 AM and the daily closing time in Toronto, and finish by closing." }, { status: 400 });
   }
 
   const locationId = process.env.SQUARE_LOCATION_ID;

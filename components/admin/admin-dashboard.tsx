@@ -11,6 +11,7 @@ import { allServices, selectedServiceDuration, selectedServicePrice, serviceById
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { ServiceEditor } from "./service-editor";
 import { ReportsDashboard } from "./reports-dashboard";
+import { formatSlotTime, getClosingTimeForDate } from "@/data/staffSchedule";
 
 type AdminBooking = {
   id: string;
@@ -327,7 +328,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
             <article><span>Checked out</span><strong>${totalSales.toFixed(2)}</strong><small>{checkedOutCount} completed tickets</small></article>
           </section>
         </> : activeTab === "reports" ? <ReportsDashboard /> : <>
-          <div className="admin-schedule-heading"><div><h2>{activeTab === "queue" ? "Arrival queue" : "Daily schedule"}</h2><p>{displayBookings.length} {displayBookings.length === 1 ? "appointment" : "appointments"} · 7:00 AM–9:00 PM</p></div><span className="admin-sync-note">Auto-refreshes every 60 seconds</span></div>
+          <div className="admin-schedule-heading"><div><h2>{activeTab === "queue" ? "Arrival queue" : "Daily schedule"}</h2><p>{displayBookings.length} {displayBookings.length === 1 ? "appointment" : "appointments"} · 8:00 AM–{formatSlotTime(getClosingTimeForDate(date), "en")}</p></div><span className="admin-sync-note">Auto-refreshes every 60 seconds</span></div>
           {bookings.isLoading && <div className="admin-loading" role="status"><span className="admin-spinner" />Loading Square appointments…</div>}
           {!bookings.isLoading && !bookings.error && displayBookings.length === 0 && <div className="admin-empty"><span aria-hidden="true">—</span><h3>{activeTab === "queue" ? "The arrival queue is clear" : "No appointments for this day"}</h3><p>{activeTab === "queue" ? "Checked-in guests and waiting walk-ins will appear here." : "Square has no active bookings for the selected date. Add a walk-in ticket when a guest arrives."}</p><button className="admin-primary-button" type="button" onClick={() => openWalkInEditor()}>+ New / Walk-in</button></div>}
           {displayBookings.length > 0 && <AppointmentCalendar date={date} bookings={displayBookings} view={activeTab === "queue" ? "list" : scheduleView} checkedOut={checkedOut} onOpenSlot={openWalkInEditor} onSelectBooking={(booking) => openAppointmentEditor(booking as AdminBooking)} />}
