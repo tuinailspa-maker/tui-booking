@@ -22,7 +22,7 @@ type SquareCatalogItem = {
   type?: string;
   item_data?: {
     name?: string;
-    variations?: { id?: string }[];
+    variations?: SquareCatalogVariation[];
   };
 };
 
@@ -83,7 +83,8 @@ async function searchSquareCatalog(): Promise<SquareServiceVariation[]> {
       for (const reference of item.item_data.variations ?? []) {
         if (reference.id) {
           serviceNamesByVariation.set(reference.id, item.item_data.name);
-          const variation = (result.related_objects ?? []).find((related) => related.id === reference.id);
+          const relatedVariation = (result.related_objects ?? []).find((related) => related.id === reference.id);
+          const variation = reference.type === "ITEM_VARIATION" ? reference : relatedVariation;
           if (variation) variations.set(reference.id, variation);
         }
       }
