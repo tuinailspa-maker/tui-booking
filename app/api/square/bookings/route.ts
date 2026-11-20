@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { selectedServiceDuration, selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
+import { resolveSquareBookingVariation } from "@/data/squareVariations";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import type { Technician } from "@/data/staffSchedule";
 
@@ -227,14 +228,15 @@ export async function POST(request: Request) {
       note: parsed.client.notes || undefined,
     });
 
-    const defaultVariationId = process.env.SQUARE_DEFAULT_SERVICE_VARIATION_ID;
-    if (!defaultVariationId) {
-      return NextResponse.json({ error: "Square booking is not configured.", detail: "SQUARE_DEFAULT_SERVICE_VARIATION_ID is missing." }, { status: 500 });
-    }
-    const variationResult = await squareRequest<{ objects?: { id?: string; version?: number; item_variation_data?: unknown }[] }>("fetch_default_service", "/catalog/batch-retrieve", { object_ids: [defaultVariationId] });
-    const variation = variationResult.objects?.[0];
-    if (!variation?.id || typeof variation.version !== "number") {
-      throw new SquareStepError("fetch_default_service", 422, [{ code: "NOT_FOUND", field: "SQUARE_DEFAULT_SERVICE_VARIATION_ID", detail: "The configured Square default service variation was not found." }]);
+    let variation: { id: string; version: number };
+    try {
+      variation = await resolveSquareBookingVariation();
+    } catch (error) {
+      throw new SquareStepError("fetch_default_service", 502, [{
+        code: "CATALOG_LOOKUP_FAILED",
+        field: "SQUARE_DEFAULT_SERVICE_VARIATION_ID",
+        detail: error instanceof Error ? error.message : "Could not resolve a Square service variation.",
+      }]);
     }
 
     const bookings = [];
