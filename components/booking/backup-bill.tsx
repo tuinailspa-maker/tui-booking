@@ -1,9 +1,8 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { allServices, selectedServiceDuration, selectedServicePrice, serviceById, serviceDisplayName, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
-import { formatSlotTime } from "@/data/staffSchedule";
 import type { Language } from "./copy";
 
 type BackupBillProps = {
@@ -22,12 +21,12 @@ type BackupBillProps = {
   onBillSelectionChange?: (selections: string[][], addOns: Record<string, ServiceAddOnKey>[]) => void;
 };
 
-type TipChoice = "none" | "15" | "18" | "20" | "custom";
+type TipChoice = "none" | "15" | "20" | "25" | "custom";
 
 const TPS_RATE = 0.05;
 const TVQ_RATE = 0.09975;
-const TIP_PERCENTS: Partial<Record<TipChoice, number>> = { "15": 0.15, "18": 0.18, "20": 0.2 };
-const TIP_CHOICES: TipChoice[] = ["15", "18", "20", "custom", "none"];
+const TIP_PERCENTS: Partial<Record<TipChoice, number>> = { "15": 0.15, "20": 0.2, "25": 0.25 };
+const TIP_CHOICES: TipChoice[] = ["none", "15", "20", "25", "custom"];
 
 const labels = {
   en: {
@@ -49,7 +48,7 @@ const labels = {
     beforeTip: "Total before tip",
     tip: "Tip",
     grandTotal: "Grand Total",
-    tipChoices: { none: "No Tip", "15": "15%", "18": "18%", "20": "20%", custom: "Custom" } as Record<TipChoice, string>,
+    tipChoices: { none: "No tips", "15": "15%", "20": "20%", "25": "25%", custom: "Custom" } as Record<TipChoice, string>,
     customLabel: "Custom tip amount",
     empty: "No services selected.",
     date: "Date",
@@ -77,7 +76,7 @@ const labels = {
     beforeTip: "Total avant pourboire",
     tip: "Pourboire",
     grandTotal: "Total",
-    tipChoices: { none: "Sans pourboire", "15": "15%", "18": "18%", "20": "20%", custom: "Autre" } as Record<TipChoice, string>,
+    tipChoices: { none: "Sans pourboire", "15": "15%", "20": "20%", "25": "25%", custom: "Autre" } as Record<TipChoice, string>,
     customLabel: "Montant du pourboire",
     empty: "Aucun service sélectionné.",
     date: "Date",
@@ -88,12 +87,12 @@ const labels = {
   },
 };
 
-const RECEIPT_ADDRESS = "1570 Rue Saint-Timothée, Ste 100, Montréal, QC H2L 3N9";
-const RECEIPT_PHONE = "438-777-7043";
-const RECEIPT_GST = "GST/HST: 77084539RT0001";
+const RECEIPT_ADDRESS = "Residence Dupuis, 100-1570 Rue Saint-Timothée, Montréal, QC H2L 3N9";
+const RECEIPT_PHONE = "(438) 777-7043";
+const RECEIPT_GST = "GST/HST: 770848539RT0001";
 const RECEIPT_QST = "PST/RST/QST: 4019625996TQ0001";
-const RETURN_POLICY_FR = "Nous avons une politique de NON-REMBOURSEMENT pour tous les services du salon. Dans le cas où vous n'êtes pas entièrement satisfait, merci de nous le faire savoir au moment de votre prestation ou au plus tard 48h après.";
-const RETURN_POLICY_EN = "We have a NO REFUND policy for all salon services. In the event that you are not completely satisfied, please let us know at the time of your service or no later than 48 hours after.";
+const RETURN_POLICY_FR = "Return Policy: Nous avons une politique de NON-REMBOURSEMENT pour tous les services du salon. Dans le cas où vous n'êtes pas entièrement satisfait, merci de nous le faire savoir au moment de votre prestation où au plus tard 48h après.";
+const RETURN_POLICY_EN = "We have a NO REFUND policy for all services of the salon. In the event that you are not completely satisfied, please let us know at the time of your service or no later than 48 hours after.";
 
 function toCents(amount: number) {
   return Math.round(amount * 100) / 100;
@@ -110,6 +109,8 @@ function escapeHtml(value: string) {
 
 type StarReceiptData = {
   dateTime: string;
+  orderCode: string;
+  paymentInfo: string;
   customerName?: string;
   customerPhone?: string;
   guests: Array<{
@@ -126,11 +127,11 @@ type StarReceiptData = {
 
 export function buildPrintableReceiptHtml(receiptData: StarReceiptData, lang: Language) {
   const copy = lang === "en"
-    ? { date: "Date / Time", guest: "Guest", technician: "Technician", minutes: "min", discount: "Combo Discount", subtotal: "Subtotal", tps: "GST 5%", tvq: "QST 9.975%", beforeTip: "Total before tip", tip: "Tip", total: "TOTAL", hours: "8:00 AM – 10:00 AM: Booking online only · After 10:00 AM: Walk-ins welcome", thanks: "Thank you for visiting!", thanksFr: "Merci de votre visite !", policyEn: "We have a NO REFUND policy for all salon services. Please tell us at the time of service or within 48 hours if you are not completely satisfied.", policyFr: "Nous avons une politique de NON-REMBOURSEMENT pour tous les services du salon. Merci de nous le faire savoir pendant votre prestation ou dans les 48 heures." }
-    : { date: "Date / heure", guest: "Client", technician: "Technicienne", minutes: "min", discount: "Rabais combo", subtotal: "Sous-total", tps: "TPS 5%", tvq: "TVQ 9,975%", beforeTip: "Total avant pourboire", tip: "Pourboire", total: "TOTAL", hours: "8 h–10 h : Réservation en ligne seulement · Après 10 h : Clients sans rendez-vous bienvenus", thanks: "Merci de votre visite !", thanksFr: "Thank you for visiting!", policyEn: "We have a NO REFUND policy for all salon services. Please let us know at the time of service or within 48 hours.", policyFr: "Nous avons une politique de NON-REMBOURSEMENT pour tous les services du salon. Avisez-nous pendant votre prestation ou dans les 48 heures." };
+    ? { date: "Date / Time", guest: "Guest", technician: "Technician", minutes: "min", discount: "Combo Discount", subtotal: "Subtotal", tps: "GST 5%", tvq: "QST 9.975%", beforeTip: "Total before tip", tip: "Tip", total: "TOTAL", hours: "Appointments daily · 7:00 AM–9:00 PM", thanks: "Thank you for visiting!", thanksFr: "Merci de votre visite !", policyEn: "We have a NO REFUND policy for all salon services. Please tell us at the time of service or within 48 hours if you are not completely satisfied.", policyFr: "Nous avons une politique de NON-REMBOURSEMENT pour tous les services du salon. Merci de nous le faire savoir pendant votre prestation ou dans les 48 heures." }
+    : { date: "Date / heure", guest: "Client", technician: "Technicienne", minutes: "min", discount: "Rabais combo", subtotal: "Sous-total", tps: "TPS 5%", tvq: "TVQ 9,975%", beforeTip: "Total avant pourboire", tip: "Pourboire", total: "TOTAL", hours: "Rendez-vous tous les jours · 7 h–21 h", thanks: "Merci de votre visite !", thanksFr: "Thank you for visiting!", policyEn: "We have a NO REFUND policy for all salon services. Please let us know at the time of service or within 48 hours.", policyFr: "Nous avons une politique de NON-REMBOURSEMENT pour tous les services du salon. Avisez-nous pendant votre prestation ou dans les 48 heures." };
   const money = (amount: number) => new Intl.NumberFormat(lang === "en" ? "en-CA" : "fr-CA", { style: "currency", currency: "CAD" }).format(amount);
   const guestRows = receiptData.guests.map((guest, index) => `<section class="guest"><strong>${copy.guest} ${index + 1}</strong><div class="meta">${copy.technician}: ${escapeHtml(guest.technician || "—")}</div>${guest.items.map((item) => `<div class="row item"><span>${escapeHtml(item.name)}${item.addOnName ? `<small>${escapeHtml(item.addOnName)} +${money(item.addOnPrice ?? 0)}</small>` : ""}<small>${item.duration} ${copy.minutes}</small></span><b>${money(item.price)}</b></div>`).join("")}${guest.discount > 0 ? `<div class="row"><span>${copy.discount}</span><b>-${money(guest.discount)}</b></div>` : ""}</section>`).join("");
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tui Nail Spa receipt</title><style>@page{size:58mm auto;margin:0}*{box-sizing:border-box}html,body{width:58mm;margin:0;padding:0;background:#fff;color:#000}body{font:10px/1.3 Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}.receipt{width:58mm;padding:2.5mm 3mm 12px}.brand{display:grid;grid-template-columns:1fr 2fr;align-items:center;gap:2mm;padding-bottom:2mm;border-bottom:1px dashed #000}.mark{display:grid;place-items:center;width:100%;aspect-ratio:1;border:2px solid #000;border-radius:50%;font:bold 22px Georgia,serif}.store b{display:block;font-size:12px}.store address,.store a{color:#000;font:normal 8px/1.3 Arial,sans-serif;text-decoration:none}.hours,.meta-line{padding:2mm 0;border-bottom:1px dashed #000;font-size:8px}.row{display:flex;justify-content:space-between;gap:2mm;margin:1.2mm 0}.row span{min-width:0;overflow-wrap:anywhere}.row b{white-space:nowrap;font-variant-numeric:tabular-nums}.item{align-items:flex-start}.item small{display:block;font-size:8px}.guest{padding:1.5mm 0;border-bottom:1px dashed #000}.guest>strong{font-size:9px}.meta{font-size:8px}.totals{padding-top:2mm}.tax-id{padding-top:2mm;border-top:1px dashed #000;font-size:8px}.grand{margin-top:2mm;padding-top:2mm;border-top:1px dashed #000;font-size:12px;font-weight:700}.footer{padding-top:2mm;text-align:center;font-size:8px}.footer b{display:block;font-size:10px}.policy{margin-top:2mm;text-align:left;font-size:7px}.site{font-weight:700}</style></head><body><main class="receipt"><header class="brand"><span class="mark" aria-label="Tui Nail Spa">T</span><div class="store"><b>Tui Nail Spa</b><address>1570 Rue Saint-Timothée, Ste 100<br>Montréal, QC H2L 3N9<br><a href="tel:4387777043">438-777-7043</a><br><span class="site">www.tuinailspa.ca</span></address></div></header><div class="hours">${copy.hours}</div><div class="meta-line"><b>${copy.date}:</b> ${escapeHtml(receiptData.dateTime)}${receiptData.customerName ? `<br><b>${copy.guest}:</b> ${escapeHtml(receiptData.customerName)}` : ""}${receiptData.customerPhone ? `<br>${escapeHtml(receiptData.customerPhone)}` : ""}</div>${guestRows}<section class="totals"><div class="row"><span>${copy.subtotal}</span><b>${money(receiptData.subtotal)}</b></div><div class="row"><span>${copy.tps}</span><b>${money(receiptData.tps)}</b></div><div class="row"><span>${copy.tvq}</span><b>${money(receiptData.tvq)}</b></div><div class="tax-id">GST/HST 77084539RT0001<br>QST 4019625996TQ0001</div><div class="row"><span>${copy.beforeTip}</span><b>${money(receiptData.subtotal + receiptData.tps + receiptData.tvq)}</b></div><div class="row"><span>${copy.tip}</span><b>${money(receiptData.tip)}</b></div><div class="row grand"><span>${copy.total}</span><b>${money(receiptData.grandTotal)}</b></div></section><footer class="footer"><b>${copy.thanks}</b><div>${copy.thanksFr}</div><div>Nous apprécions vos affaires !<br>We appreciate your business!</div><div class="policy">${copy.policyFr}<br>${copy.policyEn}</div></footer></main></body></html>`;
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tui Nail Spa receipt</title><style>@page{size:58mm auto;margin:0}*{box-sizing:border-box}html,body{width:58mm;margin:0;padding:0;background:#fff;color:#000}body{font:10px/1.3 Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}.receipt{width:58mm;padding:2.5mm 3mm 12px}.topline{display:flex;justify-content:space-between;align-items:flex-start;gap:2mm;border-bottom:1px dashed #000;padding-bottom:2mm}.topline strong{font-size:20px}.topline span{text-align:right;font-size:10px}.brand{display:grid;grid-template-columns:1fr 2fr;align-items:center;gap:2mm;padding-bottom:2mm;border-bottom:1px dashed #000}.mark{display:grid;place-items:center;width:100%;aspect-ratio:1;border:2px solid #000;border-radius:50%;font:bold 22px Georgia,serif}.store b{display:block;font-size:12px}.store address,.store a{color:#000;font:normal 8px/1.3 Arial,sans-serif;text-decoration:none}.hours,.meta-line{padding:2mm 0;border-bottom:1px dashed #000;font-size:8px}.row{display:flex;justify-content:space-between;gap:2mm;margin:1.2mm 0}.row span{min-width:0;overflow-wrap:anywhere}.row b{white-space:nowrap;font-variant-numeric:tabular-nums}.item{align-items:flex-start;font-size:15px;font-weight:800;line-height:1.2}.item small{display:block;font-size:11px;font-weight:500}.item b{font-size:15px;font-weight:800}.guest{padding:1.5mm 0;border-bottom:1px dashed #000}.guest>strong{font-size:9px}.meta{font-size:8px}.totals{padding-top:2mm}.tax-id{padding-top:2mm;border-top:1px dashed #000;font-size:8px}.grand{margin-top:2mm;padding-top:2mm;border-top:1px dashed #000;font-size:12px;font-weight:700}.footer{padding-top:2mm;text-align:center;font-size:8px}.footer b{display:block;font-size:10px}.policy{margin-top:2mm;text-align:left;font-size:7px}.site{font-weight:700}</style></head><body><main class="receipt"><div class="topline"><strong>${money(receiptData.grandTotal)}</strong><span>#${escapeHtml(receiptData.orderCode)}<br>${escapeHtml(receiptData.dateTime)}</span></div><header class="brand"><span class="mark" aria-label="Tui Nail Spa">T</span><div class="store"><b>Tui Nail Spa</b><address>1570 Rue Saint-Timothée, Ste 100<br>Montréal, QC H2L 3N9<br><a href="tel:4387777043">438-777-7043</a><br><span class="site">www.tuinailspa.ca</span></address></div></header><div class="hours">${copy.hours}</div><div class="meta-line"><b>${copy.date}:</b> ${escapeHtml(receiptData.dateTime)}${receiptData.customerName ? `<br><b>${copy.guest}:</b> ${escapeHtml(receiptData.customerName)}` : ""}${receiptData.customerPhone ? `<br>${escapeHtml(receiptData.customerPhone)}` : ""}</div>${guestRows}<section class="totals"><div class="row"><span>${copy.subtotal}</span><b>${money(receiptData.subtotal)}</b></div><div class="row"><span>${copy.tps}</span><b>${money(receiptData.tps)}</b></div><div class="row"><span>${copy.tvq}</span><b>${money(receiptData.tvq)}</b></div><div class="tax-id">GST/HST 77084539RT0001<br>QST 4019625996TQ0001</div><div class="row"><span>${copy.beforeTip}</span><b>${money(receiptData.subtotal + receiptData.tps + receiptData.tvq)}</b></div><div class="row"><span>${copy.tip}</span><b>${money(receiptData.tip)}</b></div><div class="row grand"><span>${copy.total}</span><b>${money(receiptData.grandTotal)}</b></div></section><footer class="footer"><b>${copy.thanks}</b><div>${copy.thanksFr}</div><div>Nous apprécions vos affaires !<br>We appreciate your business!</div><div class="policy">${copy.policyFr}<br>${copy.policyEn}</div></footer></main></body></html>`;
 }
 
 export function buildStarMpopReceiptHtml(receiptData: StarReceiptData, lang: Language) {
@@ -139,11 +140,11 @@ export function buildStarMpopReceiptHtml(receiptData: StarReceiptData, lang: Lan
 
 export function buildLegacyStarMpopReceiptHtml(receiptData: StarReceiptData, lang: Language) {
   const copy = lang === "en"
-    ? { dateTime: "Date / Time", guest: "Guest", technician: "Technician", minutes: "min", discount: "Combo Discount", subtotal: "Subtotal", tps: "GST 5%", tvq: "QST 9.975%", tip: "Tip", total: "Grand Total", hours: "8:00 AM – 10:00 AM: Booking online only · After 10:00 AM: Walk-ins welcome", thanks: "Thank you for visiting!" }
-    : { dateTime: "Date / heure", guest: "Client", technician: "Technicienne", minutes: "min", discount: "Rabais combo", subtotal: "Sous-total", tps: "TPS 5%", tvq: "TVQ 9,975%", tip: "Pourboire", total: "Total", hours: "8 h – 10 h : Réservation en ligne seulement · Après 10 h : Clients sans rendez-vous bienvenus", thanks: "Merci de votre visite !" };
+    ? { dateTime: "Date / Time", guest: "Guest", technician: "Technician", minutes: "min", discount: "Combo Discount", subtotal: "Subtotal", tps: "GST 5%", tvq: "QST 9.975%", tip: "Tip", total: "Grand Total", hours: "Appointments daily · 7:00 AM–9:00 PM", thanks: "Thank you for visiting!" }
+    : { dateTime: "Date / heure", guest: "Client", technician: "Technicienne", minutes: "min", discount: "Rabais combo", subtotal: "Sous-total", tps: "TPS 5%", tvq: "TVQ 9,975%", tip: "Pourboire", total: "Total", hours: "Rendez-vous tous les jours · 7 h–21 h", thanks: "Merci de votre visite !" };
   const money = (amount: number) => new Intl.NumberFormat(lang === "en" ? "en-CA" : "fr-CA", { style: "currency", currency: "CAD" }).format(amount);
   const guestsHtml = receiptData.guests.map((guest, index) => `<section class="guest"><div class="guest-title">${escapeHtml(copy.guest)} ${index + 1}</div><div class="meta">${escapeHtml(copy.technician)}: ${escapeHtml(guest.technician || "—")}</div>${guest.items.map((item) => `<div class="item"><span>${escapeHtml(item.name)}${item.addOnName ? `<br><small>+ ${escapeHtml(item.addOnName)} +${money(item.addOnPrice ?? 0)}</small>` : ""}<br><small>${item.duration} ${copy.minutes}</small></span><strong>${money(item.price)}</strong></div>`).join("")}${guest.discount > 0 ? `<div class="row"><span>${escapeHtml(copy.discount)}</span><strong>-${money(guest.discount)}</strong></div>` : ""}</section>`).join("");
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tui Nail Spa receipt</title><style>@page{size:58mm auto;margin:0}*{box-sizing:border-box}html,body{width:58mm;margin:0;padding:0;background:#fff;color:#000}body{font:10px/1.35 Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}.receipt{width:58mm;padding:2.5mm 3mm}.brand{display:grid;grid-template-columns:1fr 2fr;align-items:center;gap:2mm;padding-bottom:2mm;border-bottom:1px solid #000}.logo{width:100%;height:auto}.store strong{display:block;font-size:13px;line-height:1.1}.store address,.store a{font:normal 8px/1.3 Arial,sans-serif;color:#000;text-decoration:none}.hours{padding:2mm 0;border-bottom:1px dashed #000;font-size:8px}.receipt-meta{padding:2mm 0}.row,.item{display:flex;justify-content:space-between;gap:2mm;margin:1.2mm 0}.row span,.item span{min-width:0;overflow-wrap:anywhere}.item{align-items:flex-start}.item strong,.row strong{white-space:nowrap}.guest{padding:1.5mm 0;border-top:1px dashed #000}.guest-title{font-weight:700}.meta,small{font-size:8px}.totals{padding-top:2mm;border-top:1px solid #000}.grand{margin-top:2mm;padding-top:2mm;border-top:1px solid #000;font-size:12px;font-weight:700}.tax-id{padding-top:2mm;border-top:1px dashed #000;font-size:8px}.thank{text-align:center;padding-top:2mm;font-weight:700}@media print{html,body{width:58mm}body{margin:0}}</style></head><body><main class="receipt"><header class="brand"><svg class="logo" viewBox="0 0 100 100" role="img" aria-label="Tui Nail Spa"><circle cx="50" cy="50" r="46" fill="none" stroke="#000" stroke-width="3"/><text x="50" y="59" text-anchor="middle" font-family="Georgia,serif" font-size="42" font-weight="bold" fill="#000">Tui</text></svg><div class="store"><strong>Tui Nail Spa</strong><address>1570 Rue Saint-Timothée, Ste 100<br>Montréal, QC H2L 3N9<br><a href="tel:4387777043">438-777-7043</a></address></div></header><div class="hours">${escapeHtml(copy.hours)}</div><div class="receipt-meta">${receiptData.dateTime ? `<div class="row"><span>${copy.dateTime}</span><strong>${escapeHtml(receiptData.dateTime)}</strong></div>` : ""}${receiptData.customerName || receiptData.customerPhone ? `<div>${escapeHtml([receiptData.customerName, receiptData.customerPhone].filter(Boolean).join(" · "))}</div>` : ""}</div>${guestsHtml}<section class="totals"><div class="row"><span>${copy.subtotal}</span><strong>${money(receiptData.subtotal)}</strong></div><div class="row"><span>${copy.tps}</span><strong>${money(receiptData.tps)}</strong></div><div class="row"><span>${copy.tvq}</span><strong>${money(receiptData.tvq)}</strong></div><div class="row"><span>${copy.tip}</span><strong>${money(receiptData.tip)}</strong></div><div class="row grand"><span>${copy.total}</span><strong>${money(receiptData.grandTotal)}</strong></div></section><div class="tax-id">GST: 77084539RT0001<br>QST: 4019625996TQ0001</div><footer class="thank">${copy.thanks}</footer></main></body></html>`;
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tui Nail Spa receipt</title><style>@page{size:58mm auto;margin:0}*{box-sizing:border-box}html,body{width:58mm;margin:0;padding:0;background:#fff;color:#000}body{font:10px/1.35 Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}.receipt{width:58mm;padding:2.5mm 3mm}.brand{display:grid;grid-template-columns:1fr 2fr;align-items:center;gap:2mm;padding-bottom:2mm;border-bottom:1px solid #000}.logo{width:100%;height:auto}.store strong{display:block;font-size:13px;line-height:1.1}.store address,.store a{font:normal 8px/1.3 Arial,sans-serif;color:#000;text-decoration:none}.hours{padding:2mm 0;border-bottom:1px dashed #000;font-size:8px}.receipt-meta{padding:2mm 0}.row,.item{display:flex;justify-content:space-between;gap:2mm;margin:1.2mm 0}.row span,.item span{min-width:0;overflow-wrap:anywhere}.item{align-items:flex-start}.item strong,.row strong{white-space:nowrap}.guest{padding:1.5mm 0;border-top:1px dashed #000}.guest-title{font-weight:700}.meta,small{font-size:8px}.totals{padding-top:2mm;border-top:1px solid #000}.grand{margin-top:2mm;padding-top:2mm;border-top:1px solid #000;font-size:12px;font-weight:700}.tax-id{padding-top:2mm;border-top:1px dashed #000;font-size:8px}.thank{text-align:center;padding-top:2mm;font-weight:700}@media print{html,body{width:58mm}body{margin:0}}</style></head><body><main class="receipt"><div class="topline"><strong>${money(receiptData.grandTotal)}</strong><span>#${escapeHtml(receiptData.orderCode)}<br>${escapeHtml(receiptData.dateTime)}</span></div><header class="brand"><svg class="logo" viewBox="0 0 100 100" role="img" aria-label="Tui Nail Spa"><circle cx="50" cy="50" r="46" fill="none" stroke="#000" stroke-width="3"/><text x="50" y="59" text-anchor="middle" font-family="Georgia,serif" font-size="42" font-weight="bold" fill="#000">Tui</text></svg><div class="store"><strong>Tui Nail Spa</strong><address>1570 Rue Saint-Timothée, Ste 100<br>Montréal, QC H2L 3N9<br><a href="tel:4387777043">438-777-7043</a></address></div></header><div class="hours">${escapeHtml(copy.hours)}</div><div class="receipt-meta">${receiptData.dateTime ? `<div class="row"><span>${copy.dateTime}</span><strong>${escapeHtml(receiptData.dateTime)}</strong></div>` : ""}${receiptData.customerName || receiptData.customerPhone ? `<div>${escapeHtml([receiptData.customerName, receiptData.customerPhone].filter(Boolean).join(" · "))}</div>` : ""}</div>${guestsHtml}<section class="totals"><div class="row"><span>${copy.subtotal}</span><strong>${money(receiptData.subtotal)}</strong></div><div class="row"><span>${copy.tps}</span><strong>${money(receiptData.tps)}</strong></div><div class="row"><span>${copy.tvq}</span><strong>${money(receiptData.tvq)}</strong></div><div class="row"><span>${copy.tip}</span><strong>${money(receiptData.tip)}</strong></div><div class="row grand"><span>${copy.total}</span><strong>${money(receiptData.grandTotal)}</strong></div></section><div class="tax-id">GST/HST: 770848539RT0001<br>QST: 4019625996TQ0001<br>${escapeHtml(receiptData.paymentInfo)}</div><footer class="thank">${copy.thanks}</footer></main></body></html>`;
 }
 
 export function BackupBill({ language, date, time, selections, serviceAddOns, technicians = [], customerName, customerPhone, squareServiceReference = [], triggerLabel, markCheckedOutLabel, onMarkCheckedOut, onBillSelectionChange }: BackupBillProps) {
@@ -153,19 +154,30 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
   const [receiptLanguage, setReceiptLanguage] = useState<Language>(language);
   const [tipChoice, setTipChoice] = useState<TipChoice>("none");
   const [customTip, setCustomTip] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"Card" | "Cash">("Card");
+  const [customSubtotal, setCustomSubtotal] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"Interac" | "Card" | "Cash">("Card");
+  const [paymentAuth, setPaymentAuth] = useState("");
+  const [paymentDateTime, setPaymentDateTime] = useState("");
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [openDrawer, setOpenDrawer] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [copied, setCopied] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState("");
   const [activeBillGuest, setActiveBillGuest] = useState(0);
   const [localSelections, setLocalSelections] = useState(() => selections.map((ids) => [...ids]));
   const [localServiceAddOns, setLocalServiceAddOns] = useState(() => serviceAddOns.map((items) => ({ ...items })));
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setPaymentDateTime(new Intl.DateTimeFormat("en-CA", { dateStyle: "short", timeStyle: "short", timeZone: "America/Toronto" }).format(new Date()));
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
   const billSelections = onBillSelectionChange ? selections : localSelections;
   const billServiceAddOns = onBillSelectionChange ? serviceAddOns : localServiceAddOns;
   const text = labels[receiptLanguage];
-  const receiptDate = date ? new Intl.DateTimeFormat(receiptLanguage === "en" ? "en-CA" : "fr-CA", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`)) : "";
-  const receiptDateTime = [receiptDate, time ? formatSlotTime(time, receiptLanguage) : ""].filter(Boolean).join(" · ");
+  const receiptDate = date;
+  const receiptDateTime = [receiptDate, time].filter(Boolean).join(" ");
+  const receiptCode = titleId.replace(/[^a-z0-9]/gi, "").slice(-4).toUpperCase();
 
   const money = (amount: number) =>
     new Intl.NumberFormat(text.currencyLocale, { style: "currency", currency: "CAD" }).format(amount);
@@ -179,7 +191,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
   }));
   const grossSubtotal = toCents(guests.flat().reduce((sum, item) => sum + selectedServicePrice(item.service, item.addOnKey), 0));
   const comboDiscount = getComboDiscountDetails(billSelections, billServiceAddOns).amount;
-  const subtotal = toCents(grossSubtotal - comboDiscount);
+  const subtotal = customSubtotal ? sanitizeCustomTip(customSubtotal) : toCents(grossSubtotal - comboDiscount);
   const tps = toCents(subtotal * TPS_RATE);
   const tvq = toCents(subtotal * TVQ_RATE);
   const totalBeforeTip = toCents(subtotal + tps + tvq);
@@ -229,12 +241,40 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
     dialogRef.current?.close();
   }
 
+  async function sendToSquareCheckout() {
+    if (checkoutBusy) return;
+    const popup = window.open("about:blank", "_blank");
+    setCheckoutBusy(true);
+    setCheckoutError("");
+    try {
+      const items = guests.flatMap((guest, guestIndex) => guest.map(({ service, addOnKey }) => ({
+        name: `Guest ${guestIndex + 1} — ${serviceDisplayNameWithAddOn(service, receiptLanguage, addOnKey)}`,
+        amountCents: Math.round(selectedServicePrice(service, addOnKey) * 100),
+      })));
+      if (subtotal > grossSubtotal) items.push({ name: "Manual subtotal adjustment", amountCents: Math.round((subtotal - grossSubtotal) * 100) });
+      const response = await fetch("/api/square/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items, discountCents: Math.max(0, Math.round((grossSubtotal - subtotal) * 100)), tipCents: Math.round(tipAmount * 100), customerName, customerPhone }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || typeof result?.url !== "string") throw new Error(result?.error || "Could not create a Square checkout link.");
+      if (popup) popup.location.href = result.url;
+      else window.location.assign(result.url);
+    } catch (error) {
+      popup?.close();
+      setCheckoutError(error instanceof Error ? error.message : "Could not create a Square checkout link.");
+    } finally {
+      setCheckoutBusy(false);
+    }
+  }
+
   async function markCheckedOut() {
     if (!onMarkCheckedOut || checkoutBusy) return;
     setCheckoutBusy(true);
     setCheckoutError("");
     try {
-      await onMarkCheckedOut({ tipAmount, paymentMethod });
+      await onMarkCheckedOut({ tipAmount, paymentMethod: paymentMethod === "Cash" ? "Cash" : "Card" });
       closeBill();
     } catch (error) {
       setCheckoutError(error instanceof Error ? error.message : "Could not save this checkout.");
@@ -245,6 +285,8 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
 
   const receiptData: StarReceiptData = {
     dateTime: receiptDateTime,
+    orderCode: receiptCode,
+    paymentInfo: `${paymentMethod}${paymentAuth ? ` · Auth ${paymentAuth}` : ""}${paymentDateTime ? ` · ${paymentDateTime}` : ""}`,
     customerName,
     customerPhone,
     guests: guests.map((items, index) => ({
@@ -269,9 +311,10 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
   }
 
   function print58mm() {
-    const receiptHtml = buildPrintableReceiptHtml(receiptData, receiptLanguage);
+    const receiptHtml = buildStarMpopReceiptHtml(receiptData, receiptLanguage);
     const back = encodeURIComponent(window.location.href);
-    window.location.href = `starpassprnt://v1/print/nopreview?html=${encodeURIComponent(receiptHtml)}&size=2&drawer=off&back=${back}`;
+    const drawer = openDrawer ? "ahead" : "off";
+    window.location.href = `starpassprnt://v1/print/nopreview?size=2&drawer=${drawer}&html=${encodeURIComponent(receiptHtml)}&back=${back}`;
   }
 
   function closeOnBackdropClick(event: React.MouseEvent<HTMLDialogElement>) {
@@ -332,8 +375,10 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
                 <button type="button" aria-pressed={receiptLanguage === "fr"} onClick={() => setReceiptLanguage("fr")}>FR</button>
               </div>
               <button className="button button-back" type="button" onClick={copyBill}>{copied ? text.copied : text.copy}</button>
+              <label className="bill-drawer-toggle"><input type="checkbox" checked={openDrawer} onChange={(event) => setOpenDrawer(event.target.checked)} />Open Drawer</label>
               <button className="button button-primary" type="button" onClick={print58mm}>{text.printStar}</button>
               <button className="button button-back" type="button" onClick={printInBrowser}>{text.print}</button>
+              <button className="button button-primary" type="button" onClick={() => void sendToSquareCheckout()} disabled={checkoutBusy}>{checkoutBusy ? "Opening Square…" : "Send to Square Checkout"}</button>
               <button className="bill-close" type="button" onClick={closeBill} aria-label={text.close}>×</button>
             </div>
           </header>
@@ -368,11 +413,12 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
           </section>
 
           <section id="printable-receipt" className="printable-receipt" aria-label={text.title}>
+            <div className="print-receipt-topline"><strong>{money(grandTotal)}</strong><span>#{receiptCode}<br />{receiptDateTime}</span></div>
             <header className="print-receipt-brand">
               <span className="print-receipt-logo" aria-hidden="true">T</span>
               <div><strong>Tui Nail Spa</strong><address>{RECEIPT_ADDRESS}<br />{RECEIPT_PHONE}<br />www.tuinailspa.ca</address></div>
             </header>
-            <p className="print-receipt-hours">{receiptLanguage === "en" ? "8:00 AM – 10:00 AM: Booking online only · After 10:00 AM: Walk-ins welcome" : "8 h–10 h : Réservation en ligne seulement · Après 10 h : Clients sans rendez-vous bienvenus"}</p>
+            <p className="print-receipt-hours">{receiptLanguage === "en" ? "Appointments daily · 7:00 AM–9:00 PM" : "Rendez-vous tous les jours · 7 h–21 h"}</p>
             {(receiptDateTime || customerName || customerPhone) && <div className="print-receipt-meta">
               {receiptDateTime && <div><strong>{receiptLanguage === "en" ? "Date / Time" : "Date / heure"}:</strong> {receiptDateTime}</div>}
               {customerName && <div><strong>{receiptLanguage === "en" ? "Guest" : "Client"}:</strong> {customerName}</div>}
@@ -395,7 +441,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
               <div className="print-receipt-row"><span>{text.subtotal}</span><strong>{money(subtotal)}</strong></div>
               <div className="print-receipt-row"><span>{text.tps}</span><strong>{money(tps)}</strong></div>
               <div className="print-receipt-row"><span>{text.tvq}</span><strong>{money(tvq)}</strong></div>
-              <div className="print-receipt-tax-ids">{RECEIPT_GST}<br />{RECEIPT_QST}</div>
+              <div className="print-receipt-tax-ids">{RECEIPT_GST}<br />{RECEIPT_QST}<br />{paymentMethod}{paymentAuth ? ` · Auth ${paymentAuth}` : ""} · {paymentDateTime || ""}</div>
               <div className="print-receipt-row"><span>{text.beforeTip}</span><strong>{money(totalBeforeTip)}</strong></div>
               <div className="print-receipt-row"><span>{text.tip}</span><strong>{money(tipAmount)}</strong></div>
               <div className="print-receipt-row print-receipt-grand"><strong>{text.grandTotal}</strong><strong>{money(grandTotal)}</strong></div>
@@ -407,6 +453,10 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
             </footer>
           </section>
 
+          <label className="bill-custom-subtotal">
+            <span>{receiptLanguage === "en" ? "Purchase Subtotal · editable" : "Sous-total · modifiable"}</span>
+            <span className="bill-custom-input"><span aria-hidden="true">$</span><input type="text" inputMode="decimal" value={customSubtotal} placeholder={subtotal.toFixed(2)} onChange={(event) => setCustomSubtotal(event.target.value.replace(/[^0-9.,]/g, ""))} /></span>
+          </label>
           <div className="bill-tips">
             <p className="bill-tip-select-label">{receiptLanguage === "en" ? "Tip" : "Pourboire"} · {receiptLanguage === "en" ? "Based on" : "Calculé sur"} {money(subtotal)}</p>
             <div className="bill-tip-options" role="group" aria-label={receiptLanguage === "en" ? "Tip amount" : "Montant du pourboire"}>
@@ -429,7 +479,10 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
             )}
           </div>
 
-          {onMarkCheckedOut && <label className="bill-payment-method">{receiptLanguage === "en" ? "Payment method" : "Mode de paiement"}<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as "Card" | "Cash")}><option value="Card">{receiptLanguage === "en" ? "Card" : "Carte"}</option><option value="Cash">{receiptLanguage === "en" ? "Cash" : "Espèces"}</option></select></label>}
+          <div className="bill-payment-controls">
+            <label className="bill-payment-method">{receiptLanguage === "en" ? "Payment method" : "Mode de paiement"}<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as "Interac" | "Card" | "Cash")}><option value="Interac">Interac</option><option value="Card">{receiptLanguage === "en" ? "Card" : "Carte"}</option><option value="Cash">{receiptLanguage === "en" ? "Cash" : "Espèces"}</option></select></label>
+            <label className="bill-payment-method">{receiptLanguage === "en" ? "Last 4 / Auth code" : "4 derniers chiffres / code d’autorisation"}<input value={paymentAuth} onChange={(event) => setPaymentAuth(event.target.value.slice(0, 40))} /></label>
+          </div>
           {checkoutError && <p className="admin-form-error" role="alert">{checkoutError}</p>}
           {onMarkCheckedOut && <button className="bill-mark-checked-out" type="button" onClick={() => void markCheckedOut()} disabled={checkoutBusy}>{checkoutBusy ? (receiptLanguage === "en" ? "Saving checkout…" : "Enregistrement…") : markCheckedOutLabel ?? text.markCheckedOut}</button>}
         </div>

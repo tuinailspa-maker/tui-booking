@@ -184,11 +184,13 @@ function buildSellerNote(request: BookingRequest, guest: BookingGuest, guestInde
   }, 0);
   const discount = getComboDiscountDetails(request.guests.map((item) => item.serviceIds), request.guests.map((item) => item.addOns));
   const guestDiscount = discount.qualifyingGuests.find((item) => item.guestIndex === guestIndex)?.subtotal ? 5 : 0;
+  const taxableSubtotal = Math.max(0, total - guestDiscount);
   const note = [
-    `Booking request ${request.requestId}, guest ${guestIndex + 1}/${request.guests.length}.`,
-    `Services: ${lines.join("; ")}. Guest subtotal $${total} CAD; guest combo discount -$${guestDiscount} CAD.`,
-    `Combo discount: ${discount.qualifyingGuests.map((item) => `Guest ${item.guestIndex + 1} -$5`).join(", ") || "none"}; total discount -$${discount.amount} CAD.`,
-    `Client: ${request.client.firstName} ${request.client.lastName}, ${request.client.phone}, ${request.client.email}.`,
+    `Booking ${request.requestId} · GUEST ${guestIndex + 1}/${request.guests.length}.`,
+    `Services: ${lines.join("; ")}. Total ${guestDurationMinutes(guest)} min.`,
+    `Purchase Subtotal $${taxableSubtotal.toFixed(2)} CAD; TVQ 9.975% $${(taxableSubtotal * 0.09975).toFixed(2)}; TPS 5% $${(taxableSubtotal * 0.05).toFixed(2)}; Tip $0.00; Total $${(taxableSubtotal * 1.14975).toFixed(2)} CAD.`,
+    `Combo discount -$${guestDiscount.toFixed(2)}; client note: ${request.client.notes || "none"}.`,
+    `Client: ${request.client.firstName} ${request.client.lastName}, ${request.client.phone}, ${request.client.email || ""}.`,
   ].join(" ");
   return note.slice(0, MAX_SQUARE_NOTE_LENGTH);
 }
@@ -198,79 +200,6 @@ function guestDurationMinutes(guest: BookingGuest) {
     const service = serviceById.get(id);
     return sum + (service ? selectedServiceDuration(service, guest.addOns[id]) : 0);
   }, 0);
-}
-
-type CatalogLocationScope = {
-  present_at_all_locations?: boolean;
-  present_at_location_ids?: string[];
-  absent_at_location_ids?: string[];
-};
-type CatalogVariation = CatalogLocationScope & {
-  id: string;
-  version: number;
-  item_variation_data?: { name?: string; available_for_booking?: boolean; team_member_ids?: string[] };
-};
-type CatalogItem = CatalogLocationScope & {
-  id: string;
-  item_data?: { name?: string; variations?: CatalogVariation[] };
-};
-
-function isAvailableAtLocation(scope: CatalogLocationScope, locationId: string) {
-  const present = scope.present_at_all_locations === true || (scope.present_at_location_ids ?? []).includes(locationId);
-  return present && !(scope.absent_at_location_ids ?? []).includes(locationId);
-}
-
-function normalizeName(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-}
-
-async function fetchCatalogItems(): Promise<CatalogItem[]> {
-  const items: CatalogItem[] = [];
-  let cursor: string | undefined;
-  do {
-    const page = await squareRequest<{ objects?: CatalogItem[]; cursor?: string }>("catalog_search", "/catalog/search", {
-      object_types: ["ITEM"],
-      include_deleted_objects: false,
-      limit: 100,
-      cursor,
-    });
-    items.push(...(page.objects ?? []));
-    cursor = page.cursor;
-  } while (cursor);
-  return items;
-}
-
-function resolveServiceVariation(items: CatalogItem[], locationId: string, guest: BookingGuest): CatalogVariation {
-  const memberId = SQUARE_TEAM_MEMBER_IDS[guest.technician];
-  const candidates = items
-    .filter((item) => isAvailableAtLocation(item, locationId))
-    .flatMap((item) =>
-      (item.item_data?.variations ?? [])
-        .filter((variation) => {
-          const data = variation.item_variation_data;
-          const teamIds = data?.team_member_ids ?? [];
-          return (
-            isAvailableAtLocation(variation, locationId) &&
-            data?.available_for_booking === true &&
-            (teamIds.length === 0 || teamIds.includes(memberId))
-          );
-        })
-        .map((variation) => ({
-          variation,
-          name: normalizeName(`${item.item_data?.name ?? ""} ${variation.item_variation_data?.name ?? ""}`),
-        })),
-    );
-
-  if (candidates.length === 0) {
-    throw new SquareStepError("find_service_variation", 422, [
-      { code: "NOT_FOUND", field: null, detail: `No bookable Square variation for ${guest.technician} at location ${locationId}.` },
-    ]);
-  }
-
-  const service = serviceById.get(guest.serviceIds[0]);
-  const target = service ? normalizeName(service.nameEn) : "";
-  const match = candidates.find((candidate) => candidate.name === target) ?? candidates.find((candidate) => target && candidate.name.includes(target));
-  return (match ?? candidates[0]).variation;
 }
 
 export async function POST(request: Request) {
@@ -298,18 +227,25 @@ export async function POST(request: Request) {
       note: parsed.client.notes || undefined,
     });
 
-    const catalogItems = await fetchCatalogItems();
+    const defaultVariationId = process.env.SQUARE_DEFAULT_SERVICE_VARIATION_ID;
+    if (!defaultVariationId) {
+      return NextResponse.json({ error: "Square booking is not configured.", detail: "SQUARE_DEFAULT_SERVICE_VARIATION_ID is missing." }, { status: 500 });
+    }
+    const variationResult = await squareRequest<{ objects?: { id?: string; version?: number; item_variation_data?: unknown }[] }>("fetch_default_service", "/catalog/batch-retrieve", { object_ids: [defaultVariationId] });
+    const variation = variationResult.objects?.[0];
+    if (!variation?.id || typeof variation.version !== "number") {
+      throw new SquareStepError("fetch_default_service", 422, [{ code: "NOT_FOUND", field: "SQUARE_DEFAULT_SERVICE_VARIATION_ID", detail: "The configured Square default service variation was not found." }]);
+    }
 
     const bookings = [];
     for (const [index, guest] of parsed.guests.entries()) {
-      const variation = resolveServiceVariation(catalogItems, locationId, guest);
       const { booking } = await squareRequest<{ booking: { id: string } }>("create_booking", "/bookings", {
         idempotency_key: `${parsed.requestId}-${index + 1}`,
         booking: {
           location_id: locationId,
           start_at: new Date(parsed.startAt).toISOString(),
           customer_id: customer.id,
-          customer_note: parsed.client.notes || undefined,
+          customer_note: buildSellerNote(parsed, guest, index),
           seller_note: buildSellerNote(parsed, guest, index),
           appointment_segments: [
             {

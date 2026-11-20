@@ -13,28 +13,13 @@ export type ShiftBlock = {
 };
 
 export const staffSchedule: Record<number, ShiftBlock[]> = {
-  0: [{ start: "08:00", end: "12:00", primaryTechnicians: ["Jenny"], maxGuests: 1 }],
-  1: [{ start: "08:00", end: "18:00", primaryTechnicians: ["Jenny"], maxGuests: 1 }],
-  2: [
-    { start: "08:00", end: "12:00", primaryTechnicians: ["Jenny"], maxGuests: 1 },
-    { start: "12:00", end: "18:00", primaryTechnicians: ["Melika"], overflowTechnician: "Option 2", maxGuests: 2 },
-  ],
-  3: [
-    { start: "08:00", end: "12:00", primaryTechnicians: ["Jenny"], maxGuests: 1 },
-    { start: "12:00", end: "18:00", primaryTechnicians: ["Nana"], overflowTechnician: "Option 2", maxGuests: 2 },
-  ],
-  4: [
-    { start: "08:00", end: "12:00", primaryTechnicians: ["Jenny"], maxGuests: 1 },
-    { start: "12:00", end: "18:00", primaryTechnicians: ["Melika", "Nana"], overflowTechnician: "Option 2", maxGuests: 3 },
-  ],
-  5: [
-    { start: "08:00", end: "12:00", primaryTechnicians: ["Jenny"], maxGuests: 1 },
-    { start: "12:00", end: "18:00", primaryTechnicians: ["Melika", "Nana"], overflowTechnician: "Option 2", maxGuests: 3 },
-  ],
-  6: [
-    { start: "08:00", end: "10:00", primaryTechnicians: ["Jenny"], maxGuests: 1 },
-    { start: "10:00", end: "18:00", primaryTechnicians: ["Option 1"], overflowTechnician: "Option 2", maxGuests: 2 },
-  ],
+  0: [{ start: "07:00", end: "21:00", primaryTechnicians: ["Jenny"], maxGuests: 1 }],
+  1: [{ start: "07:00", end: "21:00", primaryTechnicians: ["Jenny"], maxGuests: 1 }],
+  2: [{ start: "07:00", end: "21:00", primaryTechnicians: ["Jenny", "Melika"], overflowTechnician: "Option 2", maxGuests: 3 }],
+  3: [{ start: "07:00", end: "21:00", primaryTechnicians: ["Jenny", "Nana"], overflowTechnician: "Option 2", maxGuests: 3 }],
+  4: [{ start: "07:00", end: "21:00", primaryTechnicians: ["Jenny", "Melika", "Nana"], overflowTechnician: "Option 2", maxGuests: 3 }],
+  5: [{ start: "07:00", end: "21:00", primaryTechnicians: ["Jenny", "Melika", "Nana"], overflowTechnician: "Option 2", maxGuests: 3 }],
+  6: [{ start: "07:00", end: "21:00", primaryTechnicians: ["Jenny", "Option 1"], overflowTechnician: "Option 2", maxGuests: 3 }],
 };
 
 export type DateOption = {
@@ -122,8 +107,8 @@ export function getSlotsForDate(date: string, partySize: number): TimeSlot[] {
 }
 
 export function isOnlineOnlyTime(time: string): boolean {
-  const minutes = toMinutes(time);
-  return minutes >= 8 * 60 && minutes < 10 * 60;
+  void time;
+  return false;
 }
 
 export function assignTechnicians(shift: ShiftBlock, partySize: number, preferences: (PublicTechnician | "")[]): Technician[] {

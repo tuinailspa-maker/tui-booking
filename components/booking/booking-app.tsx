@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import Image from "next/image";
 import { assignTechnicians, BUSINESS_TIME_ZONE, getSlotsForDate, isOnlineOnlyTime, type PublicTechnician, type Technician } from "@/data/staffSchedule";
 import { serviceById, type ServiceAddOnKey } from "@/data/serviceTree";
 import { BookingSummary, formatCad, getBookingTotals } from "./booking-summary";
@@ -152,15 +153,19 @@ export function BookingApp() {
     setIsSubmitting(true);
     setBookingError(null);
     try {
+      const bookingGuests = selections.map((serviceIds, index) => ({ serviceIds, addOns: serviceAddOns[index] ?? {}, technician: assignedTechnicians()[index] }));
+      const startAt = localTorontoDateTimeToUtc(date, time).toISOString();
+      const availability = await fetch("/api/bookings/availability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startAt, guests: bookingGuests.map((guest, index) => ({ technician: guest.technician, durationMinutes: totals.guestDurations[index] })) }),
+      });
+      const availabilityResult = await availability.json().catch(() => null);
+      if (!availability.ok || availabilityResult?.available !== true) throw new Error(availabilityResult?.error || "This time slot is no longer available. Please choose another time.");
       const response = await fetch("/api/bookings/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requestId: crypto.randomUUID(),
-          startAt: localTorontoDateTimeToUtc(date, time).toISOString(),
-          client,
-          guests: selections.map((serviceIds, index) => ({ serviceIds, addOns: serviceAddOns[index] ?? {}, technician: assignedTechnicians()[index] })),
-        }),
+        body: JSON.stringify({ requestId: crypto.randomUUID(), startAt, client, guests: bookingGuests }),
       });
       const result = await response.json().catch(() => null);
       if (!response.ok) {
@@ -240,7 +245,7 @@ export function BookingApp() {
     <main className="booking-page">
       <header className="booking-header">
         <a className="salon-wordmark" href="https://tuinailspa.ca" aria-label={`${copy.salon} — tuinailspa.ca`}>
-          <img src="/tui-logo.png" alt="Tui — La beauté des ongles" className="salon-logo" />
+          <Image src="/tui-logo.png" alt="Tui — La beauté des ongles" className="salon-logo" width={150} height={104} priority />
           <span className="salon-text"><span className="salon-name">{copy.salonName}</span><span className="salon-policy">{copy.bookingPolicy}</span></span>
         </a>
         <div className="header-tools">

@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   description: "Book your next nail care visit at Tui Nail Spa in Montréal. Choose services, a time, and a team member in English or French.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">{children}</body>
