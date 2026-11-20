@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { allServices, selectedServiceDuration, selectedServicePrice, serviceDisplayNameWithAddOn, serviceTree, type ServiceAddOnKey, type ServiceNode } from "@/data/serviceTree";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { getClosingTimeForDate } from "@/data/staffSchedule";
@@ -47,7 +47,7 @@ type ServiceEditorProps = {
   technician: string;
   initialTechnicians?: string[];
   squareServiceReference?: string[];
-  onBillSelectionChange?: (serviceIds: string[][], addOns: Record<string, ServiceAddOnKey>[]) => void;
+  onBillSelectionChange?: (serviceIds: string[][], addOns: Record<string, ServiceAddOnKey>[]) => void | Promise<void>;
   status: AppointmentStatus;
   busy?: boolean;
   checkedOut?: boolean;
@@ -82,6 +82,8 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
   const lastStartTime = `${String(Math.floor((closingMinutes - 30) / 60)).padStart(2, "0")}:${String((closingMinutes - 30) % 60).padStart(2, "0")}`;
   const [technicians, setTechnicians] = useState<string[]>(() => Array.from({ length: 3 }, (_, index) => initialTechnicians[index] ?? (index === 0 ? technician || "Jenny" : ["Jenny", "Melika", "Nana"].filter((name) => name !== technician)[index - 1] ?? "Jenny")));
   const [submitting, setSubmitting] = useState(false);
+  const selectionSyncQueue = useRef<Promise<void>>(Promise.resolve());
+  const [selectionSyncStatus, setSelectionSyncStatus] = useState<"idle" | "syncing" | "saved" | "error">("idle");
   const squareOrderId = useSyncExternalStore(subscribeToSquareOrders, () => readSquareOrder(bookingId), () => "");
   const [manualDiscountType, setManualDiscountType] = useState<"FIXED_AMOUNT" | "PERCENTAGE">("FIXED_AMOUNT");
   const [manualDiscountValue, setManualDiscountValue] = useState("");
@@ -101,22 +103,38 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
   const billDate = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
   const billTime = `${dateParts.hour}:${dateParts.minute}`;
 
+  function queueSelectionSync(nextServiceIds: string[][], nextAddOns: Record<string, ServiceAddOnKey>[]) {
+    if (!onBillSelectionChange || squareOrderId) return;
+    setSelectionSyncStatus("syncing");
+    selectionSyncQueue.current = selectionSyncQueue.current
+      .catch(() => undefined)
+      .then(() => onBillSelectionChange(nextServiceIds, nextAddOns))
+      .then(() => setSelectionSyncStatus("saved"))
+      .catch((error: unknown) => {
+        setSelectionSyncStatus("error");
+        setValidation(error instanceof Error ? error.message : "Could not sync services to Square.");
+      });
+  }
+
   function toggleService(id: string) {
-    setServiceIds((current) => current.map((ids, index) => {
-      if (index !== activeGuest) return ids;
-      return ids.includes(id) ? ids.filter((serviceId) => serviceId !== id) : [...ids, id];
-    }));
+    const nextServiceIds = serviceIds.map((ids, index) => index !== activeGuest
+      ? ids
+      : ids.includes(id) ? ids.filter((serviceId) => serviceId !== id) : [...ids, id]);
+    setServiceIds(nextServiceIds);
+    queueSelectionSync(nextServiceIds, addOns);
     setValidation("");
   }
 
   function changeAddOn(serviceId: string, value: ServiceAddOnKey | "") {
-    setAddOns((current) => current.map((items, index) => {
+    const nextAddOns = addOns.map((items, index) => {
       if (index !== activeGuest) return items;
       const next = { ...items };
       if (value) next[serviceId] = value;
       else delete next[serviceId];
       return next;
-    }));
+    });
+    setAddOns(nextAddOns);
+    queueSelectionSync(serviceIds, nextAddOns);
   }
 
   async function createSquareAppointment() {
@@ -206,7 +224,14 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
     await onMarkCheckedOut?.();
   }
 
-  function save() {
+  function handleBillSelectionChange(nextServiceIds: string[][], nextAddOns: Record<string, ServiceAddOnKey>[]) {
+    if (squareOrderId) return;
+    setServiceIds(nextServiceIds);
+    setAddOns(nextAddOns);
+    queueSelectionSync(nextServiceIds, nextAddOns);
+  }
+
+  async function save() {
     if (mode === "appointment") { void createSquareAppointment(); return; }
     if (walkIn && !name.trim()) {
       setValidation("Enter the walk-in customer name.");
@@ -216,7 +241,8 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
       setValidation("Choose at least one service for each guest.");
       return;
     }
-    void onSave({ serviceIds, addOns, customerName: name.trim(), customerPhone: phone.trim() });
+    await selectionSyncQueue.current;
+    await onSave({ serviceIds, addOns, customerName: name.trim(), customerPhone: phone.trim() });
   }
 
   function renderServiceNode(node: ServiceNode, depth = 0): ReactNode {
@@ -285,6 +311,8 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
           </button>;
         })}
       </div>}
+      {selectionSyncStatus === "syncing" && <p className="admin-access-copy" role="status">Updating services in Square…</p>}
+      {selectionSyncStatus === "saved" && <p className="admin-access-copy" role="status">Services updated in Square.</p>}
       {validation && <p className="admin-form-error" role="alert">{validation}</p>}
       <div className="admin-ticket-totals"><span>Services subtotal<strong>${subtotal.toFixed(2)}</strong></span>{discount > 0 && <span>Combo discount<strong>−${discount.toFixed(2)}</strong></span>}{manualDiscountAmount > 0 && <span>Manual discount<strong>−${manualDiscountAmount.toFixed(2)}</strong></span>}<span className="admin-ticket-total">Estimated total before tax<strong>${Math.max(0, subtotal - discount - manualDiscountAmount).toFixed(2)}</strong></span></div>
       <div className="admin-manual-discount">
@@ -298,7 +326,7 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
         </label>
       </div>
       {squareOrderId && <p className="admin-square-order-confirmation" role="status"><strong>Square order recorded for this checkout.</strong><span>Square order: {squareOrderId}</span></p>}
-      <div className="admin-drawer-bill"><BackupBill language="en" date={billDate} time={billTime} selections={serviceIds} serviceAddOns={addOns} technicians={mode === "appointment" ? technicians.slice(0, serviceIds.length) : Array.from({ length: serviceIds.length }, (_, index) => initialTechnicians[index] || (index === 0 ? technician : "Unassigned"))} customerName={walkIn ? name : customerName} customerPhone={walkIn ? phone : customerPhone} bookingId={bookingId} terminalEnabled={!checkedOut} manualDiscountAmount={manualDiscountAmount} squareServiceReference={squareServiceReference} onBillSelectionChange={(nextServiceIds, nextAddOns) => { if (squareOrderId) return; setServiceIds(nextServiceIds); setAddOns(nextAddOns); onBillSelectionChange?.(nextServiceIds, nextAddOns); }} triggerLabel={checkedOut ? "View receipt" : "Check out / Bill"} onMarkCheckedOut={checkedOut ? undefined : recordCheckout} markCheckedOutLabel="Save checkout & mark paid" /></div>
+      <div className="admin-drawer-bill"><BackupBill language="en" date={billDate} time={billTime} selections={serviceIds} serviceAddOns={addOns} technicians={mode === "appointment" ? technicians.slice(0, serviceIds.length) : Array.from({ length: serviceIds.length }, (_, index) => initialTechnicians[index] || (index === 0 ? technician : "Unassigned"))} customerName={walkIn ? name : customerName} customerPhone={walkIn ? phone : customerPhone} bookingId={bookingId} terminalEnabled={!checkedOut} manualDiscountAmount={manualDiscountAmount} squareServiceReference={squareServiceReference} onBillSelectionChange={handleBillSelectionChange} triggerLabel={checkedOut ? "View receipt" : "Check out / Bill"} onMarkCheckedOut={checkedOut ? undefined : recordCheckout} markCheckedOutLabel="Save checkout & mark paid" /></div>
       <div className="admin-drawer-footer">
         <button className="admin-secondary-button" type="button" onClick={onCancel} disabled={submitting}>Cancel</button>
         <button className="admin-primary-button" type="button" onClick={save} disabled={submitting}>{submitting ? "Syncing to Square…" : walkIn && mode === "appointment" ? "Book appointment" : walkIn ? "Create ticket" : "Save services"}</button>

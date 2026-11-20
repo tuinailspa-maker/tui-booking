@@ -254,12 +254,22 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
     await assignWalkInTechnician(booking, technician);
   }
 
-  function saveBillingSelection(booking: AdminBooking, serviceIds: string[][], addOns: Record<string, ServiceAddOnKey>[]) {
-    if (booking.squareBookingIds.length > 0) {
-      setServiceOverrides((current) => ({ ...current, [booking.id]: { serviceIds, addOns } }));
+  async function saveBillingSelection(booking: AdminBooking, serviceIds: string[][], addOns: Record<string, ServiceAddOnKey>[]) {
+    if (booking.squareBookingIds.length === 0) {
+      setWalkIns((current) => current.map((item) => item.id === booking.id ? { ...item, serviceIds, addOns } : item));
       return;
     }
-    setWalkIns((current) => current.map((item) => item.id === booking.id ? { ...item, serviceIds, addOns } : item));
+    setServiceOverrides((current) => ({ ...current, [booking.id]: { serviceIds, addOns } }));
+    for (const [index, bookingId] of booking.squareBookingIds.entries()) {
+      const response = await fetch("/api/admin/bookings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId, serviceIds: serviceIds[index] ?? [], addOns: addOns[index] ?? {} }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not sync services to Square.");
+    }
+    await bookings.mutate();
   }
 
   async function saveServices(value: ServiceDraft) {
