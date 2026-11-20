@@ -3,6 +3,7 @@ import { selectedServiceDuration, selectedServicePrice, serviceById, serviceDisp
 import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
 import { resolveSquareBookingVariation } from "@/data/squareVariations";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
+import { isSquareSlotAvailable, listActiveSquareTeamMemberIds } from "@/data/squareAvailability";
 import { isWithinBusinessHours, type Technician } from "@/data/staffSchedule";
 
 const SQUARE_PRODUCTION_URL = "https://connect.squareup.com/v2";
@@ -219,7 +220,13 @@ export async function POST(request: Request) {
   }
 
   try {
-    if (await hasTechnicianConflict(parsed, locationId)) {
+    const activeTeamMemberIds = await listActiveSquareTeamMemberIds(locationId);
+    const allRequestedStaffAvailable = await Promise.all(parsed.guests.map(async (guest) => {
+      const teamMemberId = SQUARE_TEAM_MEMBER_IDS[guest.technician];
+      return activeTeamMemberIds.has(teamMemberId) && isWithinBusinessHours(parsed.startAt, guestDurationMinutes(guest)) &&
+        await isSquareSlotAvailable(teamMemberId, Date.parse(parsed.startAt), guestDurationMinutes(guest), locationId);
+    }));
+    if (allRequestedStaffAvailable.some((available) => !available) || await hasTechnicianConflict(parsed, locationId)) {
       return NextResponse.json({ error: SLOT_UNAVAILABLE_MESSAGE, step: "availability_check" }, { status: 409 });
     }
 

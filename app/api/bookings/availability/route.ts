@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
+import { isSquareSlotAvailable, listActiveSquareTeamMemberIds } from "@/data/squareAvailability";
+import { SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
 import { isWithinBusinessHours, type Technician } from "@/data/staffSchedule";
-
-const baseUrl = () => process.env.SQUARE_ENVIRONMENT === "sandbox" ? "https://connect.squareupsandbox.com/v2" : "https://connect.squareup.com/v2";
 
 export async function POST(request: Request) {
   const input: unknown = await request.json().catch(() => null);
@@ -22,20 +21,16 @@ export async function POST(request: Request) {
   }
   const names = requestedGuests.map((guest) => guest.technician);
   if (new Set(names).size !== names.length) return NextResponse.json({ available: false, availableTechnicians: [] });
-  const results = await Promise.all(requestedGuests.map(async ({ technician: name, durationMinutes }) => {
-    const endAt = new Date(startMs + durationMinutes * 60_000).toISOString();
-    const params = new URLSearchParams({ location_id: locationId, team_member_id: SQUARE_TEAM_MEMBER_IDS[name], start_at_min: new Date(startMs - 86_400_000).toISOString(), start_at_max: new Date(startMs + 86_400_000).toISOString(), limit: "100" });
-    const response = await fetch(`${baseUrl()}/bookings?${params}`, { headers: { Authorization: `Bearer ${token}`, "Square-Version": SQUARE_API_VERSION } });
-    const result = await response.json().catch(() => null);
-    if (!response.ok) throw new Error("Square could not check appointment availability.");
-    const busy = (result?.bookings ?? []).some((booking: { status?: string; start_at?: string; appointment_segments?: { duration_minutes?: number }[] }) => {
-      if (["CANCELLED_BY_CUSTOMER", "CANCELLED_BY_SELLER", "DECLINED"].includes(booking.status ?? "")) return false;
-      const busyStart = Date.parse(booking.start_at ?? "");
-      const busyMinutes = (booking.appointment_segments ?? []).reduce((total, segment) => total + (segment.duration_minutes ?? 0), 0);
-      return Number.isFinite(busyStart) && busyMinutes > 0 && busyStart < Date.parse(endAt) && busyStart + busyMinutes * 60_000 > startMs;
-    });
-    return busy ? null : name;
-  }));
-  const availableTechnicians = results.filter((name): name is Technician => name !== null);
-  return NextResponse.json({ available: availableTechnicians.length === names.length, availableTechnicians });
+
+  try {
+    const activeIds = await listActiveSquareTeamMemberIds(locationId);
+    const results = await Promise.all(requestedGuests.map(async ({ technician, durationMinutes }) =>
+      activeIds.has(SQUARE_TEAM_MEMBER_IDS[technician]) &&
+      await isSquareSlotAvailable(SQUARE_TEAM_MEMBER_IDS[technician], startMs, durationMinutes, locationId)));
+    const availableTechnicians = names.filter((_, index) => results[index]);
+    return NextResponse.json({ available: availableTechnicians.length === names.length, availableTechnicians });
+  } catch (error) {
+    console.error("[v0] Square availability check failed:", error instanceof Error ? error.message : error);
+    return NextResponse.json({ error: "Square could not check appointment availability." }, { status: 502 });
+  }
 }
