@@ -391,7 +391,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
               <label className="bill-drawer-toggle"><input type="checkbox" checked={openDrawer} onChange={(event) => setOpenDrawer(event.target.checked)} />Open Drawer</label>
               <button className="button button-primary" type="button" onClick={print58mm}>{text.printStar}</button>
               <button className="button button-back" type="button" onClick={printInBrowser}>{text.print}</button>
-              <button className="button button-primary" type="button" onClick={() => void sendToSquareCheckout()} disabled={checkoutBusy}>{checkoutBusy ? "Opening Square…" : "Send to Square Checkout"}</button>
+              <button className="button button-primary" type="button" onClick={() => void sendToSquareCheckout()} disabled={checkoutBusy}>{checkoutBusy ? "Opening Square…" : "Send Order to Square Checkout"}</button>
               <button className="bill-close" type="button" onClick={closeBill} aria-label={text.close}>×</button>
             </div>
           </header>
