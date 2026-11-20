@@ -17,6 +17,9 @@ type BackupBillProps = {
   squareServiceReference?: string[];
   triggerLabel?: string;
   markCheckedOutLabel?: string;
+  bookingId?: string;
+  terminalEnabled?: boolean;
+  manualDiscountAmount?: number;
   onMarkCheckedOut?: (checkout: { tipAmount: number; paymentMethod: "Card" | "Cash" }) => void | Promise<void>;
   onBillSelectionChange?: (selections: string[][], addOns: Record<string, ServiceAddOnKey>[]) => void;
 };
@@ -159,7 +162,7 @@ export function buildLegacyStarMpopReceiptHtml(receiptData: StarReceiptData, lan
   return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tui Nail Spa receipt</title><style>@page{size:58mm auto;margin:0}*{box-sizing:border-box}html,body{width:58mm;margin:0;padding:0;background:#fff;color:#000}body{font:10px/1.35 Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}.receipt{width:58mm;padding:2.5mm 3mm}.brand{display:grid;grid-template-columns:1fr 2fr;align-items:center;gap:2mm;padding-bottom:2mm;border-bottom:1px solid #000}.logo{width:100%;height:auto}.store strong{display:block;font-size:13px;line-height:1.1}.store address,.store a{font:normal 8px/1.3 Arial,sans-serif;color:#000;text-decoration:none}.hours{padding:2mm 0;border-bottom:1px dashed #000;font-size:8px}.receipt-meta{padding:2mm 0}.row,.item{display:flex;justify-content:space-between;gap:2mm;margin:1.2mm 0}.row span,.item span{min-width:0;overflow-wrap:anywhere}.item{align-items:flex-start}.item strong,.row strong{white-space:nowrap}.guest{padding:1.5mm 0;border-top:1px dashed #000}.guest-title{font-weight:700}.meta,small{font-size:8px}.totals{padding-top:2mm;border-top:1px solid #000}.grand{margin-top:2mm;padding-top:2mm;border-top:1px solid #000;font-size:12px;font-weight:700}.tax-id{padding-top:2mm;border-top:1px dashed #000;font-size:8px}.thank{text-align:center;padding-top:2mm;font-weight:700}@media print{html,body{width:58mm}body{margin:0}}</style></head><body><main id="star-mpop-receipt" class="receipt"><div class="topline"><strong>${money(receiptData.grandTotal)}</strong><span>#${escapeHtml(receiptData.orderCode)}<br>${escapeHtml(receiptData.dateTime)}</span></div><header class="brand"><svg class="logo" viewBox="0 0 100 100" role="img" aria-label="Tui Nail Spa"><circle cx="50" cy="50" r="46" fill="none" stroke="#000" stroke-width="3"/><text x="50" y="59" text-anchor="middle" font-family="Georgia,serif" font-size="42" font-weight="bold" fill="#000">Tui</text></svg><div class="store"><strong>Tui Nail Spa</strong><address>1570 Rue Saint-Timothée, Ste 100<br>Montréal, QC H2L 3N9<br><a href="tel:4387777043">438-777-7043</a></address></div></header><div class="hours">${escapeHtml(copy.hours)}</div><div class="receipt-meta">${receiptData.dateTime ? `<div class="row"><span>${copy.dateTime}</span><strong>${escapeHtml(receiptData.dateTime)}</strong></div>` : ""}${receiptData.customerName || receiptData.customerPhone ? `<div>${escapeHtml([receiptData.customerName, receiptData.customerPhone].filter(Boolean).join(" · "))}</div>` : ""}</div>${guestsHtml}<section class="totals"><div class="row"><span>${copy.subtotal}</span><strong>${money(receiptData.subtotal)}</strong></div><div class="row"><span>${copy.tps}</span><strong>${money(receiptData.tps)}</strong></div><div class="row"><span>${copy.tvq}</span><strong>${money(receiptData.tvq)}</strong></div><div class="row"><span>${copy.tip}</span><strong>${money(receiptData.tip)}</strong></div><div class="row grand"><span>${copy.total}</span><strong>${money(receiptData.grandTotal)}</strong></div></section><div class="tax-id">GST/HST: 770848539RT0001<br>QST: 4019625996TQ0001<br>${escapeHtml(receiptData.paymentInfo)}</div><footer class="thank">${copy.thanks}</footer></main></body></html>`;
 }
 
-export function BackupBill({ language, date, time, selections, serviceAddOns, technicians = [], customerName, customerPhone, squareServiceReference = [], triggerLabel, markCheckedOutLabel, onMarkCheckedOut, onBillSelectionChange }: BackupBillProps) {
+export function BackupBill({ language, date, time, selections, serviceAddOns, technicians = [], customerName, customerPhone, squareServiceReference = [], triggerLabel, markCheckedOutLabel, bookingId, terminalEnabled = false, manualDiscountAmount = 0, onMarkCheckedOut, onBillSelectionChange }: BackupBillProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const catalogSearchId = useId();
@@ -171,6 +174,9 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
   const [paymentAuth, setPaymentAuth] = useState("");
   const [paymentDateTime, setPaymentDateTime] = useState("");
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [terminalStatus, setTerminalStatus] = useState("");
+  const [terminalStatusMessage, setTerminalStatusMessage] = useState("");
+  const [terminalPairingCode, setTerminalPairingCode] = useState("");
   const [openDrawer, setOpenDrawer] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [copied, setCopied] = useState(false);
@@ -204,7 +210,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
   }));
   const grossSubtotal = toCents(guests.flat().reduce((sum, item) => sum + selectedServicePrice(item.service, item.addOnKey), 0));
   const comboDiscount = getComboDiscountDetails(billSelections, billServiceAddOns).amount;
-  const subtotal = customSubtotal ? sanitizeCustomTip(customSubtotal) : toCents(grossSubtotal - comboDiscount);
+  const subtotal = customSubtotal ? sanitizeCustomTip(customSubtotal) : toCents(Math.max(0, grossSubtotal - comboDiscount - manualDiscountAmount));
   const tps = toCents(subtotal * TPS_RATE);
   const tvq = toCents(subtotal * TVQ_RATE);
   const totalBeforeTip = toCents(subtotal + tps + tvq);
@@ -277,6 +283,101 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
     } catch (error) {
       popup?.close();
       setCheckoutError(error instanceof Error ? error.message : "Could not create a Square checkout link.");
+    } finally {
+      setCheckoutBusy(false);
+    }
+  }
+
+  async function sendToSquareTerminal() {
+    if (!terminalEnabled || !bookingId || !onMarkCheckedOut || checkoutBusy) return;
+    if (subtotal <= 0) { setCheckoutError("The bill total must be greater than $0.00."); return; }
+    setCheckoutBusy(true);
+    setCheckoutError("");
+    setTerminalPairingCode("");
+    setTerminalStatus("PAIRING");
+    setTerminalStatusMessage("Connecting to Square Terminal…");
+    const idempotencyKey = crypto.randomUUID();
+    const deviceCodeKey = "tui-square-terminal-device-code";
+    const checkoutBody = {
+      bookingId,
+      customerName,
+      customerPhone,
+      serviceIds: billSelections,
+      addOns: billServiceAddOns,
+      subtotalCents: Math.round(subtotal * 100),
+      tipCents: Math.round(tipAmount * 100),
+      idempotencyKey,
+    };
+    const pause = () => new Promise((resolve) => window.setTimeout(resolve, 3_000));
+    const postTerminal = async (body: Record<string, unknown>) => {
+      const response = await fetch("/api/square/terminal-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json().catch(() => ({})) as Record<string, unknown>;
+      if (!response.ok) throw new Error(typeof result.error === "string" ? result.error : "Square Terminal could not process this request.");
+      return result;
+    };
+
+    try {
+      const savedDeviceCodeId = window.sessionStorage.getItem(deviceCodeKey);
+      let result = await postTerminal({ ...checkoutBody, ...(savedDeviceCodeId ? { action: "pairing-status", deviceCodeId: savedDeviceCodeId } : {}) });
+      if (result.pairingRequired === true) {
+        const deviceCodeId = typeof result.deviceCodeId === "string" ? result.deviceCodeId : savedDeviceCodeId;
+        if (!deviceCodeId) throw new Error("Square did not return a Terminal pairing request.");
+        window.sessionStorage.setItem(deviceCodeKey, deviceCodeId);
+        if (typeof result.pairingCode === "string") setTerminalPairingCode(result.pairingCode);
+        setTerminalStatus("PAIRING");
+        setTerminalStatusMessage("Enter this pairing code on your Square Terminal. Waiting for the device to connect…");
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          await pause();
+          result = await postTerminal({ ...checkoutBody, action: "pairing-status", deviceCodeId });
+          if (result.pairingRequired !== true) break;
+          if (typeof result.pairingCode === "string") setTerminalPairingCode(result.pairingCode);
+        }
+      }
+
+      if (typeof result.checkoutId !== "string" || typeof result.orderId !== "string") throw new Error("Terminal pairing did not complete. Please try again.");
+      const checkoutId = result.checkoutId;
+      const orderId = result.orderId;
+      setTerminalPairingCode("");
+      setTerminalStatus(typeof result.status === "string" ? result.status : "PENDING");
+      setTerminalStatusMessage("Waiting for the customer to tap, insert, or swipe their card on Square Terminal…");
+
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const statusResult = await postTerminal({ action: "checkout-status", checkoutId });
+        const status = typeof statusResult.status === "string" ? statusResult.status : "PENDING";
+        setTerminalStatus(status);
+        if (status === "COMPLETED") {
+          window.sessionStorage.setItem(`tui-square-order:${bookingId}`, orderId);
+          window.dispatchEvent(new Event("tui-square-order-change"));
+          setPaymentMethod("Card");
+          setPaymentDateTime(new Intl.DateTimeFormat("en-CA", { dateStyle: "short", timeStyle: "short", timeZone: "America/Toronto" }).format(new Date()));
+          setTerminalStatusMessage("Payment completed on Square Terminal. Checkout is saved.");
+          try {
+            await onMarkCheckedOut({ tipAmount, paymentMethod: "Card" });
+          } catch (error) {
+            setCheckoutError(`Payment completed, but checkout details could not be saved: ${error instanceof Error ? error.message : "try Mark checked out again."}`);
+          }
+          return;
+        }
+        if (status === "CANCELED") {
+          setTerminalStatusMessage("The Square Terminal checkout was canceled. You can send the order again.");
+          return;
+        }
+        setTerminalStatusMessage(status === "IN_PROGRESS"
+          ? "Square Terminal is processing the customer’s card…"
+          : status === "CANCEL_REQUESTED"
+            ? "Square Terminal is canceling the checkout…"
+            : "Waiting for the customer to tap, insert, or swipe their card on Square Terminal…");
+        await pause();
+      }
+      setTerminalStatusMessage("Square Terminal is still waiting. Check the device before starting another checkout.");
+    } catch (error) {
+      setCheckoutError(error instanceof Error ? error.message : "Could not send this order to Square Terminal.");
+      setTerminalStatusMessage("");
+      setTerminalStatus("");
     } finally {
       setCheckoutBusy(false);
     }
@@ -391,7 +492,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
               <label className="bill-drawer-toggle"><input type="checkbox" checked={openDrawer} onChange={(event) => setOpenDrawer(event.target.checked)} />Open Drawer</label>
               <button className="button button-primary" type="button" onClick={print58mm}>{text.printStar}</button>
               <button className="button button-back" type="button" onClick={printInBrowser}>{text.print}</button>
-              <button className="button button-primary" type="button" onClick={() => void sendToSquareCheckout()} disabled={checkoutBusy}>{checkoutBusy ? "Opening Square…" : "Send Order to Square Checkout"}</button>
+              <button className="button button-primary" type="button" onClick={() => void (terminalEnabled ? sendToSquareTerminal() : sendToSquareCheckout())} disabled={checkoutBusy || (terminalEnabled && paymentMethod === "Cash") || terminalStatus === "COMPLETED"}>{checkoutBusy ? terminalStatus === "PAIRING" ? "Connecting to Square Terminal…" : "Waiting on Square Terminal…" : terminalStatus === "COMPLETED" ? "Payment completed on Terminal" : terminalEnabled ? "Send Order to Square Terminal" : "Send Order to Square Checkout"}</button>
               <button className="bill-close" type="button" onClick={closeBill} aria-label={text.close}>×</button>
             </div>
           </header>
@@ -488,6 +589,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
             <label className="bill-payment-method">{receiptLanguage === "en" ? "Last 4 / Auth code" : "4 derniers chiffres / code d’autorisation"}<input value={paymentAuth} onChange={(event) => setPaymentAuth(event.target.value.slice(0, 40))} /></label>
           </div>
           {checkoutError && <p className="admin-form-error" role="alert">{checkoutError}</p>}
+          {terminalStatusMessage && <p className="bill-terminal-status" role="status">{terminalPairingCode && <strong>Pairing code: {terminalPairingCode}</strong>}{terminalStatusMessage}</p>}
           {onMarkCheckedOut && <button className="bill-mark-checked-out" type="button" onClick={() => void markCheckedOut()} disabled={checkoutBusy}>{checkoutBusy ? (receiptLanguage === "en" ? "Saving checkout…" : "Enregistrement…") : markCheckedOutLabel ?? text.markCheckedOut}</button>}
         </div>
       </dialog>

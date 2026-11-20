@@ -262,8 +262,29 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
     setWalkIns((current) => current.map((item) => item.id === booking.id ? { ...item, serviceIds, addOns } : item));
   }
 
-  function saveServices(value: ServiceDraft) {
+  async function saveServices(value: ServiceDraft) {
     if (!editor) return;
+    if (!editor.walkIn && editor.booking?.squareBookingIds.length) {
+      setAssignmentBusy(editor.booking.id);
+      setAssignmentError("");
+      try {
+        for (const [index, bookingId] of editor.booking.squareBookingIds.entries()) {
+          const response = await fetch("/api/admin/bookings", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bookingId, serviceIds: value.serviceIds[index] ?? [], addOns: value.addOns[index] ?? {} }),
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(result.error || "Could not sync services to Square.");
+        }
+        await bookings.mutate();
+      } catch (error) {
+        setAssignmentError(error instanceof Error ? error.message : "Could not sync services to Square.");
+        return;
+      } finally {
+        setAssignmentBusy(null);
+      }
+    }
     if (editor.walkIn && editor.booking) {
       const durationMinutes = value.serviceIds[0]?.reduce((sum, id) => {
         const service = allServices.find((item) => item.id === id);

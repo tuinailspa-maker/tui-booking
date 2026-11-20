@@ -56,7 +56,7 @@ type ServiceEditorProps = {
   onCancel: () => void;
   onTechnicianChange: (value: string) => void;
   onStatusChange: (value: AppointmentStatus) => void;
-  onSave: (value: { serviceIds: string[][]; addOns: Record<string, ServiceAddOnKey>[]; customerName: string; customerPhone: string }) => void;
+  onSave: (value: { serviceIds: string[][]; addOns: Record<string, ServiceAddOnKey>[]; customerName: string; customerPhone: string }) => void | Promise<void>;
   onBookingCreated?: () => Promise<void>;
   bookingId: string;
 };
@@ -82,9 +82,7 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
   const lastStartTime = `${String(Math.floor((closingMinutes - 30) / 60)).padStart(2, "0")}:${String((closingMinutes - 30) % 60).padStart(2, "0")}`;
   const [technicians, setTechnicians] = useState<string[]>(() => Array.from({ length: 3 }, (_, index) => initialTechnicians[index] ?? (index === 0 ? technician || "Jenny" : ["Jenny", "Melika", "Nana"].filter((name) => name !== technician)[index - 1] ?? "Jenny")));
   const [submitting, setSubmitting] = useState(false);
-  const [sendingToSquare, setSendingToSquare] = useState(false);
   const squareOrderId = useSyncExternalStore(subscribeToSquareOrders, () => readSquareOrder(bookingId), () => "");
-  const [squareOrderError, setSquareOrderError] = useState("");
   const [manualDiscountType, setManualDiscountType] = useState<"FIXED_AMOUNT" | "PERCENTAGE">("FIXED_AMOUNT");
   const [manualDiscountValue, setManualDiscountValue] = useState("");
   const visibleServiceTree = filterServiceNodes(serviceTree, search);
@@ -153,40 +151,6 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
     finally { setSubmitting(false); }
   }
 
-  async function sendToSquare() {
-    if (sendingToSquare || squareOrderId) return;
-    if (!name.trim() || !phone.trim()) { setSquareOrderError("Enter the guest name and phone number before sending to Square."); return; }
-    if (serviceIds.some((ids) => ids.length === 0)) { setSquareOrderError("Choose at least one service for each guest before sending."); return; }
-    const numericDiscount = Number(manualDiscountValue);
-    if (manualDiscountValue && (!Number.isFinite(numericDiscount) || numericDiscount <= 0 || (manualDiscountType === "PERCENTAGE" && numericDiscount > 100))) {
-      setSquareOrderError("Enter a valid discount amount. Percentages must be 100% or less."); return;
-    }
-    setSendingToSquare(true);
-    setSquareOrderError("");
-    try {
-      const response = await fetch("/api/square/create-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bookingId,
-          customerName: name.trim() || customerName,
-          customerPhone: phone.trim() || customerPhone,
-          serviceIds,
-          addOns,
-          manualDiscount: manualDiscountValue ? { type: manualDiscountType, value: numericDiscount } : null,
-        }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Unable to send this order to Square.");
-      window.sessionStorage.setItem(`tui-square-order:${bookingId}`, result.squareOrderId);
-      window.dispatchEvent(new Event("tui-square-order-change"));
-    } catch (error) {
-      setSquareOrderError(error instanceof Error ? error.message : "Unable to send this order to Square.");
-    } finally {
-      setSendingToSquare(false);
-    }
-  }
-
   async function recordCheckout(checkout: { tipAmount: number; paymentMethod: "Card" | "Cash" }) {
     const squareOrderId = readSquareOrder(bookingId) || null;
     const combo = getComboDiscountDetails(serviceIds, addOns);
@@ -252,7 +216,7 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
       setValidation("Choose at least one service for each guest.");
       return;
     }
-    onSave({ serviceIds, addOns, customerName: name.trim(), customerPhone: phone.trim() });
+    void onSave({ serviceIds, addOns, customerName: name.trim(), customerPhone: phone.trim() });
   }
 
   function renderServiceNode(node: ServiceNode, depth = 0): ReactNode {
@@ -333,13 +297,11 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
           </span>
         </label>
       </div>
-      {squareOrderError && <p className="admin-form-error" role="alert">{squareOrderError}</p>}
-      {squareOrderId && <p className="admin-square-order-confirmation" role="status"><strong>Sent to Square POS — open the Orders tab on iPad to collect payment.</strong><span>Square order: {squareOrderId}</span></p>}
-      <div className="admin-drawer-bill"><BackupBill language="en" date={billDate} time={billTime} selections={serviceIds} serviceAddOns={addOns} technicians={mode === "appointment" ? technicians.slice(0, serviceIds.length) : Array.from({ length: serviceIds.length }, (_, index) => initialTechnicians[index] || (index === 0 ? technician : "Unassigned"))} customerName={walkIn ? name : customerName} customerPhone={walkIn ? phone : customerPhone} squareServiceReference={squareServiceReference} onBillSelectionChange={(nextServiceIds, nextAddOns) => { if (squareOrderId) return; setServiceIds(nextServiceIds); setAddOns(nextAddOns); onBillSelectionChange?.(nextServiceIds, nextAddOns); }} triggerLabel={checkedOut ? "View receipt" : "Check out / Bill"} onMarkCheckedOut={checkedOut ? undefined : recordCheckout} markCheckedOutLabel="Save checkout & mark paid" /></div>
+      {squareOrderId && <p className="admin-square-order-confirmation" role="status"><strong>Square order recorded for this checkout.</strong><span>Square order: {squareOrderId}</span></p>}
+      <div className="admin-drawer-bill"><BackupBill language="en" date={billDate} time={billTime} selections={serviceIds} serviceAddOns={addOns} technicians={mode === "appointment" ? technicians.slice(0, serviceIds.length) : Array.from({ length: serviceIds.length }, (_, index) => initialTechnicians[index] || (index === 0 ? technician : "Unassigned"))} customerName={walkIn ? name : customerName} customerPhone={walkIn ? phone : customerPhone} bookingId={bookingId} terminalEnabled={!checkedOut} manualDiscountAmount={manualDiscountAmount} squareServiceReference={squareServiceReference} onBillSelectionChange={(nextServiceIds, nextAddOns) => { if (squareOrderId) return; setServiceIds(nextServiceIds); setAddOns(nextAddOns); onBillSelectionChange?.(nextServiceIds, nextAddOns); }} triggerLabel={checkedOut ? "View receipt" : "Check out / Bill"} onMarkCheckedOut={checkedOut ? undefined : recordCheckout} markCheckedOutLabel="Save checkout & mark paid" /></div>
       <div className="admin-drawer-footer">
-        {mode === "walkin" && <button className="admin-secondary-button" type="button" onClick={() => void sendToSquare()} disabled={sendingToSquare || submitting || Boolean(squareOrderId) || serviceIds.some((ids) => ids.length === 0)}>{sendingToSquare ? "Sending to Square…" : squareOrderId ? "Sent to Square POS" : "Send to Square POS"}</button>}
-        <button className="admin-secondary-button" type="button" onClick={onCancel} disabled={submitting || sendingToSquare}>Cancel</button>
-        <button className="admin-primary-button" type="button" onClick={save} disabled={submitting || sendingToSquare}>{submitting ? "Syncing to Square…" : walkIn && mode === "appointment" ? "Book appointment" : walkIn ? "Create ticket" : "Save services"}</button>
+        <button className="admin-secondary-button" type="button" onClick={onCancel} disabled={submitting}>Cancel</button>
+        <button className="admin-primary-button" type="button" onClick={save} disabled={submitting}>{submitting ? "Syncing to Square…" : walkIn && mode === "appointment" ? "Book appointment" : walkIn ? "Create ticket" : "Save services"}</button>
       </div>
     </div>
   </AppointmentDrawer>;
