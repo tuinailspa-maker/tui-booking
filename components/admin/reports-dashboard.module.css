@@ -1,0 +1,51 @@
+.root { color: #17191c; }
+:global(.bill-payment-method) { display: grid; gap: 6px; margin: 14px 0 10px; color: #555c65; font-size: 10px; }
+:global(.bill-payment-method select) { min-height: 39px; padding: 0 10px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; color: #202328; font: 11px Arial, sans-serif; }
+:global(.bill-mark-checked-out:disabled) { opacity: .65; cursor: wait; }
+:global(.reports-panel) { display: grid; gap: 18px; }
+:global(.reports-heading), :global(.reports-table-heading) { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; }
+:global(.reports-heading h2) { margin: 5px 0; color: #17191c; font-size: 21px; letter-spacing: -.03em; }
+:global(.reports-heading p) { margin: 0; color: #777e87; font-size: 10px; }
+:global(.reports-actions) { display: flex; flex-wrap: wrap; gap: 8px; }
+:global(.reports-actions button) { min-height: 36px; border-radius: 6px; font-size: 10px; }
+:global(.reports-filters) { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
+:global(.reports-filters > button) { min-height: 32px; padding: 0 11px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: #555c65; cursor: pointer; font: 10px Arial, sans-serif; }
+:global(.reports-filters > button.is-active) { border-color: #d9e6d9; background: #f1f6f0; color: #264b35; font-weight: 600; }
+:global(.reports-custom-range) { display: flex; gap: 8px; }
+:global(.reports-custom-range label) { display: grid; gap: 4px; color: #737983; font-size: 9px; }
+:global(.reports-custom-range input) { min-height: 32px; padding: 0 7px; border: 1px solid #e5e7eb; border-radius: 5px; background: #fff; color: #222; font: 10px Arial, sans-serif; }
+:global(.reports-range-label) { margin-left: auto; color: #7b828a; font-size: 9px; font-variant-numeric: tabular-nums; }
+:global(.reports-setup-banner) { display: grid; gap: 5px; padding: 12px 14px; border: 1px solid #eadcb8; border-radius: 7px; background: #fffaf0; color: #5e4b1d; font-size: 10px; line-height: 1.5; }
+:global(.reports-setup-banner span) { color: #786735; }
+:global(.reports-setup-banner code) { padding: 1px 4px; border-radius: 3px; background: #f5edda; font: 9px ui-monospace, monospace; overflow-wrap: anywhere; }
+:global(.reports-notice) { margin: 0; padding: 10px 12px; border: 1px solid #c9decf; border-radius: 6px; background: #f1f8f3; color: #244b31; font-size: 10px; }
+:global(.reports-cards) { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+:global(.reports-card) { min-width: 0; display: grid; align-content: start; gap: 6px; padding: 13px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; color: #17191c; text-align: left; cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; }
+:global(.reports-card:hover), :global(.reports-card.is-selected) { border-color: #9fbda7; background: #fbfdfb; box-shadow: 0 2px 9px #1f46220a; }
+:global(.reports-card-name) { color: #555c65; font-size: 10px; font-weight: 600; }
+:global(.reports-card-sales) { font: 600 21px/1.15 Arial, sans-serif; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+:global(.reports-card > small) { color: #838991; font-size: 8px; }
+:global(.reports-card-tips) { display: grid; gap: 5px; margin-top: 6px; padding-top: 9px; border-top: 1px solid #edf0ed; }
+:global(.reports-card-tips > span), :global(.reports-card-stats) { display: flex; justify-content: space-between; gap: 6px; color: #737983; font-size: 8px; }
+:global(.reports-card-tips b) { color: #30343a; font-size: 9px; font-weight: 600; font-variant-numeric: tabular-nums; }
+:global(.reports-card-stats) { flex-wrap: wrap; padding-top: 3px; color: #545b63; }
+:global(.reports-table-heading) { align-items: center; margin-top: 4px; }
+:global(.reports-table-heading h3) { margin: 0; font-size: 13px; font-weight: 600; }
+:global(.reports-table-heading > div) { display: flex; align-items: baseline; gap: 9px; }
+:global(.reports-table-heading > div span), :global(.reports-clear-filter) { color: #81878f; font-size: 9px; }
+:global(.reports-clear-filter) { padding: 5px 7px; border: 1px solid #e2e5e8; border-radius: 5px; background: #fff; cursor: pointer; }
+:global(.reports-clear-filter:disabled) { opacity: .5; cursor: default; }
+:global(.reports-table-wrap) { overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
+:global(.reports-table) { width: 100%; min-width: 900px; border-collapse: collapse; text-align: left; }
+:global(.reports-table th) { padding: 10px 11px; border-bottom: 1px solid #e5e7eb; background: #f8f9f8; color: #707780; font-size: 8px; font-weight: 600; letter-spacing: .025em; white-space: nowrap; }
+:global(.reports-table td) { max-width: 260px; padding: 10px 11px; border-bottom: 1px solid #eff0f1; color: #34383e; font-size: 9px; line-height: 1.5; vertical-align: top; overflow-wrap: anywhere; }
+:global(.reports-table tr:last-child td) { border-bottom: 0; }
+:global(.reports-table td small) { display: block; margin-top: 3px; color: #858b92; font-size: 8px; }
+:global(.reports-table td:nth-child(5)), :global(.reports-table td:nth-child(6)) { font-variant-numeric: tabular-nums; white-space: nowrap; }
+:global(.reports-payment) { display: inline-block; padding: 3px 6px; border-radius: 20px; font-size: 8px; }
+:global(.reports-payment.is-card) { background: #eef4fa; color: #365a78; }
+:global(.reports-payment.is-cash) { background: #f1f6f0; color: #42614a; }
+:global(.reports-table .reports-empty) { padding: 24px; color: #858b92; text-align: center; }
+:global(.reports-payroll-note) { margin: -7px 0 0; color: #848a91; font-size: 9px; line-height: 1.5; }
+@media (max-width: 1100px) { :global(.reports-cards) { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 760px) { :global(.reports-heading) { align-items: flex-start; flex-direction: column; } :global(.reports-actions) { width: 100%; } :global(.reports-actions button) { flex: 1; } :global(.reports-cards) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

@@ -34,7 +34,7 @@ type ServiceEditorProps = {
   status: AppointmentStatus;
   busy?: boolean;
   checkedOut?: boolean;
-  onMarkCheckedOut?: () => void;
+  onMarkCheckedOut?: () => void | Promise<void>;
   walkIn: boolean;
   onCancel: () => void;
   onTechnicianChange: (value: string) => void;
@@ -44,7 +44,7 @@ type ServiceEditorProps = {
   bookingId: string;
 };
 
-export function ServiceEditor({ initialServiceIds, initialAddOns, customerName, customerPhone, startAt, technician, initialTechnicians = [], squareServiceReference = [], onBillSelectionChange, status, busy, checkedOut, onMarkCheckedOut, walkIn, onCancel, onTechnicianChange, onStatusChange, onSave, onBookingCreated, bookingId }: ServiceEditorProps) {
+export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, customerName, customerPhone, startAt, technician, initialTechnicians = [], squareServiceReference = [], onBillSelectionChange, status, busy, checkedOut, onMarkCheckedOut, walkIn, onCancel, onTechnicianChange, onStatusChange, onSave, onBookingCreated, bookingId }: ServiceEditorProps) {
   const guestCount = Math.max(1, initialServiceIds.length);
   const [activeGuest, setActiveGuest] = useState(0);
   const [serviceIds, setServiceIds] = useState(() => Array.from({ length: guestCount }, (_, index) => initialServiceIds[index] ?? []));
@@ -155,6 +155,61 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, customerName, 
     }
   }
 
+  async function recordCheckout(checkout: { tipAmount: number; paymentMethod: "Card" | "Cash" }) {
+    const squareOrderId = readSquareOrder(bookingId) || null;
+    const combo = getComboDiscountDetails(serviceIds, addOns);
+    const discountByGuest = new Map(combo.qualifyingGuests.map((guest) => [guest.guestIndex, 5]));
+    const grossByGuest = serviceIds.map((ids, index) => ids.reduce((sum, id) => {
+      const service = allServices.find((item) => item.id === id);
+      return sum + (service ? selectedServicePrice(service, addOns[index]?.[id]) : 0);
+    }, 0));
+    const afterCombo = grossByGuest.map((amount, index) => Math.max(0, amount - (discountByGuest.get(index) ?? 0)));
+    const totalAfterCombo = afterCombo.reduce((sum, amount) => sum + amount, 0);
+    const manualDiscountCents = Math.round(manualDiscountAmount * 100);
+    const tipCents = Math.round(checkout.tipAmount * 100);
+    let allocatedDiscount = 0;
+    let allocatedTip = 0;
+    const transactedGuests = serviceIds.map((ids, guestIndex) => {
+      const discountShare = guestIndex === serviceIds.length - 1
+        ? manualDiscountCents - allocatedDiscount
+        : Math.round(manualDiscountCents * (totalAfterCombo > 0 ? afterCombo[guestIndex] / totalAfterCombo : 1 / serviceIds.length));
+      allocatedDiscount += discountShare;
+      const subtotalCents = Math.max(0, Math.round(afterCombo[guestIndex] * 100) - discountShare);
+      const tipShare = guestIndex === serviceIds.length - 1
+        ? tipCents - allocatedTip
+        : Math.round(tipCents * (totalAfterCombo > 0 ? subtotalCents / Math.max(1, Math.round(totalAfterCombo * 100) - manualDiscountCents) : 1 / serviceIds.length));
+      allocatedTip += tipShare;
+      const services = ids.flatMap((id) => {
+        const service = allServices.find((item) => item.id === id);
+        return service ? [{ name: serviceDisplayNameWithAddOn(service, "en", addOns[guestIndex]?.[id]), amount: selectedServicePrice(service, addOns[guestIndex]?.[id]) }] : [];
+      });
+      const response = fetch("/api/admin/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transactionId: `${bookingId}:${guestIndex}`,
+          bookingId,
+          squareOrderId,
+          paymentMethod: checkout.paymentMethod,
+          guest: {
+            guestIndex,
+            guestName: guestNames[guestIndex]?.trim() || (guestIndex === 0 ? name.trim() || customerName : `Guest ${guestIndex + 1}`),
+            technician: technicians[guestIndex] || initialTechnicians[guestIndex] || (guestIndex === 0 ? technician : "Unassigned"),
+            services,
+            serviceSubtotal: subtotalCents / 100,
+            tipAmount: tipShare / 100,
+          },
+        }),
+      }).then(async (result) => {
+        const data = await result.json().catch(() => ({}));
+        if (!result.ok) throw new Error(data.error || "Could not save checkout report.");
+      });
+      return response;
+    });
+    await Promise.all(transactedGuests);
+    await onMarkCheckedOut?.();
+  }
+
   function save() {
     if (mode === "appointment") { void createSquareAppointment(); return; }
     if (walkIn && !name.trim()) {
@@ -220,7 +275,7 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, customerName, 
       </div>
       {squareOrderError && <p className="admin-form-error" role="alert">{squareOrderError}</p>}
       {squareOrderId && <p className="admin-square-order-confirmation" role="status"><strong>Sent to Square POS — open the Orders tab on iPad to collect payment.</strong><span>Square order: {squareOrderId}</span></p>}
-      <div className="admin-drawer-bill"><BackupBill language="en" date={billDate} time={billTime} selections={serviceIds} serviceAddOns={addOns} technicians={mode === "appointment" ? technicians.slice(0, serviceIds.length) : Array.from({ length: serviceIds.length }, (_, index) => initialTechnicians[index] || (index === 0 ? technician : "Unassigned"))} customerName={walkIn ? name : customerName} customerPhone={walkIn ? phone : customerPhone} squareServiceReference={squareServiceReference} onBillSelectionChange={(nextServiceIds, nextAddOns) => { if (squareOrderId) return; setServiceIds(nextServiceIds); setAddOns(nextAddOns); onBillSelectionChange?.(nextServiceIds, nextAddOns); }} triggerLabel={checkedOut ? "View receipt" : "Check out / Bill"} onMarkCheckedOut={checkedOut ? undefined : onMarkCheckedOut} markCheckedOutLabel="Mark checked out" /></div>
+      <div className="admin-drawer-bill"><BackupBill language="en" date={billDate} time={billTime} selections={serviceIds} serviceAddOns={addOns} technicians={mode === "appointment" ? technicians.slice(0, serviceIds.length) : Array.from({ length: serviceIds.length }, (_, index) => initialTechnicians[index] || (index === 0 ? technician : "Unassigned"))} customerName={walkIn ? name : customerName} customerPhone={walkIn ? phone : customerPhone} squareServiceReference={squareServiceReference} onBillSelectionChange={(nextServiceIds, nextAddOns) => { if (squareOrderId) return; setServiceIds(nextServiceIds); setAddOns(nextAddOns); onBillSelectionChange?.(nextServiceIds, nextAddOns); }} triggerLabel={checkedOut ? "View receipt" : "Check out / Bill"} onMarkCheckedOut={checkedOut ? undefined : recordCheckout} markCheckedOutLabel="Save checkout & mark paid" /></div>
       <div className="admin-drawer-footer">
         {mode === "walkin" && <button className="admin-secondary-button" type="button" onClick={() => void sendToSquare()} disabled={sendingToSquare || submitting || Boolean(squareOrderId) || serviceIds.some((ids) => ids.length === 0)}>{sendingToSquare ? "Sending to Square…" : squareOrderId ? "Sent to Square POS" : "Send to Square POS"}</button>}
         <button className="admin-secondary-button" type="button" onClick={onCancel} disabled={submitting || sendingToSquare}>Cancel</button>

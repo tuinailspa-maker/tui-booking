@@ -18,7 +18,7 @@ type BackupBillProps = {
   squareServiceReference?: string[];
   triggerLabel?: string;
   markCheckedOutLabel?: string;
-  onMarkCheckedOut?: () => void;
+  onMarkCheckedOut?: (checkout: { tipAmount: number; paymentMethod: "Card" | "Cash" }) => void | Promise<void>;
   onBillSelectionChange?: (selections: string[][], addOns: Record<string, ServiceAddOnKey>[]) => void;
 };
 
@@ -153,6 +153,9 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
   const [receiptLanguage, setReceiptLanguage] = useState<Language>(language);
   const [tipChoice, setTipChoice] = useState<TipChoice>("none");
   const [customTip, setCustomTip] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"Card" | "Cash">("Card");
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
   const [copied, setCopied] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState("");
   const [activeBillGuest, setActiveBillGuest] = useState(0);
@@ -226,9 +229,18 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
     dialogRef.current?.close();
   }
 
-  function markCheckedOut() {
-    onMarkCheckedOut?.();
-    closeBill();
+  async function markCheckedOut() {
+    if (!onMarkCheckedOut || checkoutBusy) return;
+    setCheckoutBusy(true);
+    setCheckoutError("");
+    try {
+      await onMarkCheckedOut({ tipAmount, paymentMethod });
+      closeBill();
+    } catch (error) {
+      setCheckoutError(error instanceof Error ? error.message : "Could not save this checkout.");
+    } finally {
+      setCheckoutBusy(false);
+    }
   }
 
   const receiptData: StarReceiptData = {
@@ -417,7 +429,9 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
             )}
           </div>
 
-          {onMarkCheckedOut && <button className="bill-mark-checked-out" type="button" onClick={markCheckedOut}>{markCheckedOutLabel ?? text.markCheckedOut}</button>}
+          {onMarkCheckedOut && <label className="bill-payment-method">{receiptLanguage === "en" ? "Payment method" : "Mode de paiement"}<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as "Card" | "Cash")}><option value="Card">{receiptLanguage === "en" ? "Card" : "Carte"}</option><option value="Cash">{receiptLanguage === "en" ? "Cash" : "Espèces"}</option></select></label>}
+          {checkoutError && <p className="admin-form-error" role="alert">{checkoutError}</p>}
+          {onMarkCheckedOut && <button className="bill-mark-checked-out" type="button" onClick={() => void markCheckedOut()} disabled={checkoutBusy}>{checkoutBusy ? (receiptLanguage === "en" ? "Saving checkout…" : "Enregistrement…") : markCheckedOutLabel ?? text.markCheckedOut}</button>}
         </div>
       </dialog>
     </>
