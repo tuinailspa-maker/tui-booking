@@ -7,7 +7,7 @@ import useSWR from "swr";
 import { AppointmentCalendar } from "./appointment-calendar";
 import type { AppointmentStatus } from "./appointment-drawer";
 import { PinLockScreen } from "./pin-lock-screen";
-import { allServices, selectedServiceDuration, selectedServicePrice, type ServiceAddOnKey } from "@/data/serviceTree";
+import { allServices, selectedServiceDuration, selectedServicePrice, serviceById, type ServiceAddOnKey } from "@/data/serviceTree";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { ServiceEditor } from "./service-editor";
 
@@ -252,6 +252,14 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
     await assignWalkInTechnician(booking, technician);
   }
 
+  function saveBillingSelection(booking: AdminBooking, serviceIds: string[][], addOns: Record<string, ServiceAddOnKey>[]) {
+    if (booking.squareBookingIds.length > 0) {
+      setServiceOverrides((current) => ({ ...current, [booking.id]: { serviceIds, addOns } }));
+      return;
+    }
+    setWalkIns((current) => current.map((item) => item.id === booking.id ? { ...item, serviceIds, addOns } : item));
+  }
+
   function saveServices(value: ServiceDraft) {
     if (!editor) return;
     if (editor.walkIn && editor.booking) {
@@ -326,6 +334,6 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
       </div>
     </div>
 
-    {drawerBooking && <ServiceEditor key={drawerBooking.id} initialServiceIds={currentEditorDraft?.serviceIds ?? drawerBooking.serviceIds} initialAddOns={currentEditorDraft?.addOns ?? drawerBooking.addOns} guestNames={drawerBooking.guestNames} customerName={drawerBooking.customerName} customerPhone={drawerBooking.phone} startAt={drawerBooking.startAt} technician={drawerTechnician} initialTechnicians={drawerBooking.technicians} status={drawerStatus} busy={assignmentBusy === drawerBooking.id} checkedOut={drawerStatus === "CHECKED_OUT"} onMarkCheckedOut={() => void updateBookingStatus(drawerBooking, "CHECKED_OUT")} walkIn={Boolean(editor?.walkIn)} onCancel={() => setEditor(null)} onTechnicianChange={(technician) => void updateBookingTechnician(drawerBooking, technician)} onStatusChange={(status) => void updateBookingStatus(drawerBooking, status)} onSave={saveServices} onBookingCreated={async () => { setEditor(null); await bookings.mutate(); }} />}
+    {drawerBooking && <ServiceEditor key={drawerBooking.id} initialServiceIds={currentEditorDraft?.serviceIds ?? drawerBooking.serviceIds} initialAddOns={currentEditorDraft?.addOns ?? drawerBooking.addOns} bookingId={drawerBooking.id} squareServiceReference={drawerBooking.squareBookingIds.length ? drawerBooking.serviceIds.flatMap((guestIds) => guestIds.map((id) => serviceById.get(id)?.nameEn).filter((name): name is string => Boolean(name))) : []} guestNames={drawerBooking.guestNames} customerName={drawerBooking.customerName} customerPhone={drawerBooking.phone} startAt={drawerBooking.startAt} technician={drawerTechnician} initialTechnicians={drawerBooking.technicians} status={drawerStatus} busy={assignmentBusy === drawerBooking.id} checkedOut={drawerStatus === "CHECKED_OUT"} onMarkCheckedOut={() => void updateBookingStatus(drawerBooking, "CHECKED_OUT")} onBillSelectionChange={(serviceIds, addOns) => saveBillingSelection(drawerBooking, serviceIds, addOns)} walkIn={Boolean(editor?.walkIn)} onCancel={() => setEditor(null)} onTechnicianChange={(technician) => void updateBookingTechnician(drawerBooking, technician)} onStatusChange={(status) => void updateBookingStatus(drawerBooking, status)} onSave={saveServices} onBookingCreated={async () => { setEditor(null); await bookings.mutate(); }} />}
   </main>;
 }

@@ -219,6 +219,25 @@ button { color: inherit; }
 .receipt-language { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 8px; }
 .receipt-language button { padding: 5px 2px; border: 0; background: none; color: var(--muted); cursor: pointer; }
 .receipt-language button[aria-pressed="true"] { color: var(--ink); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.bill-square-reference { padding: 10px 12px; border: 1px solid var(--line); background: var(--paper); color: var(--muted); font-size: 11px; line-height: 1.45; }
+.bill-square-reference strong { display: block; color: var(--ink); font-size: 11px; }
+.bill-square-reference ul { display: grid; gap: 3px; margin: 6px 0 0; padding-left: 18px; }
+.bill-catalog { display: grid; gap: 10px; }
+.bill-catalog-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.bill-catalog-heading h3 { margin: 0; font-size: 13px; }
+.bill-catalog-guests { display: flex; gap: 4px; }
+.bill-catalog-guests button { min-height: 28px; padding: 4px 8px; border: 1px solid var(--line); background: #fff; color: var(--muted); font-size: 10px; cursor: pointer; }
+.bill-catalog-guests button[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); font-weight: 700; }
+.bill-catalog-search { display: grid; gap: 4px; color: var(--muted); font-size: 10px; }
+.bill-catalog-search input { min-height: 34px; padding: 6px 9px; border: 1px solid var(--line); background: #fff; color: var(--ink); font: inherit; }
+.bill-catalog-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; max-height: 210px; overflow: auto; padding-right: 2px; }
+.bill-catalog-item { min-width: 0; border: 1px solid var(--line); background: #fff; }
+.bill-catalog-item > button { display: flex; width: 100%; min-height: 38px; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; border: 0; background: transparent; color: var(--ink); text-align: left; font-size: 10px; cursor: pointer; }
+.bill-catalog-item > button[aria-pressed="true"] { background: #f2eee6; }
+.bill-catalog-item > button span { min-width: 0; }
+.bill-catalog-item > button strong { flex: 0 0 auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bill-catalog-item > label { display: grid; gap: 4px; padding: 0 7px 7px; color: var(--muted); font-size: 9px; }
+.bill-catalog-item select { min-height: 28px; width: 100%; padding: 4px 6px; border: 1px solid var(--line); background: #fff; color: var(--ink); font-size: 10px; }
 .receipt-heading { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 8px 0; border-top: 1px solid var(--soft-line); border-bottom: 1px solid var(--soft-line); }
 .receipt-contact { display: grid; gap: 3px; font-size: 10px; font-style: normal; line-height: 1.35; text-align: center; }
 .receipt-date { margin: 0; font-size: 11px; }
@@ -826,9 +845,15 @@ button { color: inherit; }
 .admin-ticket-totals > span { display: flex; justify-content: space-between; gap: 12px; color: #555c65; font-size: 10px; }
 .admin-ticket-totals strong { color: #151515; font-weight: 600; }
 .admin-ticket-totals .admin-ticket-total { padding-top: 8px; border-top: 1px solid var(--admin-line); color: #111; font-size: 12px; font-weight: 650; }
-.admin-drawer-bill { margin: 0 0 11px; }
-.admin-drawer-bill .backup-bill-trigger { width: 100%; min-height: 39px; border: 1px solid #111; border-radius: 5px; background: #111; color: #fff; font-size: 10px; }
-.admin-drawer-footer { display: flex; gap: 8px; padding: 12px 0 0; border-top: 1px solid var(--admin-line); }
+ .admin-manual-discount { margin: 0 0 12px; }
+ .admin-manual-discount > label { display: grid; gap: 6px; color: #555c65; font-size: 10px; }
+ .admin-discount-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+ .admin-discount-controls select, .admin-discount-controls input { width: 100%; min-height: 36px; padding: 0 9px; border: 1px solid var(--admin-line); border-radius: 5px; background: #fff; color: #222; font: 11px Arial, sans-serif; }
+ .admin-square-order-confirmation { display: grid; gap: 5px; margin: 0 0 12px; padding: 11px; border: 1px solid #c9decf; border-radius: 6px; background: #f1f8f3; color: #244b31; font-size: 10px; line-height: 1.5; }
+ .admin-square-order-confirmation span { color: #58745f; font-size: 9px; overflow-wrap: anywhere; }
+ .admin-drawer-bill { margin: 0 0 11px; }
+ .admin-drawer-bill .backup-bill-trigger { width: 100%; min-height: 39px; border: 1px solid #111; border-radius: 5px; background: #111; color: #fff; font-size: 10px; }
+ .admin-drawer-footer { display: flex; gap: 8px; padding: 12px 0 0; border-top: 1px solid var(--admin-line); }
 .admin-drawer-footer button { flex: 1; min-height: 38px; border-radius: 5px; font-size: 10px; }
 .admin-drawer-footer .admin-primary-button { background: #111; color: #fff; }
 .admin-drawer-footer .admin-secondary-button { border-color: #dfe2e6; background: #fff; color: #24282d; }
