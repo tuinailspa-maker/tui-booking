@@ -300,7 +300,6 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
     setTerminalStatus("PAIRING");
     setTerminalStatusMessage("Connecting to Square Terminal…");
     const idempotencyKey = crypto.randomUUID();
-    const deviceCodeKey = "tui-square-terminal-device-code";
     const checkoutBody = {
       bookingId,
       customerName,
@@ -324,24 +323,8 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
     };
 
     try {
-      const savedDeviceCodeId = window.sessionStorage.getItem(deviceCodeKey);
-      let result = await postTerminal({ ...checkoutBody, ...(savedDeviceCodeId ? { action: "pairing-status", deviceCodeId: savedDeviceCodeId } : {}) });
-      if (result.pairingRequired === true) {
-        const deviceCodeId = typeof result.deviceCodeId === "string" ? result.deviceCodeId : savedDeviceCodeId;
-        if (!deviceCodeId) throw new Error("Square did not return a Terminal pairing request.");
-        window.sessionStorage.setItem(deviceCodeKey, deviceCodeId);
-        if (typeof result.pairingCode === "string") setTerminalPairingCode(result.pairingCode);
-        setTerminalStatus("PAIRING");
-        setTerminalStatusMessage("Enter this pairing code on your Square Terminal. Waiting for the device to connect…");
-        for (let attempt = 0; attempt < 100; attempt += 1) {
-          await pause();
-          result = await postTerminal({ ...checkoutBody, action: "pairing-status", deviceCodeId });
-          if (result.pairingRequired !== true) break;
-          if (typeof result.pairingCode === "string") setTerminalPairingCode(result.pairingCode);
-        }
-      }
-
-      if (typeof result.checkoutId !== "string" || typeof result.orderId !== "string") throw new Error("Terminal pairing did not complete. Please try again.");
+      const result = await postTerminal(checkoutBody);
+      if (typeof result.checkoutId !== "string" || typeof result.orderId !== "string") throw new Error("Square did not return a valid Terminal checkout. Please use Square Web Checkout / Payment Link.");
       const checkoutId = result.checkoutId;
       const orderId = result.orderId;
       setTerminalPairingCode("");
