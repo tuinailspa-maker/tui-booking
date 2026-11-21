@@ -1,6 +1,6 @@
 import { squareMappingFor } from "@/data/squareServiceMap";
 
-export type ServiceAddOnKey = "length-ml" | "over-3-weeks" | "extra-callus-remover";
+export type ServiceAddOnKey = "length-ml" | "over-3-weeks" | "extra-callus-remover" | "extra-calcium-gel";
 
 export type ServiceAddOn = {
   key: ServiceAddOnKey;
@@ -57,6 +57,7 @@ const surcharge = (key: ServiceAddOnKey, nameEn: string, nameFr: string, basePri
 const lengthMlAddOn = (basePrice: number) => surcharge("length-ml", "M/L", "M/L", basePrice, 10);
 const overThreeWeeksAddOn = (basePrice: number) => surcharge("over-3-weeks", "If nails over 3 weeks", "Ongles de plus de 3 semaines", basePrice, 5);
 const extraCallusRemoverAddOn = (basePrice: number) => surcharge("extra-callus-remover", "Extra callus remover", "Soin anti-callosités supplémentaire", basePrice, 20);
+const extraCalciumGelAddOn = (basePrice: number) => surcharge("extra-calcium-gel", "Extra Strong Calcium gel", "Gel calcium extra-fort", basePrice, 5);
 
 export const serviceTree: ServiceBranch[] = [
   branch("hands", "Hands", "Mains", [
@@ -64,11 +65,11 @@ export const serviceTree: ServiceBranch[] = [
       branch("manicure", "Manicure", "Manucure", [
         service("hands-manicure-no-polish", "No polish", "Sans vernis", 20, 15),
         service("hands-manicure-regular-polish", "Regular polish", "Vernis classique", 25, 20),
-        service("hands-manicure-shellac", "Shellac", "Shellac", 35, 20),
+        service("hands-manicure-shellac", "Shellac", "Shellac", 35, 20, undefined, extraCalciumGelAddOn(35)),
       ]),
       branch("natural-nails-touch-up", "Touch-up", "Retouche", [
         service("hands-touch-up-regular", "Regular", "Classique", 18, 15),
-        service("hands-touch-up-shellac", "Shellac", "Shellac", 30, 20),
+        service("hands-touch-up-shellac", "Shellac", "Shellac", 30, 20, undefined, extraCalciumGelAddOn(30)),
       ]),
     ]),
     branch("nail-enhancement", "Nail Enhancement (Acrylic, Builder gel, Gel X)", "Extensions (acrylique, gel de construction, Gel X)", [
@@ -120,7 +121,6 @@ export const serviceTree: ServiceBranch[] = [
       service("add-on-chrome-cat-eye", "Chrome, cat eye", "Chrome, œil de chat", 15, 15),
       service("add-on-custom-art", "Hand painting 3D charms, custom", "Peinture à main levée, décor 3D, création sur mesure", 25, 45, "$25+"),
       service("add-on-cuticle-clean-up", "Cuticle clean-up", "Nettoyage des cuticules", 10, 5),
-      service("add-on-calcium-gel", "Extra Strong Calcium gel", "Gel calcium extra-fort", 5, 5, "+$5"),
     ]),
   ]),
   branch("waxing", "Waxing", "Épilation", [
@@ -191,7 +191,6 @@ const DISPLAY_PATH_OVERRIDES: Record<string, { en: string; fr: string }> = {
   "add-on-chrome-cat-eye": { en: "Add-on / Chrome, cat eye", fr: "Supplément / Chrome, œil de chat" },
   "add-on-custom-art": { en: "Add-on / Hand painting 3D charms, custom", fr: "Supplément / Peinture à main levée, décor 3D, création sur mesure" },
   "add-on-cuticle-clean-up": { en: "Add-on / Cuticle clean-up", fr: "Supplément / Nettoyage des cuticules" },
-  "add-on-calcium-gel": { en: "Add-on / Extra Strong Calcium gel", fr: "Supplément / Gel calcium extra-fort" },
 };
 
 function buildPath(node: ServiceNode, parents: ServiceBranch[], language: "en" | "fr") {

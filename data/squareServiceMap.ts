@@ -43,7 +43,6 @@ export const SQUARE_SERVICE_MAP: Record<string, SquareServiceMapping | null> = {
   "add-on-chrome-cat-eye": { variationId: "JBY2JV24PUVEJSWCSL4BRSSR", version: 1792895639204, priceCents: 1500, durationMinutes: 15, squareName: "Nails Design / Ombré, chrome" },
   "add-on-custom-art": { variationId: "FKYVPE2GSPSEDP6K3B7NWGKV", version: 1792895639204, priceCents: 2500, durationMinutes: 30, squareName: "Nails Design / Hand-painting or 3D gems/charms" },
   "add-on-cuticle-clean-up": { variationId: "DMJWCOKMAHZQLGNGHTNBIKDY", version: 1792895639204, priceCents: 1000, durationMinutes: 10, squareName: "Cuticle Clean-up / Regular" },
-  "add-on-calcium-gel": null,
   "waxing-underarm": { variationId: "OTUHLLD345E22WECP25ST6HW", version: 1793180882624, priceCents: 1500, durationMinutes: 10, squareName: "Body Waxing - Under Arm" },
   "waxing-half-arm": { variationId: "TYUFGXFXAXIQ7R6OE6TU637O", version: 1793180882624, priceCents: 2500, durationMinutes: 20, squareName: "Body Waxing - Arms / Half Arm" },
   "waxing-full-arm": { variationId: "BZ6KKYWMUI5KEDR6LZF6SU5K", version: 1793180882624, priceCents: 3000, durationMinutes: 25, squareName: "Body Waxing - Arms / Full Arm" },
