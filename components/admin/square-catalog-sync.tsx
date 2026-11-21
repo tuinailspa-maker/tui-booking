@@ -6,7 +6,7 @@ import type { CatalogComparison, CatalogCreation, CatalogSyncChange, CatalogSync
 import { CatalogComparisonTable } from "@/components/admin/catalog-comparison";
 
 type SyncError = Error & { code?: string };
-type ApplyResult = CatalogSyncPlan & { updatedCount: number; createdCount: number; taxFixCount: number; before: CatalogComparison; after: CatalogComparison };
+type ApplyResult = CatalogSyncPlan & { updatedCount: number; createdCount: number; taxFixCount: number; categoryFixCount?: number; before: CatalogComparison; after: CatalogComparison };
 
 async function fetchPlan(url: string): Promise<CatalogSyncPlan> {
   const response = await fetch(url, { cache: "no-store" });
@@ -63,6 +63,8 @@ export function SquareCatalogSync() {
       data.changes.length && `update ${data.changes.length} variation(s)`,
       data.creations.length && `create ${data.creations.length} variation(s)`,
       data.taxFixes.length && `fix taxes on ${data.taxFixes.length} item(s)`,
+      data.categoryCreations.length && `create ${data.categoryCreations.length} category(ies)`,
+      data.categoryFixes.length && `assign categories on ${data.categoryFixes.length} item(s)`,
     ].filter(Boolean).join(", ");
     if (!window.confirm(`Make Square (${data.environment}) match the internal price list: ${summary}?`)) return;
     setBusy(true);
@@ -104,8 +106,8 @@ export function SquareCatalogSync() {
     </div>}
     {error && !permissionMissing && <div className="admin-alert" role="alert"><strong>Couldn&apos;t sync the Square catalog.</strong><span>{error.message}</span><button type="button" onClick={() => { setApplyError(null); void plan.mutate(); }}>Try again</button></div>}
     {data && data.taxes.missing.length > 0 && <div className="admin-alert" role="alert"><strong>Square tax missing</strong><span>{data.taxes.missing.join(" and ")} is not set up in Square, so item taxes can&apos;t be assigned. Create it under Square Dashboard › Settings › Taxes, then re-check.</span></div>}
-    {result && <div className="catalog-sync-success" role="status">{result.updatedCount + result.createdCount + result.taxFixCount
-      ? `Done: ${result.updatedCount} updated, ${result.createdCount} created, ${result.taxFixCount} item tax fixes.`
+    {result && <div className="catalog-sync-success" role="status">{result.updatedCount + result.createdCount + result.taxFixCount + (result.categoryFixCount ?? 0)
+      ? `Done: ${result.updatedCount} updated, ${result.createdCount} created, ${result.taxFixCount} item tax fixes, ${result.categoryFixCount ?? 0} category assignments.`
       : "Nothing to change — Square already matches."}</div>}
     {plan.isLoading && <div className="admin-loading" role="status"><span className="admin-spinner" />Comparing with the Square catalog…</div>}
 
@@ -113,7 +115,7 @@ export function SquareCatalogSync() {
 
     {data && <>
       {!result && <CatalogComparisonTable title="Current check — internal vs Square (read-only)" comparison={data.comparison} />}
-      <p className="catalog-sync-meta">Environment: <b>{data.environment}</b> · {data.changes.length} to update · {data.creations.length} to create · {data.taxFixes.length} tax fixes · {data.inSync.length} already match{data.permission.status !== "missing" && <> · {data.permission.message}</>}</p>
+      <p className="catalog-sync-meta">Environment: <b>{data.environment}</b> · {data.changes.length} to update · {data.creations.length} to create · {data.taxFixes.length} tax fixes · {data.categoryCreations.length + data.categoryFixes.length} category fixes · {data.inSync.length} already match{data.permission.status !== "missing" && <> · {data.permission.message}</>}</p>
 
       {(data.changes.length > 0 || data.creations.length > 0) && <table className="catalog-sync-table">
         <thead><tr><th scope="col">Square service</th><th scope="col">Price</th><th scope="col">Duration</th></tr></thead>
@@ -126,6 +128,14 @@ export function SquareCatalogSync() {
       {data.taxFixes.length > 0 && <div className="catalog-sync-notes">
         <h3>Item taxes to fix</h3>
         <ul>{data.taxFixes.map((fix) => <li key={fix.itemId}>{fix.itemName} — {fix.enable.length ? `enable ${fix.enable.length}` : ""}{fix.enable.length && fix.disable.length ? ", " : ""}{fix.disable.length ? `disable ${fix.disable.length} other tax(es)` : ""}</li>)}</ul>
+      </div>}
+
+      {(data.categoryCreations.length > 0 || data.categoryFixes.length > 0) && <div className="catalog-sync-notes">
+        <h3>Categories to organize (existing categories on items are kept)</h3>
+        <ul>
+          {data.categoryCreations.map((category) => <li key={`new-${category.key}`}>Create category: {category.name}</li>)}
+          {data.categoryFixes.map((fix) => <li key={fix.itemId}>{fix.itemName} → {fix.categoryName}</li>)}
+        </ul>
       </div>}
 
       {data.addOnModifiers.length > 0 && <div className="catalog-sync-notes">

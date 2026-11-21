@@ -44,8 +44,25 @@ type SquareItemObject = {
   present_at_all_locations?: boolean;
   present_at_location_ids?: string[];
   absent_at_location_ids?: string[];
-  item_data?: { name?: string; product_type?: string; tax_ids?: string[]; variations?: SquareVariationObject[]; [key: string]: unknown };
+  item_data?: {
+    name?: string;
+    product_type?: string;
+    tax_ids?: string[];
+    categories?: { id: string; ordinal?: number }[];
+    reporting_category?: { id: string; ordinal?: number };
+    variations?: SquareVariationObject[];
+    [key: string]: unknown;
+  };
   [key: string]: unknown;
+};
+
+type SquareCategoryObject = {
+  type: "CATEGORY";
+  id: string;
+  version?: number;
+  is_deleted?: boolean;
+  present_at_all_locations?: boolean;
+  category_data?: { name?: string; [key: string]: unknown };
 };
 
 type SquareTaxObject = {
@@ -60,6 +77,7 @@ type Catalog = {
   variations: Map<string, SquareVariationObject>;
   bySku: Map<string, SquareVariationObject>;
   taxes: SquareTaxObject[];
+  categories: SquareCategoryObject[];
 };
 
 export type CatalogSyncChange = {
@@ -89,6 +107,9 @@ export type CatalogCreation = {
 };
 
 export type CatalogTaxFix = { itemId: string; itemName: string; enable: string[]; disable: string[] };
+export type CatalogCategoryCreation = { key: string; name: string };
+/** Adds the internal category to an item; existing categories on the item are kept. */
+export type CatalogCategoryFix = { itemId: string; itemName: string; categoryKey: string; categoryName: string; categoryId: string; isNewCategory: boolean };
 
 export type ServiceComparisonStatus =
   | "match"
@@ -129,6 +150,8 @@ export type CatalogSyncPlan = {
   changes: CatalogSyncChange[];
   creations: CatalogCreation[];
   taxFixes: CatalogTaxFix[];
+  categoryCreations: CatalogCategoryCreation[];
+  categoryFixes: CatalogCategoryFix[];
   taxes: { tps: string | null; tvq: string | null; missing: string[] };
   inSync: CatalogSyncChange[];
   addOnModifiers: { serviceId: string; name: string; priceCents: number }[];
@@ -212,15 +235,19 @@ async function checkPermission(): Promise<CatalogSyncPlan["permission"]> {
 }
 
 async function fetchCatalog(): Promise<Catalog> {
-  const catalog: Catalog = { items: new Map(), variations: new Map(), bySku: new Map(), taxes: [] };
+  const catalog: Catalog = { items: new Map(), variations: new Map(), bySku: new Map(), taxes: [], categories: [] };
   let cursor: string | undefined;
   do {
-    const query = new URLSearchParams({ types: "ITEM,TAX", ...(cursor ? { cursor } : {}) });
-    const page = await squareRequest<{ objects?: (SquareItemObject | SquareTaxObject)[]; cursor?: string }>("GET", `/v2/catalog/list?${query}`);
+    const query = new URLSearchParams({ types: "ITEM,TAX,CATEGORY", ...(cursor ? { cursor } : {}) });
+    const page = await squareRequest<{ objects?: (SquareItemObject | SquareTaxObject | SquareCategoryObject)[]; cursor?: string }>("GET", `/v2/catalog/list?${query}`);
     for (const object of page.objects ?? []) {
       if (object.is_deleted) continue;
       if (object.type === "TAX") {
         catalog.taxes.push(object);
+        continue;
+      }
+      if (object.type === "CATEGORY") {
+        catalog.categories.push(object);
         continue;
       }
       catalog.items.set(object.id, object);
@@ -246,29 +273,62 @@ type ServiceTarget = {
   priceCents: number;
   durationMinutes: number;
   sku: string;
+  category: CategoryTarget;
   surcharge?: { serviceId: string; key: string };
 };
 
+type CategoryTarget = { key: string; name: string; aliases: string[] };
+
+const SURCHARGE_CATEGORY: CategoryTarget = {
+  key: "option-surcharges",
+  name: "Option surcharges / Suppléments d'options",
+  aliases: ["Option surcharges", "Suppléments d'options"],
+};
+
+/** One Square category per top-level branch of serviceTree, named "English / Français". */
+const categoryForBranch = (node: { id: string; nameEn: string; nameFr: string }): CategoryTarget => ({
+  key: node.id,
+  name: `${node.nameEn} / ${node.nameFr}`.slice(0, 255),
+  aliases: [node.nameEn, node.nameFr],
+});
+
+const clientCategoryId = (key: string) => `#tui-cat-${key.replace(/[^A-Za-z0-9_-]/g, "-")}`;
+
 function serviceGroups() {
-  const groups = new Map<string, { path: string; isAddOn: boolean }>();
-  const walk = (nodes: ServiceNode[], path: string[], isAddOn: boolean) => {
+  const groups = new Map<string, { path: string; isAddOn: boolean; category: CategoryTarget }>();
+  const walk = (nodes: ServiceNode[], path: string[], isAddOn: boolean, category: CategoryTarget | null) => {
     for (const node of nodes) {
       if (node.type === "branch") {
-        walk(node.children, [...path, node.nameEn], isAddOn || node.id === "add-on" || node.id === "variable-add-ons");
+        walk(node.children, [...path, node.nameEn], isAddOn || node.id === "add-on" || node.id === "variable-add-ons", category ?? categoryForBranch(node));
       } else {
-        groups.set(node.id, { path: path.join(" › "), isAddOn });
+        groups.set(node.id, { path: path.join(" › "), isAddOn, category: category ?? categoryForBranch({ id: node.id, nameEn: node.nameEn, nameFr: node.nameFr }) });
       }
     }
   };
-  walk(serviceTree, [], false);
+  walk(serviceTree, [], false, null);
   return groups;
 }
+
+const normalizeName = (name: string | undefined) => (name ?? "").normalize("NFC").trim().toLowerCase();
+
+/** Reuses an existing Square category with the same bilingual, English, or French name so sync never duplicates one. */
+function findCategory(catalog: Catalog, target: CategoryTarget) {
+  const names = [target.name, ...target.aliases].map(normalizeName);
+  for (const name of names) {
+    const match = catalog.categories.find((category) => normalizeName(category.category_data?.name) === name);
+    if (match) return match;
+  }
+  return null;
+}
+
+const itemCategoryIds = (item: SquareItemObject) => (item.item_data?.categories ?? []).map((category) => category.id);
 
 function internalTargets(): ServiceTarget[] {
   const groups = serviceGroups();
   return allServices.map((service) => {
-    const group = groups.get(service.id) ?? { path: "", isAddOn: false };
+    const group = groups.get(service.id) ?? { path: "", isAddOn: false, category: categoryForBranch({ id: service.id, nameEn: service.nameEn, nameFr: service.nameFr }) };
     return {
+      category: group.category,
       service,
       id: service.id,
       name: serviceDisplayName(service, "en"),
@@ -301,6 +361,7 @@ function surchargeTargets(): ServiceTarget[] {
       priceCents: Math.round(addOn.priceCad * 100),
       durationMinutes: addOn.durationMinutes,
       sku: squareSurchargeSkuFor(service.id, addOn.key),
+      category: SURCHARGE_CATEGORY,
       surcharge: { serviceId: service.id, key: addOn.key },
     }];
   });
@@ -552,6 +613,33 @@ async function buildPlan() {
   const newVariations: SquareVariationObject[] = [];
   const newItems: SquareItemObject[] = [];
   const touchedItemIds = new Set<string>();
+  const newCategories = new Map<string, SquareCategoryObject>();
+  const itemCategoryVotes = new Map<string, Map<string, { category: CategoryTarget; count: number }>>();
+
+  const categoryIdFor = (category: CategoryTarget) => {
+    const existing = findCategory(catalog, category);
+    if (existing) return existing.id;
+    if (!newCategories.has(category.key)) {
+      newCategories.set(category.key, {
+        type: "CATEGORY",
+        id: clientCategoryId(category.key),
+        present_at_all_locations: true,
+        category_data: { name: category.name },
+      });
+    }
+    return clientCategoryId(category.key);
+  };
+  const voteCategory = (itemId: string, category: CategoryTarget) => {
+    const votes = itemCategoryVotes.get(itemId) ?? new Map();
+    const entry = votes.get(category.key) ?? { category, count: 0 };
+    entry.count += 1;
+    votes.set(category.key, entry);
+    itemCategoryVotes.set(itemId, votes);
+  };
+  const newItemCategories = (category: CategoryTarget) => {
+    const id = categoryIdFor(category);
+    return { categories: [{ id }], reporting_category: { id } };
+  };
 
   const planUpdate = (target: ServiceTarget, variation: SquareVariationObject, renameTo?: string) => {
     const data = variation.item_variation_data ?? {};
@@ -568,7 +656,10 @@ async function buildPlan() {
     }
     if (!data.team_member_ids?.length) warnings.push("Assigns every technician to this variation.");
     if (locationId && !isPresentAt(variation, locationId)) warnings.push("Enables the variation at the salon location.");
-    if (data.item_id) touchedItemIds.add(data.item_id);
+    if (data.item_id) {
+      touchedItemIds.add(data.item_id);
+      voteCategory(data.item_id, target.category);
+    }
 
     const entry: CatalogSyncChange = {
       variationId: variation.id,
@@ -596,6 +687,7 @@ async function buildPlan() {
     const name = variationLabel(target);
     if (parentItem) {
       touchedItemIds.add(parentItem.id);
+      voteCategory(parentItem.id, target.category);
       newVariations.push({
         type: "ITEM_VARIATION",
         id: clientVariationId(target.id),
@@ -613,6 +705,7 @@ async function buildPlan() {
           name: `${target.service.nameEn} / ${target.service.nameFr}`.slice(0, 255),
           product_type: "APPOINTMENTS_SERVICE",
           ...(taxes.required.length ? { tax_ids: taxes.required } : {}),
+          ...newItemCategories(target.category),
           variations: [{
             type: "ITEM_VARIATION",
             id: clientVariationId(target.id),
@@ -674,6 +767,7 @@ async function buildPlan() {
     }));
     if (surchargeItem) {
       touchedItemIds.add(surchargeItem.id);
+      voteCategory(surchargeItem.id, SURCHARGE_CATEGORY);
       newVariations.push(...variations);
     } else {
       newItems.push({
@@ -684,6 +778,7 @@ async function buildPlan() {
           name: SURCHARGE_ITEM_NAME,
           product_type: "APPOINTMENTS_SERVICE",
           ...(taxes.required.length ? { tax_ids: taxes.required } : {}),
+          ...newItemCategories(SURCHARGE_CATEGORY),
           variations,
         },
       });
@@ -709,6 +804,24 @@ async function buildPlan() {
     .map((item) => itemTaxFix(item, taxes.required))
     .filter((fix): fix is CatalogTaxFix => Boolean(fix));
 
+  const categoryFixes: CatalogCategoryFix[] = [];
+  for (const [itemId, votes] of itemCategoryVotes) {
+    const item = catalog.items.get(itemId);
+    if (!item) continue;
+    const { category } = [...votes.values()].sort((a, b) => b.count - a.count)[0];
+    const categoryId = categoryIdFor(category);
+    if (itemCategoryIds(item).includes(categoryId)) continue;
+    categoryFixes.push({
+      itemId,
+      itemName: item.item_data?.name ?? itemId,
+      categoryKey: category.key,
+      categoryName: category.name,
+      categoryId,
+      isNewCategory: newCategories.has(category.key),
+    });
+  }
+  const categoryCreations: CatalogCategoryCreation[] = [...newCategories.entries()].map(([key, object]) => ({ key, name: object.category_data?.name ?? key }));
+
   const addOnModifiers = targets
     .filter((target) => target.service.addOn)
     .map((target) => ({ serviceId: target.id, name: `${target.name} + ${target.service.addOn!.nameEn}`, priceCents: Math.round(target.service.addOn!.priceCad * 100) }));
@@ -720,19 +833,21 @@ async function buildPlan() {
     changes,
     creations,
     taxFixes: taxes.missing.length ? [] : taxFixes,
+    categoryCreations,
+    categoryFixes,
     taxes: { tps: taxes.tps, tvq: taxes.tvq, missing: taxes.missing },
     inSync,
     addOnModifiers,
-    pendingCount: changes.length + creations.length + (taxes.missing.length ? 0 : taxFixes.length),
+    pendingCount: changes.length + creations.length + (taxes.missing.length ? 0 : taxFixes.length) + categoryCreations.length + categoryFixes.length,
   };
-  return { plan, updates, newVariations, newItems };
+  return { plan, updates, newVariations, newItems, newCategories: [...newCategories.values()] };
 }
 
 export async function previewCatalogSync(): Promise<CatalogSyncPlan> {
   return (await buildPlan()).plan;
 }
 
-async function upsert(objects: (SquareVariationObject | SquareItemObject)[]) {
+async function upsert(objects: (SquareVariationObject | SquareItemObject | SquareCategoryObject)[]) {
   if (objects.length === 0) return new Map<string, string>();
   const result = await squareRequest<{ id_mappings?: { client_object_id?: string; object_id?: string }[] }>("POST", "/v2/catalog/batch-upsert", {
     idempotency_key: randomUUID(),
@@ -742,17 +857,17 @@ async function upsert(objects: (SquareVariationObject | SquareItemObject)[]) {
 }
 
 export async function applyCatalogSync() {
-  const { plan, updates, newVariations, newItems } = await buildPlan();
+  const { plan, updates, newVariations, newItems, newCategories } = await buildPlan();
   if (plan.permission.status === "missing") {
     throw new SquareCatalogSyncError(MISSING_PERMISSION_MESSAGE, 403, "MISSING_PERMISSION");
   }
   const before = plan.comparison;
-  if (plan.pendingCount === 0) return { plan, updatedCount: 0, createdCount: 0, taxFixCount: 0, before, after: before };
+  if (plan.pendingCount === 0) return { plan, updatedCount: 0, createdCount: 0, taxFixCount: 0, categoryFixCount: 0, before, after: before };
 
-  // Existing variations first (they carry versions), then new variations/items, then item taxes, so one
-  // change cannot invalidate the version of another in the same request.
+  // Existing variations first (they carry versions), then new categories/variations/items in one batch
+  // (so new items can reference new categories by client id), then item taxes, then item categories.
   await upsert(updates);
-  const ids = await upsert([...newVariations, ...newItems]);
+  const ids = await upsert([...newCategories, ...newVariations, ...newItems]);
   for (const creation of plan.creations) creation.createdVariationId = ids.get(clientVariationId(creation.serviceId));
 
   for (const fix of plan.taxFixes) {
@@ -763,7 +878,35 @@ export async function applyCatalogSync() {
     });
   }
 
+  if (plan.categoryFixes.length) {
+    // Re-read items so their versions reflect the variation and tax writes above.
+    const fresh = await fetchCatalog();
+    const itemUpdates: SquareItemObject[] = [];
+    for (const fix of plan.categoryFixes) {
+      const item = fresh.items.get(fix.itemId);
+      const categoryId = ids.get(fix.categoryId) || fix.categoryId;
+      if (!item?.item_data || categoryId.startsWith("#") || itemCategoryIds(item).includes(categoryId)) continue;
+      itemUpdates.push({
+        ...item,
+        item_data: {
+          ...item.item_data,
+          categories: [...(item.item_data.categories ?? []), { id: categoryId }],
+          reporting_category: item.item_data.reporting_category ?? { id: categoryId },
+        },
+      });
+    }
+    await upsert(itemUpdates);
+  }
+
   clearSquareVariationCache();
   const after = compare(await fetchCatalog());
-  return { plan, updatedCount: updates.length, createdCount: newVariations.length + newItems.length, taxFixCount: plan.taxFixes.length, before, after };
+  return {
+    plan,
+    updatedCount: updates.length,
+    createdCount: newCategories.length + newVariations.length + newItems.length,
+    taxFixCount: plan.taxFixes.length,
+    categoryFixCount: plan.categoryFixes.length,
+    before,
+    after,
+  };
 }
