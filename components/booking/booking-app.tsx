@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import Image from "next/image";
+import { useSquareSync } from "@/hooks/use-square-sync";
 import { BUSINESS_TIME_ZONE, getSlotsForDate, isOnlineOnlyTime, type PublicTechnician, type Technician } from "@/data/staffSchedule";
 import { serviceById, type ServiceAddOnKey } from "@/data/serviceTree";
 import { BookingSummary, formatCad, getBookingTotals } from "./booking-summary";
@@ -69,11 +70,12 @@ export function BookingApp() {
   const totals = useMemo(() => getBookingTotals(selections, serviceAddOns), [selections, serviceAddOns]);
   const requestedSlotDuration = Math.max(30, ...totals.guestDurations);
   const availabilityKey = date ? ["/api/bookings/availability", date, partySize, requestedSlotDuration] as const : null;
-  const { data: slotAvailability, isLoading: isAvailabilityLoading } = useSWR(
+  const { data: slotAvailability, isLoading: isAvailabilityLoading, mutate: refreshAvailability } = useSWR(
     availabilityKey,
     async ([url, requestedDate, requestedPartySize, durationMinutes]) => {
       const response = await fetch(url, {
         method: "POST",
+        cache: "no-store",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date: requestedDate, partySize: requestedPartySize, durationMinutes }),
       });
@@ -81,8 +83,10 @@ export function BookingApp() {
       if (!response.ok) throw new Error(result?.error || "Could not load live availability.");
       return result as { slots: Record<string, Technician[]>; nextDate?: string | null };
     },
-    { revalidateOnFocus: false },
+    // Working hours and blocked time have no Square webhook, so poll as a backstop to the webhook sync.
+    { revalidateOnFocus: true, refreshInterval: 30_000 },
   );
+  useSquareSync(() => void refreshAvailability());
   const availabilitySlots = slotAvailability?.slots ?? {};
   const slots = useMemo(() => getSlotsForDate(date, 1), [date]);
   const selectedSlot = slots.find((slot) => slot.time === time);

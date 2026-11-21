@@ -4,7 +4,9 @@ import { SQUARE_API_VERSION } from "@/data/squareConfig";
 import { getServiceVariationLinks } from "@/data/squareVariations";
 import { buildGuestSegments, SegmentMappingError, type AppointmentSegment } from "@/data/squareSegments";
 import { calculateBill, centsToDollars } from "@/data/billing";
-import { verifyGuestAssignments } from "@/data/squareStaff";
+import { fetchBusyWindows, verifyGuestAssignments } from "@/data/squareStaff";
+import { bumpSquareSyncVersion } from "@/data/squareSync";
+import type { StaffMember } from "@/data/staffRoster";
 import { isWithinBusinessHours, type Technician } from "@/data/staffSchedule";
 
 const SQUARE_PRODUCTION_URL = "https://connect.squareup.com/v2";
@@ -165,6 +167,32 @@ function guestDurationMinutes(guest: BookingGuest) {
   }, 0);
 }
 
+type CreatedBooking = { id: string; version?: number; created_at?: string };
+
+async function cancelBookings(requestId: string, bookings: CreatedBooking[]) {
+  await Promise.all(bookings.map((booking) =>
+    squareRequest("cancel_booking", `/bookings/${encodeURIComponent(booking.id)}/cancel`, {
+      idempotency_key: `${requestId}-cancel-${booking.id}`.slice(0, 128),
+      ...(typeof booking.version === "number" ? { booking_version: booking.version } : {}),
+    }).catch((error) => console.error("[v0] Square booking rollback failed:", booking.id, error instanceof Error ? error.message : error)),
+  ));
+}
+
+/** Name of a technician who has another active booking overlapping ours that was created first, if any. */
+async function findOverlapConflict(locationId: string, startMs: number, guests: { member: StaffMember; durationMinutes: number }[], created: CreatedBooking[]): Promise<string | null> {
+  const ownIds = new Set(created.map((booking) => booking.id));
+  const ownCreatedAt = Math.min(...created.map((booking) => (booking.created_at ? Date.parse(booking.created_at) : Date.now())));
+  const ownFirstId = [...ownIds].sort()[0] ?? "";
+  for (const { member, durationMinutes } of guests) {
+    const endMs = startMs + durationMinutes * 60_000;
+    const busy = await fetchBusyWindows(locationId, member.teamMemberId, startMs, endMs);
+    const rival = busy.find((window) => !ownIds.has(window.bookingId) && window.startMs < endMs && window.endMs > startMs
+      && (window.createdAtMs < ownCreatedAt || (window.createdAtMs === ownCreatedAt && window.bookingId < ownFirstId)));
+    if (rival) return member.name;
+  }
+  return null;
+}
+
 export async function POST(request: Request) {
   const parsed = parseBookingRequest(await request.json().catch(() => null));
   if (!parsed) {
@@ -180,8 +208,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Square is not configured.", step: "config", detail: "SQUARE_ACCESS_TOKEN or SQUARE_LOCATION_ID is missing." }, { status: 500 });
   }
 
+  const startMs = Date.parse(parsed.startAt);
+  const guestAssignments = parsed.guests.map((guest) => ({ technician: guest.technician, durationMinutes: guestDurationMinutes(guest) }));
+  if (guestAssignments.some((guest) => guest.durationMinutes <= 0)) {
+    return NextResponse.json({ error: "Each guest needs at least one timed service." }, { status: 400 });
+  }
+
   try {
-    const assignment = await verifyGuestAssignments(locationId, Date.parse(parsed.startAt), parsed.guests.map((guest) => ({ technician: guest.technician, durationMinutes: guestDurationMinutes(guest) })));
+    // Step 1: live availability check before anything is written to Square.
+    const assignment = await verifyGuestAssignments(locationId, startMs, guestAssignments);
     if (!assignment.ok) {
       const detail = assignment.reason === "duplicate_staff"
         ? "Each guest needs a different technician."
@@ -202,22 +237,44 @@ export async function POST(request: Request) {
 
     const segmentsByGuest = await buildAppointmentSegments(parsed, assignment.members.map((member) => member.teamMemberId));
 
-    const bookings = [];
-    for (const [index, guest] of parsed.guests.entries()) {
-      const { booking } = await squareRequest<{ booking: { id: string } }>("create_booking", "/bookings", {
-        idempotency_key: `${parsed.requestId}-${index + 1}`,
-        booking: {
-          location_id: locationId,
-          start_at: new Date(parsed.startAt).toISOString(),
-          customer_id: customer.id,
-          customer_note: buildSellerNote(parsed, guest, index),
-          seller_note: buildSellerNote(parsed, guest, index),
-          appointment_segments: segmentsByGuest[index],
-        },
-      });
-      bookings.push(booking.id);
+    // Step 2: re-verify live Square availability immediately before /v2/bookings, in case a column
+    // was closed, blocked, or booked on the Square Dashboard while the customer record was created.
+    const recheck = await verifyGuestAssignments(locationId, startMs, guestAssignments);
+    if (!recheck.ok) {
+      return NextResponse.json({ error: SLOT_UNAVAILABLE_MESSAGE, step: "availability_recheck", detail: `Not available for the full appointment: ${recheck.unavailable.join(", ") || "selected technicians"}.` }, { status: 409 });
     }
 
+    const created: CreatedBooking[] = [];
+    try {
+      for (const [index, guest] of parsed.guests.entries()) {
+        const { booking } = await squareRequest<{ booking: CreatedBooking }>("create_booking", "/bookings", {
+          idempotency_key: `${parsed.requestId}-${index + 1}`,
+          booking: {
+            location_id: locationId,
+            start_at: new Date(parsed.startAt).toISOString(),
+            customer_id: customer.id,
+            customer_note: buildSellerNote(parsed, guest, index),
+            seller_note: buildSellerNote(parsed, guest, index),
+            appointment_segments: segmentsByGuest[index],
+          },
+        });
+        created.push(booking);
+      }
+    } catch (error) {
+      // Never leave a partial group on the calendar.
+      await cancelBookings(parsed.requestId, created);
+      throw error;
+    }
+
+    // Two online bookings can pass the re-check at the same instant; the later-created one yields.
+    const conflict = await findOverlapConflict(locationId, startMs, recheck.members.map((member, index) => ({ member, durationMinutes: guestAssignments[index].durationMinutes })), created);
+    if (conflict) {
+      await cancelBookings(parsed.requestId, created);
+      return NextResponse.json({ error: SLOT_UNAVAILABLE_MESSAGE, step: "overlap_guard", detail: `${conflict} was just booked for this time.` }, { status: 409 });
+    }
+
+    const bookings = created.map((booking) => booking.id);
+    await bumpSquareSyncVersion("booking.created.online").catch(() => undefined);
     return NextResponse.json({ booking: { id: bookings[0] }, bookingIds: bookings });
   } catch (error) {
     if (error instanceof SquareStepError) {

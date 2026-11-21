@@ -20,6 +20,7 @@ export async function getSquareAvailableStarts(teamMemberId: string, rangeStartM
   const variation = await resolveSquareBookingVariation();
   const response = await fetch(`${squareBaseUrl()}/bookings/availability/search`, {
     method: "POST",
+    cache: "no-store",
     headers: headers(),
     body: JSON.stringify({
       query: {

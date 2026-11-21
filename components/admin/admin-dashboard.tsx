@@ -4,6 +4,7 @@ import { useMemo, useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import useSWR from "swr";
+import { useSquareSync } from "@/hooks/use-square-sync";
 import { AppointmentCalendar } from "./appointment-calendar";
 import type { AppointmentStatus } from "./appointment-drawer";
 import { PinLockScreen } from "./pin-lock-screen";
@@ -144,6 +145,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
   const isAuthenticated = sessionHint && session.data?.authenticated === true;
   const bookingKey = isAuthenticated && date ? `/api/admin/bookings?date=${encodeURIComponent(date)}` : null;
   const bookings = useSWR<BookingPayload, FetchError>(bookingKey, jsonFetcher, { revalidateOnFocus: true, refreshInterval: 60000 });
+  useSquareSync(() => void bookings.mutate());
   const staffRoster = bookings.data?.staff?.length ? bookings.data.staff : FALLBACK_STAFF;
   const staffNames = staffRoster.map((member) => member.name);
 
