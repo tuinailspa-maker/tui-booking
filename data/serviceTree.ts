@@ -1,12 +1,14 @@
 import { squareMappingFor } from "@/data/squareServiceMap";
 
-export type ServiceAddOnKey = "length-ml" | "over-3-weeks";
+export type ServiceAddOnKey = "length-ml" | "over-3-weeks" | "extra-callus-remover";
 
 export type ServiceAddOn = {
   key: ServiceAddOnKey;
   nameEn: string;
   nameFr: string;
   priceCad: number;
+  labelEn: string;
+  labelFr: string;
   durationMinutes?: number;
 };
 
@@ -40,8 +42,18 @@ export type ServiceNode = ServiceBranch | ServiceLeaf;
 
 const branch = (id: string, nameEn: string, nameFr: string, children: ServiceNode[], noteEn?: string, noteFr?: string): ServiceBranch => ({ type: "branch", id, nameEn, nameFr, children, ...(noteEn ? { noteEn } : {}), ...(noteFr ? { noteFr } : {}) });
 const service = (id: string, nameEn: string, nameFr: string, price: number, durationMinutes: number, priceLabel?: string, addOn?: ServiceAddOn): ServiceLeaf => ({ type: "service", id, name: nameEn, nameEn, nameFr, price, priceCad: price, durationMinutes, ...(priceLabel ? { priceLabel } : {}), ...(addOn ? { addOn } : {}) });
-const lengthMlAddOn: ServiceAddOn = { key: "length-ml", nameEn: "M/L, +$10", nameFr: "M/L, +10 $", priceCad: 10 };
-const overThreeWeeksAddOn: ServiceAddOn = { key: "over-3-weeks", nameEn: "If nails are over 3 weeks +$3", nameFr: "Ongles de plus de 3 semaines +3 $", priceCad: 3 };
+const surcharge = (key: ServiceAddOnKey, nameEn: string, nameFr: string, basePrice: number, priceCad: number, durationMinutes?: number): ServiceAddOn => ({
+  key,
+  nameEn,
+  nameFr,
+  priceCad,
+  labelEn: `${nameEn}, $${basePrice + priceCad} (+$${priceCad})`,
+  labelFr: `${nameFr}, ${basePrice + priceCad} $ (+${priceCad} $)`,
+  ...(durationMinutes ? { durationMinutes } : {}),
+});
+const lengthMlAddOn = (basePrice: number) => surcharge("length-ml", "M/L", "M/L", basePrice, 10);
+const overThreeWeeksAddOn = (basePrice: number) => surcharge("over-3-weeks", "If nails over 3 weeks", "Ongles de plus de 3 semaines", basePrice, 5);
+const extraCallusRemoverAddOn = (basePrice: number) => surcharge("extra-callus-remover", "Extra callus remover", "Soin anti-callosités supplémentaire", basePrice, 20, 15);
 
 export const serviceTree: ServiceBranch[] = [
   branch("hands", "Hands", "Mains", [
@@ -58,23 +70,23 @@ export const serviceTree: ServiceBranch[] = [
     ]),
     branch("nail-enhancement", "Nail Enhancement (Acrylic, Builder gel, Gel X)", "Extensions (acrylique, gel de construction, Gel X)", [
       branch("enhancement-new-set", "New set", "Nouvelle pose", [
-        service("enhancement-new-no-polish", "No polish", "Sans vernis", 40, 60, undefined, lengthMlAddOn),
-        service("enhancement-new-regular-polish", "Regular polish", "Vernis classique", 50, 60, undefined, lengthMlAddOn),
-        service("enhancement-new-shellac", "Shellac", "Shellac", 55, 60, undefined, lengthMlAddOn),
+        service("enhancement-new-no-polish", "No polish", "Sans vernis", 40, 60, undefined, lengthMlAddOn(40)),
+        service("enhancement-new-regular-polish", "Regular polish", "Vernis classique", 50, 60, undefined, lengthMlAddOn(50)),
+        service("enhancement-new-shellac", "Shellac", "Shellac", 55, 60, undefined, lengthMlAddOn(55)),
       ], "M/L +$10 · 60 mins", "M/L +10 $ · 60 min"),
       branch("enhancement-refill", "Refill", "Remplissage", [
-        service("enhancement-refill-no-polish", "No polish", "Sans vernis", 32, 50, undefined, overThreeWeeksAddOn),
-        service("enhancement-refill-regular-polish", "Regular polish", "Vernis classique", 42, 50, undefined, overThreeWeeksAddOn),
-        service("enhancement-refill-shellac", "Shellac", "Shellac", 47, 50, undefined, overThreeWeeksAddOn),
-      ], "If nails are over 3 weeks +$3 · 60 mins", "Ongles de plus de 3 semaines +3 $ · 60 min"),
+        service("enhancement-refill-no-polish", "No polish", "Sans vernis", 32, 50, undefined, overThreeWeeksAddOn(32)),
+        service("enhancement-refill-regular-polish", "Regular polish", "Vernis classique", 42, 50, undefined, overThreeWeeksAddOn(42)),
+        service("enhancement-refill-shellac", "Shellac", "Shellac", 47, 50, undefined, overThreeWeeksAddOn(47)),
+      ], "If nails over 3 weeks +$5 · 50 mins", "Ongles de plus de 3 semaines +5 $ · 50 min"),
     ]),
   ]),
   branch("feet", "Feets", "Pieds", [
     branch("pedicure", "Pedicure", "Pédicure", [
-      service("feet-pedicure-no-polish", "No polish", "Sans vernis", 35, 30),
-      service("feet-pedicure-regular-polish", "Regular polish", "Vernis classique", 40, 35),
-      service("feet-pedicure-shellac", "Shellac", "Shellac", 50, 35),
-    ]),
+      service("feet-pedicure-no-polish", "No polish", "Sans vernis", 35, 30, undefined, extraCallusRemoverAddOn(35)),
+      service("feet-pedicure-regular-polish", "Regular polish", "Vernis classique", 40, 35, undefined, extraCallusRemoverAddOn(40)),
+      service("feet-pedicure-shellac", "Shellac", "Shellac", 50, 35, undefined, extraCallusRemoverAddOn(50)),
+    ], "Extra callus remover +$20", "Soin anti-callosités supplémentaire +20 $"),
     branch("feet-touch-up", "Touch-up", "Retouche", [
       service("feet-touch-up-regular-polish", "Regular polish", "Vernis classique", 22, 15),
       service("feet-touch-up-shellac", "Shellac", "Shellac", 32, 20),
@@ -82,7 +94,6 @@ export const serviceTree: ServiceBranch[] = [
   ]),
   branch("variable-add-ons", "Option add-on", "Options / suppléments", [
     branch("removal", "Removal", "Dépose", [
-      service("removal-none", "None", "Aucune", 0, 0),
       service("removal-shellac", "Shellac", "Shellac", 15, 15),
       service("removal-enhancement", "Enhancement nails", "Extensions", 20, 30),
     ]),
@@ -100,7 +111,6 @@ export const serviceTree: ServiceBranch[] = [
         service("treatment-paraffin-hands", "Hands", "Mains", 12, 10),
       ]),
       service("treatment-collagen", "Collagen", "Collagène", 10, 10),
-      service("treatment-extra-callus-remover", "Extra callus remover heels", "Soin anti-callosités supplémentaire des talons", 20, 15),
     ]),
     branch("add-on", "Add-on", "Supplément", [
       service("add-on-basic-art", "Basic art — french, simple line, dots", "Décor simple : french, lignes, pois", 10, 15),
@@ -165,7 +175,6 @@ const DISPLAY_PATH_OVERRIDES: Record<string, { en: string; fr: string }> = {
   "feet-pedicure-shellac": { en: "Pedicure / Shellac", fr: "Pédicure / Shellac" },
   "feet-touch-up-regular-polish": { en: "Feet / Touch-up / Regular polish", fr: "Pieds / Retouche / Vernis classique" },
   "feet-touch-up-shellac": { en: "Feet / Touch-up / Shellac", fr: "Pieds / Retouche / Shellac" },
-  "removal-none": { en: "removal / None", fr: "Dépose / Aucune" },
   "removal-shellac": { en: "removal / Shellac", fr: "Dépose / Shellac" },
   "removal-enhancement": { en: "removal / Enhancement nails", fr: "Dépose / Extensions" },
   "repair-1-2-nails": { en: "Repair / 1-2 nails", fr: "Réparation / 1 à 2 ongles" },
@@ -175,7 +184,6 @@ const DISPLAY_PATH_OVERRIDES: Record<string, { en: string; fr: string }> = {
   "treatment-paraffin-feet": { en: "Treatment / Paraffin / Feets", fr: "Soin / Paraffine / Pieds" },
   "treatment-paraffin-hands": { en: "Treatment / Paraffin / Hands", fr: "Soin / Paraffine / Mains" },
   "treatment-collagen": { en: "Treatment / Collagen", fr: "Soin / Collagène" },
-  "treatment-extra-callus-remover": { en: "Treatment / Extra callus remover heels", fr: "Soin / Soin anti-callosités supplémentaire des talons" },
   "add-on-basic-art": { en: "Add-on / Basic art — french, simple line, dots", fr: "Supplément / Décor simple (French, lignes, pois)" },
   "add-on-chrome-cat-eye": { en: "Add-on / Chrome, cat eye", fr: "Supplément / Chrome, œil de chat" },
   "add-on-custom-art": { en: "Add-on / Hand painting 3D charms, custom", fr: "Supplément / Peinture à main levée, décor 3D, création sur mesure" },
