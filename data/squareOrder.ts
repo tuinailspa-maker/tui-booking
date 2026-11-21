@@ -1,5 +1,6 @@
 import { TPS_RATE_PERCENT, TVQ_RATE_PERCENT, type BillLine, type BillTotals } from "@/data/billing";
 import { getServiceVariationLinks, type SquareServiceVariation } from "@/data/squareVariations";
+import { surchargeLinkKey } from "@/data/squareServiceMap";
 
 type Money = { amount: number; currency: "CAD" };
 const cad = (amount: number): Money => ({ amount, currency: "CAD" });
@@ -34,19 +35,14 @@ export function buildSquareOrder(bill: BillTotals, live: Map<string, SquareServi
     const uid = `tui-${index + 1}`;
     const guestNote = `Guest ${line.guestIndex + 1}`;
     const variation = catalogVariationFor(line, live);
-    if (variation) {
-      lineItems.push({ uid, catalog_object_id: variation.variationId, quantity: "1", note: guestNote });
-      if (line.addOnPriceCents > 0) {
-        lineItems.push({ uid: `${uid}-addon`, name: `${line.nameEn} + ${line.addOnNameEn ?? "Add-on"}`, quantity: "1", note: guestNote, base_price_money: cad(line.addOnPriceCents) });
-      }
-    } else {
-      lineItems.push({
-        uid,
-        name: line.addOnNameEn ? `${line.nameEn} + ${line.addOnNameEn}` : line.nameEn,
-        quantity: "1",
-        note: guestNote,
-        base_price_money: cad(line.priceCents),
-      });
+    lineItems.push(variation
+      ? { uid, catalog_object_id: variation.variationId, quantity: "1", note: guestNote }
+      : { uid, name: line.nameEn, quantity: "1", note: guestNote, base_price_money: cad(line.basePriceCents) });
+    if (line.addOnPriceCents > 0) {
+      const surcharge = line.addOnKey ? live.get(surchargeLinkKey(line.serviceId, line.addOnKey)) : undefined;
+      lineItems.push(surcharge && surcharge.priceCents === line.addOnPriceCents
+        ? { uid: `${uid}-addon`, catalog_object_id: surcharge.variationId, quantity: "1", note: guestNote }
+        : { uid: `${uid}-addon`, name: `${line.nameEn} + ${line.addOnNameEn ?? "Add-on"}`, quantity: "1", note: guestNote, base_price_money: cad(line.addOnPriceCents) });
     }
   });
 

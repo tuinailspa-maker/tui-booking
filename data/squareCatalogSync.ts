@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
-import { resolveServiceVariation, squareMappingFor, squareSkuFor } from "@/data/squareServiceMap";
-import { allServices, selectedServiceDuration, selectedServicePrice, serviceDisplayName, serviceTree, type ServiceLeaf, type ServiceNode } from "@/data/serviceTree";
+import { resolveServiceVariation, squareMappingFor, squareSkuFor, squareSurchargeSkuFor, surchargeLinkKey } from "@/data/squareServiceMap";
+import { allServices, serviceDisplayName, serviceTree, type ServiceLeaf, type ServiceNode } from "@/data/serviceTree";
 import { TPS_RATE_PERCENT, TVQ_RATE_PERCENT } from "@/data/billing";
 import { clearSquareVariationCache } from "@/data/squareVariations";
 
@@ -78,7 +78,7 @@ export type CatalogSyncChange = {
 export type CatalogCreation = {
   serviceId: string;
   name: string;
-  reason: "split_shared" | "missing_variation" | "unmapped";
+  reason: "split_shared" | "missing_variation" | "unmapped" | "surcharge";
   squareItemName: string;
   newItem: boolean;
   variationName: string;
@@ -246,6 +246,7 @@ type ServiceTarget = {
   priceCents: number;
   durationMinutes: number;
   sku: string;
+  surcharge?: { serviceId: string; key: string };
 };
 
 function serviceGroups() {
@@ -280,6 +281,32 @@ function internalTargets(): ServiceTarget[] {
     };
   });
 }
+
+const SURCHARGE_ITEM_NAME = "Option surcharges / Suppléments d'options";
+const SURCHARGE_ITEM_CLIENT_ID = "#tui-item-option-surcharges";
+
+/** One Square variation per option surcharge, priced and timed from the add-on in serviceTree. */
+function surchargeTargets(): ServiceTarget[] {
+  const groups = serviceGroups();
+  return allServices.flatMap((service) => {
+    const addOn = service.addOn;
+    if (!addOn) return [];
+    return [{
+      service,
+      id: surchargeLinkKey(service.id, addOn.key),
+      name: `${serviceDisplayName(service, "en")} + ${addOn.nameEn}`,
+      nameFr: `${serviceDisplayName(service, "fr")} + ${addOn.nameFr}`,
+      group: groups.get(service.id)?.path ?? "",
+      isAddOn: true,
+      priceCents: Math.round(addOn.priceCad * 100),
+      durationMinutes: addOn.durationMinutes,
+      sku: squareSurchargeSkuFor(service.id, addOn.key),
+      surcharge: { serviceId: service.id, key: addOn.key },
+    }];
+  });
+}
+
+const clientVariationId = (targetId: string) => `#tui-var-${targetId.replace(/[^A-Za-z0-9_-]/g, "-")}`;
 
 const variationPrice = (variation: SquareVariationObject) => {
   const amount = variation.item_variation_data?.price_money?.amount;
@@ -345,8 +372,46 @@ function itemTaxFix(item: SquareItemObject, required: string[]): CatalogTaxFix |
   return enable.length || disable.length ? { itemId: item.id, itemName: item.item_data?.name ?? item.id, enable, disable } : null;
 }
 
+function variationComparison(target: ServiceTarget, variation: SquareVariationObject, catalog: Catalog, required: string[], sharedWith: ServiceTarget[]) {
+  const data = variation.item_variation_data ?? {};
+  const squarePriceCents = variationPrice(variation);
+  const squareCurrency = data.price_money?.currency ?? null;
+  const squareDurationMinutes = variationMinutes(variation);
+  const issues: string[] = [];
+  let priceMismatch = false;
+  if (data.pricing_type !== "FIXED_PRICING" || squarePriceCents === null) {
+    priceMismatch = true;
+    issues.push("Square uses variable pricing (no fixed price).");
+  } else if (squarePriceCents !== target.priceCents) {
+    priceMismatch = true;
+    issues.push(`Price differs by ${formatCents(squarePriceCents - target.priceCents)}.`);
+  }
+  if (squareCurrency && squareCurrency !== "CAD") {
+    priceMismatch = true;
+    issues.push(`Square price is in ${squareCurrency}, not CAD.`);
+  }
+  if (data.location_overrides?.some((override) => override.price_money)) {
+    priceMismatch = true;
+    issues.push("A Square location price override replaces the internal price at a location.");
+  }
+  const durationMismatch = squareDurationMinutes !== target.durationMinutes;
+  if (durationMismatch) {
+    issues.push(squareDurationMinutes === null ? "Square has no service duration set." : `Duration differs by ${squareDurationMinutes - target.durationMinutes} min.`);
+  }
+  const item = data.item_id ? catalog.items.get(data.item_id) : undefined;
+  if (item && itemTaxFix(item, required)) issues.push("Square item taxes differ from TPS 5% + TVQ 9.975%.");
+
+  let status: ServiceComparisonStatus = priceMismatch && durationMismatch ? "price_and_duration_mismatch" : priceMismatch ? "price_mismatch" : durationMismatch ? "duration_mismatch" : "match";
+  if (sharedWith.length) {
+    status = "shared_variation";
+    issues.unshift(`Shares one Square variation with ${sharedWith.map((service) => service.name).join(", ")}. Sync will give each service its own variation.`);
+  }
+  return { variationId: variation.id, squareName: data.name ?? null, squarePriceCents, squareCurrency, squareDurationMinutes, status, issues };
+}
+
 function compare(catalog: Catalog): CatalogComparison {
   const targets = internalTargets();
+  const surchargeById = new Map(surchargeTargets().map((surcharge) => [surcharge.surcharge!.serviceId, surcharge]));
   const { byVariation, unresolved } = assign(catalog, targets);
   const variationByService = new Map<string, SquareVariationObject>();
   for (const [variationId, services] of byVariation) {
@@ -385,63 +450,30 @@ function compare(catalog: Catalog): CatalogComparison {
       });
     } else {
       const variation = variationByService.get(target.id)!;
-      const data = variation.item_variation_data ?? {};
       const sharedWith = byVariation.get(variation.id)!.filter((service) => service.id !== target.id);
-      const squarePriceCents = variationPrice(variation);
-      const squareCurrency = data.price_money?.currency ?? null;
-      const squareDurationMinutes = variationMinutes(variation);
-      const issues: string[] = [];
-      let priceMismatch = false;
-      if (data.pricing_type !== "FIXED_PRICING" || squarePriceCents === null) {
-        priceMismatch = true;
-        issues.push("Square uses variable pricing (no fixed price).");
-      } else if (squarePriceCents !== target.priceCents) {
-        priceMismatch = true;
-        issues.push(`Price differs by ${formatCents(squarePriceCents - target.priceCents)}.`);
-      }
-      if (squareCurrency && squareCurrency !== "CAD") {
-        priceMismatch = true;
-        issues.push(`Square price is in ${squareCurrency}, not CAD.`);
-      }
-      if (data.location_overrides?.some((override) => override.price_money)) {
-        priceMismatch = true;
-        issues.push("A Square location price override replaces the internal price at a location.");
-      }
-      const durationMismatch = squareDurationMinutes !== target.durationMinutes;
-      if (durationMismatch) {
-        issues.push(squareDurationMinutes === null ? "Square has no service duration set." : `Duration differs by ${squareDurationMinutes - target.durationMinutes} min.`);
-      }
-      const item = data.item_id ? catalog.items.get(data.item_id) : undefined;
-      if (item && itemTaxFix(item, required)) issues.push("Square item taxes differ from TPS 5% + TVQ 9.975%.");
-
-      let status: ServiceComparisonStatus = priceMismatch && durationMismatch ? "price_and_duration_mismatch" : priceMismatch ? "price_mismatch" : durationMismatch ? "duration_mismatch" : "match";
-      if (sharedWith.length) {
-        status = "shared_variation";
-        issues.unshift(`Shares one Square variation with ${sharedWith.map((service) => service.name).join(", ")}. Sync will give each service its own variation.`);
-      }
-      rows.push({ ...base, variationId: variation.id, squareName: data.name ?? null, squarePriceCents, squareCurrency, squareDurationMinutes, status, issues });
+      rows.push({ ...base, ...variationComparison(target, variation, catalog, required, sharedWith) });
     }
 
-    if (target.service.addOn) {
-      const addOn = target.service.addOn;
-      rows.push({
-        serviceId: `${target.id}:${addOn.key}`,
-        name: `${target.name} + ${addOn.nameEn}`,
-        group: target.group,
+    const surcharge = surchargeById.get(target.id);
+    if (surcharge) {
+      const variation = catalog.bySku.get(surcharge.sku);
+      const surchargeBase = {
+        serviceId: surcharge.id,
+        name: surcharge.name,
+        group: surcharge.group,
         isAddOn: true,
-        variationId: null,
-        squareName: null,
-        internalPriceCents: Math.round(selectedServicePrice(target.service, addOn.key) * 100),
-        squarePriceCents: null,
-        squareCurrency: null,
-        internalDurationMinutes: selectedServiceDuration(target.service, addOn.key),
-        squareDurationMinutes: null,
-        status: "custom_line",
-        issues: [
-          `Base ${formatCents(target.priceCents)} + ${formatCents(Math.round(addOn.priceCad * 100))} surcharge · ${target.durationMinutes} + ${addOn.durationMinutes} min.`,
-          "Surcharge is billed as its own CAD line on the Square order next to the service.",
-        ],
-      });
+        internalPriceCents: surcharge.priceCents,
+        internalDurationMinutes: surcharge.durationMinutes,
+      };
+      rows.push(variation
+        ? { ...surchargeBase, ...variationComparison(surcharge, variation, catalog, required, []) }
+        : {
+          ...surchargeBase, ...empty,
+          variationId: null,
+          squareName: null,
+          status: "unmapped",
+          issues: [`No Square variation exists for this surcharge yet. Sync will create it under "${SURCHARGE_ITEM_NAME}" (${formatCents(surcharge.priceCents)}, +${surcharge.durationMinutes} min, TPS + TVQ).`],
+        });
     }
   }
 
@@ -488,6 +520,7 @@ function inheritedData(template: SquareVariationObject | null): VariationData {
 
 function targetVariationData(target: ServiceTarget, base: VariationData, name: string): VariationData {
   const allTeamMembers = Object.values(SQUARE_TEAM_MEMBER_IDS);
+  const bookable = !target.surcharge;
   return {
     ...base,
     name,
@@ -495,8 +528,8 @@ function targetVariationData(target: ServiceTarget, base: VariationData, name: s
     pricing_type: "FIXED_PRICING",
     price_money: { amount: target.priceCents, currency: "CAD" },
     service_duration: target.durationMinutes * 60_000,
-    available_for_booking: true,
-    team_member_ids: base.team_member_ids?.length ? base.team_member_ids : allTeamMembers,
+    available_for_booking: bookable,
+    ...(bookable ? { team_member_ids: base.team_member_ids?.length ? base.team_member_ids : allTeamMembers } : {}),
     ...(base.location_overrides ? { location_overrides: base.location_overrides.map(({ price_money: _price, ...override }) => override) } : {}),
   };
 }
@@ -527,7 +560,8 @@ async function buildPlan() {
     if (data.location_overrides?.some((override) => override.price_money)) warnings.push("Clears the location price override so every location uses the internal price.");
     if (renameTo && data.name !== renameTo) warnings.push(`Renames the variation to "${renameTo}" (it was shared by several services).`);
     if (data.sku?.trim() !== target.sku) warnings.push(`Tags the variation with SKU ${target.sku} to link it to this service.`);
-    if (data.available_for_booking !== true) warnings.push("Enables online booking for this variation.");
+    if (!target.surcharge && data.available_for_booking !== true) warnings.push("Enables online booking for this variation.");
+    if (target.surcharge && data.available_for_booking === true) warnings.push("Hides this surcharge from online booking (it is billed with its service).");
     if (locationId && !isPresentAt(variation, locationId)) warnings.push("Enables the variation at the salon location.");
     if (data.item_id) touchedItemIds.add(data.item_id);
 
@@ -559,7 +593,7 @@ async function buildPlan() {
       touchedItemIds.add(parentItem.id);
       newVariations.push({
         type: "ITEM_VARIATION",
-        id: `#tui-var-${target.id}`,
+        id: clientVariationId(target.id),
         present_at_all_locations: parentItem.present_at_all_locations ?? true,
         ...(parentItem.present_at_location_ids ? { present_at_location_ids: parentItem.present_at_location_ids } : {}),
         item_variation_data: { ...targetVariationData(target, inheritedData(template), name), item_id: parentItem.id },
@@ -576,7 +610,7 @@ async function buildPlan() {
           ...(taxes.required.length ? { tax_ids: taxes.required } : {}),
           variations: [{
             type: "ITEM_VARIATION",
-            id: `#tui-var-${target.id}`,
+            id: clientVariationId(target.id),
             present_at_all_locations: true,
             item_variation_data: { ...targetVariationData(target, {}, "Regular"), item_id: itemId },
           }],
@@ -610,6 +644,58 @@ async function buildPlan() {
   }
   for (const { target, template } of unresolved) {
     planCreate(target, template, template ? "split_shared" : squareMappingFor(target.id) ? "missing_variation" : "unmapped");
+  }
+
+  const missingSurcharges: ServiceTarget[] = [];
+  let surchargeItem: SquareItemObject | undefined;
+  for (const target of surchargeTargets()) {
+    const variation = catalog.bySku.get(target.sku);
+    if (!variation) {
+      missingSurcharges.push(target);
+      continue;
+    }
+    planUpdate(target, variation);
+    const itemId = variation.item_variation_data?.item_id;
+    if (!surchargeItem && itemId) surchargeItem = catalog.items.get(itemId);
+  }
+  if (missingSurcharges.length) {
+    const parentId = surchargeItem?.id ?? SURCHARGE_ITEM_CLIENT_ID;
+    const variations: SquareVariationObject[] = missingSurcharges.map((target) => ({
+      type: "ITEM_VARIATION",
+      id: clientVariationId(target.id),
+      present_at_all_locations: surchargeItem?.present_at_all_locations ?? true,
+      ...(surchargeItem?.present_at_location_ids ? { present_at_location_ids: surchargeItem.present_at_location_ids } : {}),
+      item_variation_data: { ...targetVariationData(target, {}, variationLabel(target)), item_id: parentId },
+    }));
+    if (surchargeItem) {
+      touchedItemIds.add(surchargeItem.id);
+      newVariations.push(...variations);
+    } else {
+      newItems.push({
+        type: "ITEM",
+        id: SURCHARGE_ITEM_CLIENT_ID,
+        present_at_all_locations: true,
+        item_data: {
+          name: SURCHARGE_ITEM_NAME,
+          product_type: "APPOINTMENTS_SERVICE",
+          ...(taxes.required.length ? { tax_ids: taxes.required } : {}),
+          variations,
+        },
+      });
+    }
+    for (const target of missingSurcharges) {
+      creations.push({
+        serviceId: target.id,
+        name: target.name,
+        reason: "surcharge",
+        squareItemName: surchargeItem?.item_data?.name ?? SURCHARGE_ITEM_NAME,
+        newItem: !surchargeItem,
+        variationName: variationLabel(target),
+        priceCents: target.priceCents,
+        durationMinutes: target.durationMinutes,
+        sharedVariationId: null,
+      });
+    }
   }
 
   const taxFixes = [...touchedItemIds]
@@ -662,7 +748,7 @@ export async function applyCatalogSync() {
   // change cannot invalidate the version of another in the same request.
   await upsert(updates);
   const ids = await upsert([...newVariations, ...newItems]);
-  for (const creation of plan.creations) creation.createdVariationId = ids.get(`#tui-var-${creation.serviceId}`);
+  for (const creation of plan.creations) creation.createdVariationId = ids.get(clientVariationId(creation.serviceId));
 
   for (const fix of plan.taxFixes) {
     await squareRequest("POST", "/v2/catalog/update-item-taxes", {
