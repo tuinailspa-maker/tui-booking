@@ -281,7 +281,7 @@ export function BookingApp() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  const selectedPublicNames = Array.from(new Set(assignedTechnicians().filter((name): name is PublicTechnician => name !== "Option 2")));
+  const selectedPublicNames = Array.from(new Set(assignedTechnicians()));
 
   return (
     <main className="booking-page">
@@ -384,7 +384,7 @@ export function BookingApp() {
                       <span>{copy.technician}{partySize > 1 ? ` · ${copy.guest} ${activeGuest + 1}` : ""}</span>
                       <select value={technicianPreferences[activeGuest] ?? ""} onChange={(event) => changeTechnician(activeGuest, event.target.value as PublicTechnician | "")}>
                         <option value="">{copy.anyTechnician}</option>
-                        {(availabilitySlots[time] ?? []).filter((technician): technician is PublicTechnician => technician !== "Option 2").map((technician) => <option key={technician} value={technician}>{technician}</option>)}
+                        {(availabilitySlots[time] ?? []).map((technician) => <option key={technician} value={technician}>{technician}</option>)}
                       </select>
                     </label>
                   )}

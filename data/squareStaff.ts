@@ -26,7 +26,7 @@ let rosterCache: { locationId: string; expiresAt: number; roster: StaffMember[] 
 
 /**
  * All ACTIVE Square team members at the location. Known staff keep their names
- * (Jenny, Melika, Nana) and the Option 1 / Option 2 columns stay virtual.
+ * (Jenny, Melika, Nana, Option 1, Option 2); every member is equal booking capacity.
  * Falls back to the static roster if Square cannot be reached.
  */
 export async function getStaffRoster(locationId: string): Promise<StaffMember[]> {

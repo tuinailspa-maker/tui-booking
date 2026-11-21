@@ -36,6 +36,8 @@ const FALLBACK_STAFF: StaffColumn[] = [
   { name: "Jenny", teamMemberId: "TMeOgAbe7NNuvMjT", kind: "real" },
   { name: "Melika", teamMemberId: "TM1-LEgXD0We2PeB", kind: "real" },
   { name: "Nana", teamMemberId: "TMepcy8rc3Xdpaer", kind: "real" },
+  { name: "Option 1", teamMemberId: "TMDUlMsVM52uJQkZ", kind: "virtual" },
+  { name: "Option 2", teamMemberId: "TM2Kn6S4wougfdpF", kind: "virtual" },
 ];
 type ServiceDraft = { serviceIds: string[][]; addOns: Record<string, ServiceAddOnKey>[]; customerName: string; customerPhone: string };
 type FetchError = Error & { status?: number };

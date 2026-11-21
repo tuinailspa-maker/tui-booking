@@ -1,23 +1,20 @@
 import { SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
-import type { KnownTechnician } from "@/data/staffSchedule";
+import { CAPACITY_COLUMNS, type KnownTechnician } from "@/data/staffSchedule";
 
+/** Display label only: "virtual" marks the Option columns, which book exactly like staff. */
 export type StaffKind = "real" | "virtual";
 export type StaffMember = { name: string; teamMemberId: string; kind: StaffKind };
 
-export const REAL_STAFF_NAMES: readonly string[] = ["Jenny", "Melika", "Nana"];
-export const VIRTUAL_STAFF_NAMES: readonly string[] = ["Option 1", "Option 2"];
-/** Virtual columns customers never pick directly; still used as overflow. */
-export const CUSTOMER_HIDDEN_STAFF: readonly string[] = ["Option 2"];
+const COLUMN_ORDER: readonly string[] = CAPACITY_COLUMNS;
 
 export function staffKind(name: string): StaffKind {
-  return VIRTUAL_STAFF_NAMES.includes(name) ? "virtual" : "real";
+  return name.startsWith("Option ") ? "virtual" : "real";
 }
 
-/** Real staff first (known order, then others alphabetically), virtual option columns last. */
-export function sortStaff<T extends { name: string; kind: StaffKind }>(members: T[]): T[] {
+/** Nana/Melika/Jenny/Option 1/Option 2 in a stable order, then other Square team members alphabetically. */
+export function sortStaff<T extends { name: string }>(members: T[]): T[] {
   const rank = (member: T) => {
-    if (member.kind === "virtual") return 1000 + VIRTUAL_STAFF_NAMES.indexOf(member.name);
-    const known = REAL_STAFF_NAMES.indexOf(member.name);
+    const known = COLUMN_ORDER.indexOf(member.name);
     return known >= 0 ? known : 100;
   };
   return [...members].sort((left, right) => rank(left) - rank(right) || left.name.localeCompare(right.name));

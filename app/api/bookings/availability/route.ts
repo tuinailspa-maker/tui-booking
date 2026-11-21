@@ -49,7 +49,7 @@ export async function POST(request: Request) {
         const free = staffData
           .filter(({ starts, busy }) => availabilityCovers(starts, startMs, durationMinutes) && !overlapsBusy(busy, startMs, endMs))
           .map(({ member }) => member);
-        // Distinct team members only; real staff are listed before Option 1 / Option 2.
+        // Distinct team members only; all five columns count equally toward capacity.
         const names = Array.from(new Map(free.map((member) => [member.teamMemberId, member.name])).values());
         if (names.length >= partySize) available[slot.time] = names;
       }
