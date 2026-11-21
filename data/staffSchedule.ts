@@ -3,27 +3,25 @@ export const BUSINESS_OPEN_TIME = "08:00";
 const BUSINESS_OPEN_MINUTES = 8 * 60;
 const BUSINESS_CLOSE_TIMES = ["19:00", "19:00", "19:00", "19:00", "20:00", "20:00", "19:00"] as const;
 
-export type PublicTechnician = "Jenny" | "Melika" | "Nana" | "Option 1";
-type InternalTechnician = "Option 2";
-export type Technician = PublicTechnician | InternalTechnician;
+/** All five columns are equal booking capacity; Square decides who actually works when. */
+export const CAPACITY_COLUMNS = ["Jenny", "Melika", "Nana", "Option 1", "Option 2"] as const;
+export type PublicTechnician = (typeof CAPACITY_COLUMNS)[number];
+export type KnownTechnician = PublicTechnician;
+// Additional active Square team members are resolved by display name at runtime.
+export type Technician = KnownTechnician | (string & {});
 
 export type ShiftBlock = {
   start: string;
   end: string;
   primaryTechnicians: PublicTechnician[];
-  overflowTechnician?: InternalTechnician;
   maxGuests: 1 | 2 | 3;
 };
 
-export const staffSchedule: Record<number, ShiftBlock[]> = {
-  0: [{ start: BUSINESS_OPEN_TIME, end: BUSINESS_CLOSE_TIMES[0], primaryTechnicians: ["Jenny"], maxGuests: 1 }],
-  1: [{ start: BUSINESS_OPEN_TIME, end: BUSINESS_CLOSE_TIMES[1], primaryTechnicians: ["Jenny"], maxGuests: 1 }],
-  2: [{ start: BUSINESS_OPEN_TIME, end: BUSINESS_CLOSE_TIMES[2], primaryTechnicians: ["Jenny", "Melika"], overflowTechnician: "Option 2", maxGuests: 3 }],
-  3: [{ start: BUSINESS_OPEN_TIME, end: BUSINESS_CLOSE_TIMES[3], primaryTechnicians: ["Jenny", "Nana"], overflowTechnician: "Option 2", maxGuests: 3 }],
-  4: [{ start: BUSINESS_OPEN_TIME, end: BUSINESS_CLOSE_TIMES[4], primaryTechnicians: ["Jenny", "Melika", "Nana"], overflowTechnician: "Option 2", maxGuests: 3 }],
-  5: [{ start: BUSINESS_OPEN_TIME, end: BUSINESS_CLOSE_TIMES[5], primaryTechnicians: ["Jenny", "Melika", "Nana"], overflowTechnician: "Option 2", maxGuests: 3 }],
-  6: [{ start: BUSINESS_OPEN_TIME, end: BUSINESS_CLOSE_TIMES[6], primaryTechnicians: ["Jenny", "Option 1"], overflowTechnician: "Option 2", maxGuests: 3 }],
-};
+// Working hours, days off and blocked time per column come from Square availability,
+// so every day opens all columns for up to 3 guests and Square filters the rest.
+export const staffSchedule: Record<number, ShiftBlock[]> = Object.fromEntries(
+  BUSINESS_CLOSE_TIMES.map((end, day) => [day, [{ start: BUSINESS_OPEN_TIME, end, primaryTechnicians: [...CAPACITY_COLUMNS], maxGuests: 3 }]]),
+);
 
 export function getClosingTimeForDate(date: string): string {
   if (!date) return BUSINESS_CLOSE_TIMES[0];
@@ -161,8 +159,6 @@ export function assignTechnicians(shift: ShiftBlock, partySize: number, preferen
     if (nextPrimary) {
       assignments[guestIndex] = nextPrimary;
       usedPrimary.add(nextPrimary);
-    } else if (shift.overflowTechnician) {
-      assignments[guestIndex] = shift.overflowTechnician;
     }
   }
 

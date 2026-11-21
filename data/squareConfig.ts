@@ -1,8 +1,8 @@
-import type { Technician } from "@/data/staffSchedule";
+import type { KnownTechnician } from "@/data/staffSchedule";
 
 export const SQUARE_API_VERSION = "2025-01-23";
 
-export const SQUARE_TEAM_MEMBER_IDS: Record<Technician, string> = {
+export const SQUARE_TEAM_MEMBER_IDS: Record<KnownTechnician, string> = {
   Jenny: "TMeOgAbe7NNuvMjT",
   Melika: "TM1-LEgXD0We2PeB",
   Nana: "TMepcy8rc3Xdpaer",

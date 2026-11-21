@@ -433,7 +433,7 @@ function compare(catalog: Catalog): CatalogComparison {
         internalPriceCents: Math.round(target.service.addOn.priceCad * 100),
         squarePriceCents: null,
         squareCurrency: null,
-        internalDurationMinutes: target.service.addOn.durationMinutes ?? null,
+        internalDurationMinutes: target.service.addOn.durationMinutes,
         squareDurationMinutes: null,
         status: "custom_line",
         issues: ["Option surcharge — billed as its own CAD line on the Square order next to the service."],

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAdminRequestAuthorized } from "@/data/adminAuth";
-import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
+import { SQUARE_API_VERSION } from "@/data/squareConfig";
+import { getStaffRoster, isStaffFree } from "@/data/squareStaff";
 import { allServices, selectedServiceDuration, selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import { BUSINESS_TIME_ZONE } from "@/data/staffSchedule";
 
@@ -154,7 +155,8 @@ export async function GET(request: Request) {
   try {
     const startAt = torontoMidnightUtc(date);
     const endAt = torontoMidnightUtc(nextDate(date));
-    const squareBookings = await fetchBookings(startAt, endAt);
+    const [squareBookings, roster] = await Promise.all([fetchBookings(startAt, endAt), getStaffRoster(ADMIN_LOCATION_ID)]);
+    const staffNameById = new Map(roster.map((member) => [member.teamMemberId, member.name]));
     const customerIds = Array.from(new Set(squareBookings.map((booking) => booking.customer_id).filter((id): id is string => Boolean(id))));
     const customers: [string, SquareCustomer | null][] = [];
     for (let index = 0; index < customerIds.length; index += 10) {
@@ -188,9 +190,8 @@ export async function GET(request: Request) {
 
     const individualBookings = squareBookings.map((booking) => {
       const segments = booking.appointment_segments ?? [];
-      const technicians = Array.from(new Set(segments.map((segment) =>
-        Object.entries(SQUARE_TEAM_MEMBER_IDS).find(([name, id]) => ["Jenny", "Melika", "Nana"].includes(name) && id === segment.team_member_id)?.[0],
-      ).filter((name): name is string => Boolean(name))));
+      const technicians = Array.from(new Set(segments.map((segment) => segment.team_member_id ? staffNameById.get(segment.team_member_id) : undefined)
+        .filter((name): name is string => Boolean(name))));
       const parsed = parseSellerNote(booking.seller_note);
       const segmentSelections = booking.seller_note?.includes(NO_SERVICE_MARKER) ? [] : segments.flatMap((segment) => segment.service_variation_id
         ? [parseCatalogVariation(variationNames.get(segment.service_variation_id) ?? "")]
@@ -245,7 +246,7 @@ export async function GET(request: Request) {
       };
     }).sort((left, right) => left.startAt.localeCompare(right.startAt));
 
-    return NextResponse.json({ bookings, date, locationId: ADMIN_LOCATION_ID }, { headers: { "Cache-Control": "no-store, max-age=0" } });
+    return NextResponse.json({ bookings, date, locationId: ADMIN_LOCATION_ID, staff: roster }, { headers: { "Cache-Control": "no-store, max-age=0" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load Square appointments.";
     return NextResponse.json({ error: message }, { status: 502, headers: { "Cache-Control": "no-store" } });
@@ -263,7 +264,9 @@ export async function PATCH(request: Request) {
   const bookingId = typeof body?.bookingId === "string" ? body.bookingId : "";
   const teamMemberId = typeof body?.teamMemberId === "string" ? body.teamMemberId : "";
   const status = typeof body?.status === "string" && ["BOOKED", "CHECKED_IN", "IN_SERVICE", "CHECKED_OUT"].includes(body.status) ? body.status : "";
-  const shouldAssign = Boolean(teamMemberId && Object.values(SQUARE_TEAM_MEMBER_IDS).includes(teamMemberId));
+  const roster = await getStaffRoster(ADMIN_LOCATION_ID);
+  const targetMember = roster.find((member) => member.teamMemberId === teamMemberId);
+  const shouldAssign = Boolean(teamMemberId && targetMember);
   const hasServiceSelection = Array.isArray(body?.serviceIds);
   const serviceIds = hasServiceSelection && body.serviceIds.every((id: unknown) => typeof id === "string" && serviceById.has(id)) ? body.serviceIds as string[] : null;
   const addOnsInput = body?.addOns && typeof body.addOns === "object" && !Array.isArray(body.addOns) ? body.addOns as Record<string, unknown> : {};
@@ -286,6 +289,29 @@ export async function PATCH(request: Request) {
     }
     if (shouldAssign && !current.booking.appointment_segments?.length) {
       return NextResponse.json({ error: "This appointment has no assignable service segments." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    }
+    const bookingStartMs = current.booking.start_at ? Date.parse(current.booking.start_at) : Number.NaN;
+    const currentSegments = current.booking.appointment_segments ?? [];
+    const plannedDuration = shouldUpdateServices && serviceIds
+      ? serviceIds.reduce((sum, id) => { const service = serviceById.get(id); return sum + (service ? selectedServiceDuration(service, addOns[id]) : 0); }, 0)
+      : currentSegments.reduce((sum, segment) => sum + (segment.duration_minutes ?? 0), 0);
+    if (Number.isFinite(bookingStartMs) && plannedDuration > 0) {
+      const memberIds = shouldAssign ? [teamMemberId] : Array.from(new Set(currentSegments.map((segment) => segment.team_member_id).filter((id): id is string => Boolean(id))));
+      const changedMemberOrDuration = shouldAssign ? currentSegments.some((segment) => segment.team_member_id !== teamMemberId) || shouldUpdateServices : shouldUpdateServices;
+      if (changedMemberOrDuration) {
+        for (const memberId of memberIds) {
+          const member = roster.find((item) => item.teamMemberId === memberId);
+          if (!member) continue;
+          // Self is excluded; Square availability is only consulted when moving to a different technician.
+          const free = await isStaffFree(ADMIN_LOCATION_ID, member, bookingStartMs, plannedDuration, {
+            excludeBookingIds: [bookingId],
+            checkSquareAvailability: shouldAssign && currentSegments.some((segment) => segment.team_member_id !== memberId),
+          });
+          if (!free) {
+            return NextResponse.json({ error: `${member.name} is not available for the full ${plannedDuration} min (existing booking, day off, or blocked time in Square).` }, { status: 409, headers: { "Cache-Control": "no-store" } });
+          }
+        }
+      }
     }
     const patch: Record<string, unknown> = { version: current.booking.version };
     if (shouldAssign) patch.appointment_segments = current.booking.appointment_segments?.map((segment) => ({ ...segment, team_member_id: teamMemberId }));

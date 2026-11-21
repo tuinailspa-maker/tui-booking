@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { selectedServiceDuration, selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
-import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
+import { SQUARE_API_VERSION } from "@/data/squareConfig";
 import { getServiceVariationLinks } from "@/data/squareVariations";
 import { calculateBill, centsToDollars } from "@/data/billing";
-import { isSquareSlotAvailable } from "@/data/squareAvailability";
+import { verifyGuestAssignments } from "@/data/squareStaff";
 import { isWithinBusinessHours, type Technician } from "@/data/staffSchedule";
 
 const SQUARE_PRODUCTION_URL = "https://connect.squareup.com/v2";
@@ -42,7 +42,8 @@ function toE164(countryCode: string, phone: string): string {
 }
 
 function isTechnician(value: unknown): value is Technician {
-  return typeof value === "string" && value in SQUARE_TEAM_MEMBER_IDS;
+  // Membership in the active Square roster is verified in POST via verifyGuestAssignments.
+  return typeof value === "string" && value.trim().length > 0 && value.length <= 100;
 }
 
 function readText(value: unknown, maxLength: number): string | null {
@@ -114,65 +115,6 @@ async function squareRequest<T>(step: string, path: string, body: unknown): Prom
 }
 
 const SLOT_UNAVAILABLE_MESSAGE = "This time slot is no longer available. Please choose another time.";
-const INACTIVE_BOOKING_STATUSES = new Set(["CANCELLED_BY_CUSTOMER", "CANCELLED_BY_SELLER", "DECLINED"]);
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-type SquareBookingSummary = {
-  status?: string;
-  start_at?: string;
-  appointment_segments?: { duration_minutes?: number }[];
-};
-
-type BusyWindow = { startMs: number; endMs: number };
-
-async function fetchTechnicianBusyWindows(locationId: string, memberId: string, startMs: number): Promise<BusyWindow[]> {
-  const windows: BusyWindow[] = [];
-  let cursor: string | undefined;
-  do {
-    const params = new URLSearchParams({
-      location_id: locationId,
-      team_member_id: memberId,
-      start_at_min: new Date(startMs - DAY_MS).toISOString(),
-      start_at_max: new Date(startMs + DAY_MS).toISOString(),
-      limit: "100",
-    });
-    if (cursor) params.set("cursor", cursor);
-
-    const response = await fetch(`${squareBaseUrl()}/bookings?${params}`, {
-      headers: {
-        Authorization: `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
-        "Square-Version": SQUARE_API_VERSION,
-      },
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new SquareStepError("list_bookings", response.status, Array.isArray(data.errors) ? data.errors : []);
-    }
-
-    for (const booking of (data.bookings ?? []) as SquareBookingSummary[]) {
-      if (booking.status && INACTIVE_BOOKING_STATUSES.has(booking.status)) continue;
-      const bookingStartMs = booking.start_at ? Date.parse(booking.start_at) : Number.NaN;
-      const durationMinutes = (booking.appointment_segments ?? []).reduce((sum, segment) => sum + (segment.duration_minutes ?? 0), 0);
-      if (Number.isNaN(bookingStartMs) || durationMinutes <= 0) continue;
-      windows.push({ startMs: bookingStartMs, endMs: bookingStartMs + durationMinutes * 60_000 });
-    }
-    cursor = data.cursor;
-  } while (cursor);
-  return windows;
-}
-
-async function hasTechnicianConflict(request: BookingRequest, locationId: string): Promise<boolean> {
-  const startMs = Date.parse(request.startAt);
-  const technicians = new Set(request.guests.map((guest) => guest.technician));
-  if (technicians.size !== request.guests.length) return true;
-
-  for (const guest of request.guests) {
-    const endMs = startMs + guestDurationMinutes(guest) * 60_000;
-    const busyWindows = await fetchTechnicianBusyWindows(locationId, SQUARE_TEAM_MEMBER_IDS[guest.technician], startMs);
-    if (busyWindows.some((window) => window.startMs < endMs && window.endMs > startMs)) return true;
-  }
-  return false;
-}
 
 function buildSellerNote(request: BookingRequest, guest: BookingGuest, guestIndex: number) {
   const lines = guest.serviceIds.map((id) => {
@@ -199,7 +141,7 @@ function buildSellerNote(request: BookingRequest, guest: BookingGuest, guestInde
 type AppointmentSegment = { duration_minutes: number; service_variation_id: string; service_variation_version: number; team_member_id: string };
 
 /** One segment per mapped service, using its exact live Square variation and version. Never falls back to another service. */
-async function buildAppointmentSegments(request: BookingRequest): Promise<AppointmentSegment[][]> {
+async function buildAppointmentSegments(request: BookingRequest, teamMemberIds: string[]): Promise<AppointmentSegment[][]> {
   let live: Awaited<ReturnType<typeof getServiceVariationLinks>>;
   try {
     live = await getServiceVariationLinks();
@@ -209,7 +151,7 @@ async function buildAppointmentSegments(request: BookingRequest): Promise<Appoin
   const bill = calculateBill({ selections: request.guests.map((guest) => guest.serviceIds), addOns: request.guests.map((guest) => guest.addOns) });
 
   return request.guests.map((guest, guestIndex) => {
-    const teamMemberId = SQUARE_TEAM_MEMBER_IDS[guest.technician];
+    const teamMemberId = teamMemberIds[guestIndex];
     const segments: AppointmentSegment[] = [];
     let unmappedMinutes = 0;
     for (const line of bill.guestLines[guestIndex]) {
@@ -254,13 +196,14 @@ export async function POST(request: Request) {
   }
 
   try {
-    const allRequestedStaffAvailable = await Promise.all(parsed.guests.map(async (guest) => {
-      const teamMemberId = SQUARE_TEAM_MEMBER_IDS[guest.technician];
-      return isWithinBusinessHours(parsed.startAt, guestDurationMinutes(guest)) &&
-        await isSquareSlotAvailable(teamMemberId, Date.parse(parsed.startAt), guestDurationMinutes(guest), locationId);
-    }));
-    if (allRequestedStaffAvailable.some((available) => !available) || await hasTechnicianConflict(parsed, locationId)) {
-      return NextResponse.json({ error: SLOT_UNAVAILABLE_MESSAGE, step: "availability_check" }, { status: 409 });
+    const assignment = await verifyGuestAssignments(locationId, Date.parse(parsed.startAt), parsed.guests.map((guest) => ({ technician: guest.technician, durationMinutes: guestDurationMinutes(guest) })));
+    if (!assignment.ok) {
+      const detail = assignment.reason === "duplicate_staff"
+        ? "Each guest needs a different technician."
+        : assignment.reason === "unknown_staff"
+          ? `Not an active Square team member: ${assignment.unavailable.join(", ")}.`
+          : `Not available for the full appointment: ${assignment.unavailable.join(", ")}.`;
+      return NextResponse.json({ error: SLOT_UNAVAILABLE_MESSAGE, step: "availability_check", detail }, { status: 409 });
     }
 
     const { customer } = await squareRequest<{ customer: { id: string } }>("create_customer", "/customers", {
@@ -272,7 +215,7 @@ export async function POST(request: Request) {
       note: parsed.client.notes || undefined,
     });
 
-    const segmentsByGuest = await buildAppointmentSegments(parsed);
+    const segmentsByGuest = await buildAppointmentSegments(parsed, assignment.members.map((member) => member.teamMemberId));
 
     const bookings = [];
     for (const [index, guest] of parsed.guests.entries()) {

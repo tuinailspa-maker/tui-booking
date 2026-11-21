@@ -1,6 +1,6 @@
 import { squareMappingFor } from "@/data/squareServiceMap";
 
-export type ServiceAddOnKey = "length-ml" | "over-3-weeks" | "extra-callus-remover";
+export type ServiceAddOnKey = "length-ml" | "over-3-weeks" | "extra-callus-remover" | "extra-calcium-gel";
 
 export type ServiceAddOn = {
   key: ServiceAddOnKey;
@@ -9,7 +9,7 @@ export type ServiceAddOn = {
   priceCad: number;
   labelEn: string;
   labelFr: string;
-  durationMinutes?: number;
+  durationMinutes: number;
 };
 
 export type ServiceLeaf = {
@@ -42,18 +42,22 @@ export type ServiceNode = ServiceBranch | ServiceLeaf;
 
 const branch = (id: string, nameEn: string, nameFr: string, children: ServiceNode[], noteEn?: string, noteFr?: string): ServiceBranch => ({ type: "branch", id, nameEn, nameFr, children, ...(noteEn ? { noteEn } : {}), ...(noteFr ? { noteFr } : {}) });
 const service = (id: string, nameEn: string, nameFr: string, price: number, durationMinutes: number, priceLabel?: string, addOn?: ServiceAddOn): ServiceLeaf => ({ type: "service", id, name: nameEn, nameEn, nameFr, price, priceCad: price, durationMinutes, ...(priceLabel ? { priceLabel } : {}), ...(addOn ? { addOn } : {}) });
-const surcharge = (key: ServiceAddOnKey, nameEn: string, nameFr: string, basePrice: number, priceCad: number, durationMinutes?: number): ServiceAddOn => ({
+/** Every surcharge toggle adds this much time on top of the variation's base duration. */
+export const SURCHARGE_EXTRA_MINUTES = 15;
+
+const surcharge = (key: ServiceAddOnKey, nameEn: string, nameFr: string, basePrice: number, priceCad: number): ServiceAddOn => ({
   key,
   nameEn,
   nameFr,
   priceCad,
   labelEn: `${nameEn}, $${basePrice + priceCad} (+$${priceCad})`,
   labelFr: `${nameFr}, ${basePrice + priceCad} $ (+${priceCad} $)`,
-  ...(durationMinutes ? { durationMinutes } : {}),
+  durationMinutes: SURCHARGE_EXTRA_MINUTES,
 });
 const lengthMlAddOn = (basePrice: number) => surcharge("length-ml", "M/L", "M/L", basePrice, 10);
 const overThreeWeeksAddOn = (basePrice: number) => surcharge("over-3-weeks", "If nails over 3 weeks", "Ongles de plus de 3 semaines", basePrice, 5);
-const extraCallusRemoverAddOn = (basePrice: number) => surcharge("extra-callus-remover", "Extra callus remover", "Soin anti-callosités supplémentaire", basePrice, 20, 15);
+const extraCallusRemoverAddOn = (basePrice: number) => surcharge("extra-callus-remover", "Extra callus remover", "Soin anti-callosités supplémentaire", basePrice, 20);
+const extraCalciumGelAddOn = (basePrice: number) => surcharge("extra-calcium-gel", "Extra Strong Calcium gel", "Gel calcium extra-fort", basePrice, 5);
 
 export const serviceTree: ServiceBranch[] = [
   branch("hands", "Hands", "Mains", [
@@ -61,11 +65,11 @@ export const serviceTree: ServiceBranch[] = [
       branch("manicure", "Manicure", "Manucure", [
         service("hands-manicure-no-polish", "No polish", "Sans vernis", 20, 15),
         service("hands-manicure-regular-polish", "Regular polish", "Vernis classique", 25, 20),
-        service("hands-manicure-shellac", "Shellac", "Shellac", 35, 20),
+        service("hands-manicure-shellac", "Shellac", "Shellac", 35, 20, undefined, extraCalciumGelAddOn(35)),
       ]),
       branch("natural-nails-touch-up", "Touch-up", "Retouche", [
         service("hands-touch-up-regular", "Regular", "Classique", 18, 15),
-        service("hands-touch-up-shellac", "Shellac", "Shellac", 30, 20),
+        service("hands-touch-up-shellac", "Shellac", "Shellac", 30, 20, undefined, extraCalciumGelAddOn(30)),
       ]),
     ]),
     branch("nail-enhancement", "Nail Enhancement (Acrylic, Builder gel, Gel X)", "Extensions (acrylique, gel de construction, Gel X)", [
@@ -73,12 +77,12 @@ export const serviceTree: ServiceBranch[] = [
         service("enhancement-new-no-polish", "No polish", "Sans vernis", 40, 60, undefined, lengthMlAddOn(40)),
         service("enhancement-new-regular-polish", "Regular polish", "Vernis classique", 50, 60, undefined, lengthMlAddOn(50)),
         service("enhancement-new-shellac", "Shellac", "Shellac", 55, 60, undefined, lengthMlAddOn(55)),
-      ], "M/L +$10 · 60 mins", "M/L +10 $ · 60 min"),
+      ], "M/L +$10 · +15 mins", "M/L +10 $ · +15 min"),
       branch("enhancement-refill", "Refill", "Remplissage", [
         service("enhancement-refill-no-polish", "No polish", "Sans vernis", 32, 50, undefined, overThreeWeeksAddOn(32)),
         service("enhancement-refill-regular-polish", "Regular polish", "Vernis classique", 42, 50, undefined, overThreeWeeksAddOn(42)),
         service("enhancement-refill-shellac", "Shellac", "Shellac", 47, 50, undefined, overThreeWeeksAddOn(47)),
-      ], "If nails over 3 weeks +$5 · 50 mins", "Ongles de plus de 3 semaines +5 $ · 50 min"),
+      ], "If nails over 3 weeks +$5 · +15 mins", "Ongles de plus de 3 semaines +5 $ · +15 min"),
     ]),
   ]),
   branch("feet", "Feets", "Pieds", [
@@ -86,7 +90,7 @@ export const serviceTree: ServiceBranch[] = [
       service("feet-pedicure-no-polish", "No polish", "Sans vernis", 35, 30, undefined, extraCallusRemoverAddOn(35)),
       service("feet-pedicure-regular-polish", "Regular polish", "Vernis classique", 40, 35, undefined, extraCallusRemoverAddOn(40)),
       service("feet-pedicure-shellac", "Shellac", "Shellac", 50, 35, undefined, extraCallusRemoverAddOn(50)),
-    ], "Extra callus remover +$20", "Soin anti-callosités supplémentaire +20 $"),
+    ], "Extra callus remover +$20 · +15 mins", "Soin anti-callosités supplémentaire +20 $ · +15 min"),
     branch("feet-touch-up", "Touch-up", "Retouche", [
       service("feet-touch-up-regular-polish", "Regular polish", "Vernis classique", 22, 15),
       service("feet-touch-up-shellac", "Shellac", "Shellac", 32, 20),
@@ -117,7 +121,6 @@ export const serviceTree: ServiceBranch[] = [
       service("add-on-chrome-cat-eye", "Chrome, cat eye", "Chrome, œil de chat", 15, 15),
       service("add-on-custom-art", "Hand painting 3D charms, custom", "Peinture à main levée, décor 3D, création sur mesure", 25, 45, "$25+"),
       service("add-on-cuticle-clean-up", "Cuticle clean-up", "Nettoyage des cuticules", 10, 5),
-      service("add-on-calcium-gel", "Extra Strong Calcium gel", "Gel calcium extra-fort", 5, 5, "+$5"),
     ]),
   ]),
   branch("waxing", "Waxing", "Épilation", [
@@ -188,7 +191,6 @@ const DISPLAY_PATH_OVERRIDES: Record<string, { en: string; fr: string }> = {
   "add-on-chrome-cat-eye": { en: "Add-on / Chrome, cat eye", fr: "Supplément / Chrome, œil de chat" },
   "add-on-custom-art": { en: "Add-on / Hand painting 3D charms, custom", fr: "Supplément / Peinture à main levée, décor 3D, création sur mesure" },
   "add-on-cuticle-clean-up": { en: "Add-on / Cuticle clean-up", fr: "Supplément / Nettoyage des cuticules" },
-  "add-on-calcium-gel": { en: "Add-on / Extra Strong Calcium gel", fr: "Supplément / Gel calcium extra-fort" },
 };
 
 function buildPath(node: ServiceNode, parents: ServiceBranch[], language: "en" | "fr") {
@@ -230,7 +232,7 @@ export function selectedServicePrice(service: ServiceLeaf, addOnKey?: ServiceAdd
 }
 
 export function selectedServiceDuration(service: ServiceLeaf, addOnKey?: ServiceAddOnKey) {
-  return service.durationMinutes + (service.addOn && service.addOn.key === addOnKey ? service.addOn.durationMinutes ?? 0 : 0);
+  return service.durationMinutes + (service.addOn && service.addOn.key === addOnKey ? service.addOn.durationMinutes : 0);
 }
 
 export function serviceDisplayNameWithAddOn(service: ServiceLeaf, language: "en" | "fr", addOnKey?: ServiceAddOnKey) {

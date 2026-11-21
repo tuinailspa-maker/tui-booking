@@ -30,7 +30,15 @@ type AdminBooking = {
   durationMinutes: number;
 };
 
-type BookingPayload = { bookings: AdminBooking[]; date: string; locationId: string };
+type StaffColumn = { name: string; teamMemberId: string; kind: "real" | "virtual" };
+type BookingPayload = { bookings: AdminBooking[]; date: string; locationId: string; staff?: StaffColumn[] };
+const FALLBACK_STAFF: StaffColumn[] = [
+  { name: "Jenny", teamMemberId: "TMeOgAbe7NNuvMjT", kind: "real" },
+  { name: "Melika", teamMemberId: "TM1-LEgXD0We2PeB", kind: "real" },
+  { name: "Nana", teamMemberId: "TMepcy8rc3Xdpaer", kind: "real" },
+  { name: "Option 1", teamMemberId: "TMDUlMsVM52uJQkZ", kind: "virtual" },
+  { name: "Option 2", teamMemberId: "TM2Kn6S4wougfdpF", kind: "virtual" },
+];
 type ServiceDraft = { serviceIds: string[][]; addOns: Record<string, ServiceAddOnKey>[]; customerName: string; customerPhone: string };
 type FetchError = Error & { status?: number };
 
@@ -136,6 +144,8 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
   const isAuthenticated = sessionHint && session.data?.authenticated === true;
   const bookingKey = isAuthenticated && date ? `/api/admin/bookings?date=${encodeURIComponent(date)}` : null;
   const bookings = useSWR<BookingPayload, FetchError>(bookingKey, jsonFetcher, { revalidateOnFocus: true, refreshInterval: 60000 });
+  const staffRoster = bookings.data?.staff?.length ? bookings.data.staff : FALLBACK_STAFF;
+  const staffNames = staffRoster.map((member) => member.name);
 
   const appointments = [...(bookings.data?.date === date ? bookings.data.bookings : []), ...walkIns.filter((item) => formatAppointmentDate(item.startAt).date === date)]
     .map((booking) => ({ ...booking, estimatedSubtotal: subtotalFor(serviceOverrides[booking.id] ? { ...booking, ...serviceOverrides[booking.id] } : booking) }))
@@ -182,8 +192,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
   }
 
   async function assignWalkInTechnician(booking: AdminBooking, technician: string) {
-    const teamMemberIds: Record<string, string> = { Jenny: "TMeOgAbe7NNuvMjT", Melika: "TM1-LEgXD0We2PeB", Nana: "TMepcy8rc3Xdpaer" };
-    const teamMemberId = teamMemberIds[technician];
+    const teamMemberId = staffRoster.find((member) => member.name === technician)?.teamMemberId;
     if (!teamMemberId || assignmentBusy) return;
     if (booking.squareBookingIds.length === 0) {
       setWalkIns((current) => current.map((item) => item.id === booking.id ? { ...item, technicians: [technician] } : item));
@@ -323,7 +332,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
   const dateLabel = new Intl.DateTimeFormat("en-CA", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
   const drawerBooking = editor?.booking;
   const drawerStatus: AppointmentStatus = drawerBooking?.status === "CHECKED_IN" || drawerBooking?.status === "IN_SERVICE" || drawerBooking?.status === "CHECKED_OUT" ? drawerBooking.status : checkedOut[drawerBooking?.id ?? ""] ? "CHECKED_OUT" : "BOOKED";
-  const drawerTechnician = drawerBooking?.technicians.find((name) => ["Jenny", "Melika", "Nana"].includes(name)) ?? "";
+  const drawerTechnician = drawerBooking?.technicians.find((name) => staffNames.includes(name)) ?? "";
   const checkedOutCount = appointments.filter((booking) => checkedOut[booking.id] || booking.status === "CHECKED_OUT").length;
 
   return <main className="admin-page">
@@ -369,12 +378,12 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
           <div className="admin-schedule-heading"><div><h2>{activeTab === "queue" ? "Arrival queue" : "Daily schedule"}</h2><p>{displayBookings.length} {displayBookings.length === 1 ? "appointment" : "appointments"} · 8:00 AM–{formatSlotTime(getClosingTimeForDate(date), "en")}</p></div><span className="admin-sync-note">Auto-refreshes every 60 seconds</span></div>
           {bookings.isLoading && <div className="admin-loading" role="status"><span className="admin-spinner" />Loading Square appointments…</div>}
           {!bookings.isLoading && !bookings.error && displayBookings.length === 0 && <div className="admin-empty"><span aria-hidden="true">—</span><h3>{activeTab === "queue" ? "The arrival queue is clear" : "No appointments for this day"}</h3><p>{activeTab === "queue" ? "Checked-in guests and waiting walk-ins will appear here." : "Square has no active bookings for the selected date. Add a walk-in ticket when a guest arrives."}</p><button className="admin-primary-button" type="button" onClick={() => openWalkInEditor()}>+ New / Walk-in</button></div>}
-          {displayBookings.length > 0 && <AppointmentCalendar date={date} bookings={displayBookings} view={activeTab === "queue" ? "list" : scheduleView} checkedOut={checkedOut} onOpenSlot={openWalkInEditor} onSelectBooking={(booking) => openAppointmentEditor(booking as AdminBooking)} />}
+          {displayBookings.length > 0 && <AppointmentCalendar staffNames={staffNames} date={date} bookings={displayBookings} view={activeTab === "queue" ? "list" : scheduleView} checkedOut={checkedOut} onOpenSlot={openWalkInEditor} onSelectBooking={(booking) => openAppointmentEditor(booking as AdminBooking)} />}
           <footer className="admin-footer"><span>Live data from Square Appointments · refreshes every minute</span><span>Location R73A64VPAR34X</span></footer>
         </>}
       </div>
     </div>
 
-    {drawerBooking && <ServiceEditor key={drawerBooking.id} initialServiceIds={currentEditorDraft?.serviceIds ?? drawerBooking.serviceIds} initialAddOns={currentEditorDraft?.addOns ?? drawerBooking.addOns} bookingId={drawerBooking.id} guestNames={drawerBooking.guestNames} customerName={drawerBooking.customerName} customerPhone={drawerBooking.phone} startAt={drawerBooking.startAt} technician={drawerTechnician} initialTechnicians={drawerBooking.technicians} status={drawerStatus} busy={assignmentBusy === drawerBooking.id} checkedOut={drawerStatus === "CHECKED_OUT"} onMarkCheckedOut={async () => { await updateBookingStatus(drawerBooking, "CHECKED_OUT"); }} onBillSelectionChange={(serviceIds, addOns) => saveBillingSelection(drawerBooking, serviceIds, addOns)} walkIn={Boolean(editor?.walkIn)} onCancel={() => setEditor(null)} onTechnicianChange={(technician) => void updateBookingTechnician(drawerBooking, technician)} onStatusChange={(status) => void updateBookingStatus(drawerBooking, status)} onSave={saveServices} onBookingCreated={async () => { setEditor(null); await bookings.mutate(); }} />}
+    {drawerBooking && <ServiceEditor staffNames={staffNames} key={drawerBooking.id} initialServiceIds={currentEditorDraft?.serviceIds ?? drawerBooking.serviceIds} initialAddOns={currentEditorDraft?.addOns ?? drawerBooking.addOns} bookingId={drawerBooking.id} guestNames={drawerBooking.guestNames} customerName={drawerBooking.customerName} customerPhone={drawerBooking.phone} startAt={drawerBooking.startAt} technician={drawerTechnician} initialTechnicians={drawerBooking.technicians} status={drawerStatus} busy={assignmentBusy === drawerBooking.id} checkedOut={drawerStatus === "CHECKED_OUT"} onMarkCheckedOut={async () => { await updateBookingStatus(drawerBooking, "CHECKED_OUT"); }} onBillSelectionChange={(serviceIds, addOns) => saveBillingSelection(drawerBooking, serviceIds, addOns)} walkIn={Boolean(editor?.walkIn)} onCancel={() => setEditor(null)} onTechnicianChange={(technician) => void updateBookingTechnician(drawerBooking, technician)} onStatusChange={(status) => void updateBookingStatus(drawerBooking, status)} onSave={saveServices} onBookingCreated={async () => { setEditor(null); await bookings.mutate(); }} />}
   </main>;
 }

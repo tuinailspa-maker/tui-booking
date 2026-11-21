@@ -45,9 +45,10 @@ type ServiceEditorProps = {
   onSave: (value: { serviceIds: string[][]; addOns: Record<string, ServiceAddOnKey>[]; customerName: string; customerPhone: string }) => void | Promise<void>;
   onBookingCreated?: () => Promise<void>;
   bookingId: string;
+  staffNames?: string[];
 };
 
-export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, customerName, customerPhone, startAt, technician, initialTechnicians = [], squareServiceReference = [], onBillSelectionChange, status, busy, checkedOut, onMarkCheckedOut, walkIn, onCancel, onTechnicianChange, onStatusChange, onSave, onBookingCreated, bookingId }: ServiceEditorProps) {
+export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, customerName, customerPhone, startAt, technician, initialTechnicians = [], squareServiceReference = [], onBillSelectionChange, status, busy, checkedOut, onMarkCheckedOut, walkIn, onCancel, onTechnicianChange, onStatusChange, onSave, onBookingCreated, bookingId, staffNames = ["Jenny", "Melika", "Nana", "Option 1", "Option 2"] }: ServiceEditorProps) {
   const guestCount = Math.max(1, initialServiceIds.length);
   const [activeGuest, setActiveGuest] = useState(0);
   const [serviceIds, setServiceIds] = useState(() => Array.from({ length: guestCount }, (_, index) => initialServiceIds[index] ?? []));
@@ -64,7 +65,7 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
   const [closingHour, closingMinute] = closingTime.split(":").map(Number);
   const closingMinutes = closingHour * 60 + closingMinute;
   const lastStartTime = `${String(Math.floor((closingMinutes - 30) / 60)).padStart(2, "0")}:${String((closingMinutes - 30) % 60).padStart(2, "0")}`;
-  const [technicians, setTechnicians] = useState<string[]>(() => Array.from({ length: 3 }, (_, index) => initialTechnicians[index] ?? (index === 0 ? technician || "Jenny" : ["Jenny", "Melika", "Nana"].filter((name) => name !== technician)[index - 1] ?? "Jenny")));
+  const [technicians, setTechnicians] = useState<string[]>(() => Array.from({ length: 3 }, (_, index) => initialTechnicians[index] ?? (index === 0 ? technician || staffNames[0] || "Jenny" : staffNames.filter((name) => name !== technician)[index - 1] ?? staffNames[0] ?? "Jenny")));
   const [submitting, setSubmitting] = useState(false);
   const selectionSyncQueue = useRef<Promise<void>>(Promise.resolve());
   const [selectionSyncStatus, setSelectionSyncStatus] = useState<"idle" | "syncing" | "saved" | "error">("idle");
@@ -248,7 +249,7 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
     await onSave({ serviceIds, addOns, customerName: name.trim(), customerPhone: phone.trim() });
   }
 
-  return <AppointmentDrawer open name={walkIn ? (name || "New walk-in") : customerName || "Appointment"} phone={walkIn ? phone : customerPhone} startAt={startAt} technician={technician} status={status} busy={busy} onClose={onCancel} onTechnicianChange={onTechnicianChange} onStatusChange={onStatusChange}>
+  return <AppointmentDrawer open staffNames={staffNames} name={walkIn ? (name || "New walk-in") : customerName || "Appointment"} phone={walkIn ? phone : customerPhone} startAt={startAt} technician={technician} status={status} busy={busy} onClose={onCancel} onTechnicianChange={onTechnicianChange} onStatusChange={onStatusChange}>
     <div className="admin-drawer-services">
       {walkIn && <div className="admin-booking-mode" role="group" aria-label="Ticket type"><button type="button" aria-pressed={mode === "appointment"} onClick={() => { setMode("appointment"); setValidation(""); }}>Book Appointment (Sync to Square)</button><button type="button" aria-pressed={mode === "walkin"} onClick={() => { setMode("walkin"); setValidation(""); }}>Quick Walk-in</button></div>}
       <div className="admin-drawer-service-heading"><div><span className="admin-drawer-section-label">TICKET</span><h3>Services</h3></div><span>{serviceIds.flat().length} selected</span></div>
@@ -265,7 +266,7 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
       {(mode === "appointment" ? partySize : guestCount) > 1 && <div className="admin-guest-tabs" role="group" aria-label="Choose a guest">
         {Array.from({ length: mode === "appointment" ? partySize : guestCount }, (_, index) => <button key={index} type="button" aria-pressed={activeGuest === index} className={activeGuest === index ? "is-active" : ""} onClick={() => setActiveGuest(index)}>{`Guest ${index + 1}`}</button>)}
       </div>}
-      {walkIn && mode === "appointment" && <label className="admin-search-label">Technician for Guest {activeGuest + 1}<select value={technicians[activeGuest] || "Jenny"} onChange={(event) => setTechnicians((current) => current.map((value, index) => index === activeGuest ? event.target.value : value))}>{["Jenny", "Melika", "Nana"].map((name) => <option key={name}>{name}</option>)}</select></label>}
+      {walkIn && mode === "appointment" && <label className="admin-search-label">Technician for Guest {activeGuest + 1}<select value={technicians[activeGuest] || "Jenny"} onChange={(event) => setTechnicians((current) => current.map((value, index) => index === activeGuest ? event.target.value : value))}>{staffNames.map((name) => <option key={name}>{name}</option>)}</select></label>}
       <div className="admin-service-tree">
         <ServiceTree language="en" copy={translations.en} selectedIds={activeIds} selectedAddOns={activeAddOns} onToggleService={toggleService} onToggleAddOn={toggleAddOn} disabled={Boolean(squareOrderId)} />
       </div>
