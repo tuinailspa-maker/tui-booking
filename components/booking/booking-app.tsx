@@ -132,6 +132,18 @@ export function BookingApp() {
     setDurationError(false);
   }
 
+  function removeService(guestIndex: number, serviceId: string) {
+    setSelections((current) => current.map((ids, index) => index === guestIndex ? ids.filter((id) => id !== serviceId) : ids));
+    setServiceAddOns((current) => current.map((addOns, index) => {
+      if (index !== guestIndex || !(serviceId in addOns)) return addOns;
+      const next = { ...addOns };
+      delete next[serviceId];
+      return next;
+    }));
+    setDurationError(false);
+    setAvailabilityError(false);
+  }
+
   function toggleServiceAddOn(serviceId: string) {
     const addOn = serviceById.get(serviceId)?.addOn;
     if (!addOn) return;
@@ -425,7 +437,7 @@ export function BookingApp() {
           </div>
 
           <aside className="desktop-summary" aria-label={copy.summary}>
-            <BookingSummary language={language} copy={copy} partySize={partySize} date={date} time={time} selections={selections} serviceAddOns={serviceAddOns} />
+            <BookingSummary language={language} copy={copy} partySize={partySize} date={date} time={time} selections={selections} serviceAddOns={serviceAddOns} onRemoveService={step === 2 || step === 3 ? removeService : undefined} />
           </aside>
         </div>
       )}
@@ -433,7 +445,7 @@ export function BookingApp() {
       {step !== 4 && (
         <div className="mobile-summary-wrap">
           <div className="mobile-summary-details" id="mobile-summary-details" hidden={!showMobileSummary}>
-            <BookingSummary language={language} copy={copy} partySize={partySize} date={date} time={time} selections={selections} serviceAddOns={serviceAddOns} />
+            <BookingSummary language={language} copy={copy} partySize={partySize} date={date} time={time} selections={selections} serviceAddOns={serviceAddOns} onRemoveService={step === 2 || step === 3 ? removeService : undefined} />
           </div>
           <button className="mobile-summary-bar" type="button" aria-expanded={showMobileSummary} aria-controls="mobile-summary-details" onClick={() => setShowMobileSummary((open) => !open)}>
             <span className="mobile-summary-label"><span>{copy.summary}</span><small>{totals.serviceCount} {copy.summarySelected.toLowerCase()} · {totals.duration} min</small></span>

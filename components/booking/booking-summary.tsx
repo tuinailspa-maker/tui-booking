@@ -12,6 +12,7 @@ type BookingSummaryProps = {
   time: string;
   selections: string[][];
   serviceAddOns: Record<string, ServiceAddOnKey>[];
+  onRemoveService?: (guestIndex: number, serviceId: string) => void;
 };
 
 export function getBookingTotals(selections: string[][], serviceAddOns: Record<string, ServiceAddOnKey>[] = []) {
@@ -53,7 +54,7 @@ export function formatDate(date: string, language: Language) {
   }).format(new Date(`${date}T12:00:00Z`));
 }
 
-export function BookingSummary({ language, copy, partySize, date, time, selections, serviceAddOns }: BookingSummaryProps) {
+export function BookingSummary({ language, copy, partySize, date, time, selections, serviceAddOns, onRemoveService }: BookingSummaryProps) {
   const totals = getBookingTotals(selections, serviceAddOns);
   return (
     <div className="summary-content">
@@ -79,7 +80,24 @@ export function BookingSummary({ language, copy, partySize, date, time, selectio
                   if (!item) return null;
                   const addOnKey = serviceAddOns[index]?.[id];
                   const price = selectedServicePrice(item, addOnKey);
-                  return <li key={id}><span>{serviceDisplayNameWithAddOn(item, language, addOnKey)}</span><span>{item.priceLabel && !addOnKey ? item.priceLabel : formatCad(price, language)}</span></li>;
+                  const name = serviceDisplayNameWithAddOn(item, language, addOnKey);
+                  return (
+                    <li key={id}>
+                      <span className="summary-item-name">{name}</span>
+                      <span className="summary-item-price">{item.priceLabel && !addOnKey ? item.priceLabel : formatCad(price, language)}</span>
+                      {onRemoveService && (
+                        <button
+                          type="button"
+                          className="summary-item-remove"
+                          onClick={() => onRemoveService(index, id)}
+                          aria-label={`${copy.remove}: ${name}${partySize > 1 ? ` (${copy.guest} ${index + 1})` : ""}`}
+                          title={copy.remove}
+                        >
+                          <span aria-hidden="true">×</span>
+                        </button>
+                      )}
+                    </li>
+                  );
                 })}
               </ul>
             ) : <p className="summary-empty">{copy.noServices}</p>}

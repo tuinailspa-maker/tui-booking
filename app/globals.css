@@ -123,8 +123,15 @@ button { color: inherit; }
 .summary-guest-label span:last-child { color: #8c8579; white-space: nowrap; letter-spacing: 0; text-transform: none; }
 .summary-guest ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
 .summary-guest li { display: flex; justify-content: space-between; gap: 9px; color: #69645c; font-size: 8px; line-height: 1.5; }
-.summary-guest li span:first-child { min-width: 0; }
-.summary-guest li span:last-child { white-space: nowrap; color: #5b554d; }
+.summary-guest li { align-items: center; }
+.summary-guest li .summary-item-name { flex: 1; min-width: 0; }
+.summary-guest li .summary-item-price { white-space: nowrap; color: #5b554d; }
+.summary-item-remove { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 1px solid #e7dccb; border-radius: 999px; background: #fffdf9; color: #8a6f4c; cursor: pointer; font: inherit; font-size: 14px; line-height: 1; transition: background .16s, border-color .16s, color .16s; }
+.summary-item-remove:hover { border-color: #b4553f; background: #fbeee9; color: #b4553f; }
+.summary-item-remove:focus-visible, .leaf-remove:focus-visible { outline: 2px solid var(--sage); outline-offset: 2px; }
+.leaf-remove { justify-self: end; display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid #d9e2d6; border-radius: 999px; background: #fff; color: var(--sage); cursor: pointer; font: inherit; font-size: 8px; font-weight: 600; line-height: 1.2; white-space: nowrap; transition: background .16s, border-color .16s, color .16s; }
+.leaf-remove:hover { border-color: #b4553f; background: #fbeee9; color: #b4553f; }
+.leaf-remove > span[aria-hidden] { font-size: 12px; line-height: 1; }
 .summary-empty { margin: 0; color: #a39c90; font-size: 9px; line-height: 1.6; }
 .summary-totals { display: grid; gap: 12px; padding-top: 16px; }
 .summary-totals .subtotal-row { align-items: baseline; padding-top: 12px; border-top: 1px solid var(--soft-line); }
@@ -292,6 +299,7 @@ button { color: inherit; }
 .booking-page .branch-count,
 .booking-page .leaf-duration,
 .booking-page .leaf-action,
+.booking-page .leaf-remove,
 .booking-page .closed-note,
 .booking-page .summary-guest li,
 .booking-page .tax-note { font-size: 12px; font-weight: 600; }
@@ -414,7 +422,7 @@ button { color: inherit; }
 @media (max-width: 960px) {
   .booking-layout { grid-template-columns: minmax(0, 1fr) 285px; gap: 28px; }
   .summary-content { padding: 18px; }
-  .service-leaf { grid-template-columns: 17px minmax(0, 1fr) 45px 54px auto; gap: 6px; }
+  .service-leaf { grid-template-columns: 17px minmax(0, 1fr) 45px 54px auto auto; gap: 6px; }
   .leaf-addon-toggle { padding: 4px 6px; font-size: 7px; }
   .leaf-action, .leaf-addon-spacer { display: none; }
 }
@@ -499,7 +507,9 @@ button { color: inherit; }
   .tree-root .branch-name { font-size: 14px; }
   .branch-name { font-size: 9px; }
   .branch-note { max-width: 43%; padding: 3px 5px; font-size: 6px; }
-  .service-leaf { grid-template-columns: 15px minmax(0, 1fr) 40px 48px auto; gap: 5px; padding-left: calc(10px + var(--depth, 1) * 9px); }
+  .service-leaf { grid-template-columns: 15px minmax(0, 1fr) 40px 48px auto auto; gap: 5px; padding-left: calc(10px + var(--depth, 1) * 9px); }
+  .leaf-remove { padding: 4px 7px; }
+  .leaf-remove-label { display: none; }
   .leaf-name { font-size: 8px; }
   .leaf-duration { font-size: 7px; }
   .leaf-price { font-size: 8px; }

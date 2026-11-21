@@ -96,7 +96,20 @@ export function ServiceTree({ language, copy, selectedIds, selectedAddOns, onTog
               {addOnLabel}
             </button>
           ) : <span className="leaf-addon-spacer" aria-hidden="true" />}
-          <span className="leaf-action" aria-hidden="true">{checked ? copy.added : copy.add}</span>
+          {checked ? (
+            <button
+              type="button"
+              className="leaf-remove"
+              onClick={() => onToggleService(node.id)}
+              disabled={disabled}
+              aria-label={`${copy.remove}: ${name}`}
+            >
+              <span className="leaf-remove-label">{copy.remove}</span>
+              <span aria-hidden="true">×</span>
+            </button>
+          ) : (
+            <span className="leaf-action" aria-hidden="true">{copy.add}</span>
+          )}
         </div>
       );
     }
