@@ -4,7 +4,8 @@ import { DEFAULT_STAFF_ROSTER, sortStaff, staffKind, type StaffMember } from "@/
 
 const PRODUCTION_URL = "https://connect.squareup.com/v2";
 const SANDBOX_URL = "https://connect.squareupsandbox.com/v2";
-const ROSTER_TTL_MS = 5 * 60_000;
+// Short TTL so a team member newly opened in Square Appointments joins availability within a minute.
+const ROSTER_TTL_MS = 60_000;
 const INACTIVE_BOOKING_STATUSES = new Set(["CANCELLED_BY_CUSTOMER", "CANCELLED_BY_SELLER", "DECLINED", "NO_SHOW"]);
 const SLOT_STEP_MINUTES = 15;
 

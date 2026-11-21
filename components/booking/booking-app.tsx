@@ -79,7 +79,7 @@ export function BookingApp() {
       });
       const result = await response.json().catch(() => null);
       if (!response.ok) throw new Error(result?.error || "Could not load live availability.");
-      return result as { slots: Record<string, Technician[]> };
+      return result as { slots: Record<string, Technician[]>; nextDate?: string | null };
     },
     { revalidateOnFocus: false },
   );
@@ -361,6 +361,7 @@ export function BookingApp() {
                 onTimeChange={changeTime}
                 availabilitySlots={availabilitySlots}
                 isAvailabilityLoading={isAvailabilityLoading}
+                nextAvailableDate={slotAvailability?.nextDate ?? null}
               />
             )}
 

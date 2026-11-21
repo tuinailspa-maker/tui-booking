@@ -23,6 +23,7 @@ type StepOneProps = {
   onTimeChange: (time: string) => void;
   availabilitySlots: Record<string, Technician[]>;
   isAvailabilityLoading: boolean;
+  nextAvailableDate: string | null;
 };
 
 function fullDateLabel(iso: string, language: Language) {
@@ -34,7 +35,7 @@ function fullDateLabel(iso: string, language: Language) {
   }).format(new Date(`${iso}T12:00:00Z`));
 }
 
-export function StepOne({ language, copy, partySize, onPartySizeChange, date, onDateChange, time, onTimeChange, availabilitySlots, isAvailabilityLoading }: StepOneProps) {
+export function StepOne({ language, copy, partySize, onPartySizeChange, date, onDateChange, time, onTimeChange, availabilitySlots, isAvailabilityLoading, nextAvailableDate }: StepOneProps) {
   const [dates, setDates] = useState<DateOption[]>([]);
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setDates(getUpcomingDates(language)));
@@ -116,7 +117,16 @@ export function StepOne({ language, copy, partySize, onPartySizeChange, date, on
         ) : isAvailabilityLoading ? (
           <p className="empty-state" role="status">{language === "en" ? "Checking live availability…" : "Vérification des disponibilités…"}</p>
         ) : slots.length === 0 ? (
-          <p className="empty-state">{copy.noSlots}</p>
+          <div className="empty-state" role="status">
+            <p className="empty-state-text">{copy.noSlots}</p>
+            {nextAvailableDate && (
+              <button className="next-date-button" type="button" onClick={() => onDateChange(nextAvailableDate)}>
+                {language === "en" ? "Next available for your group: " : "Prochaine disponibilité pour votre groupe : "}
+                <strong>{fullDateLabel(nextAvailableDate, language)}</strong>
+                <span aria-hidden="true"> →</span>
+              </button>
+            )}
+          </div>
         ) : (
           <div className="time-grid" role="group" aria-label={copy.time}>
             {slots.map((slot) => (

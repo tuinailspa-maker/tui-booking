@@ -3,7 +3,6 @@ import { resolveSquareBookingVariation } from "@/data/squareVariations";
 
 const PRODUCTION_URL = "https://connect.squareup.com/v2";
 const SANDBOX_URL = "https://connect.squareupsandbox.com/v2";
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 function squareBaseUrl() {
   return process.env.SQUARE_ENVIRONMENT === "sandbox" ? SANDBOX_URL : PRODUCTION_URL;
@@ -49,13 +48,4 @@ export async function getSquareAvailableStarts(teamMemberId: string, rangeStartM
     const segment = availability.appointment_segments?.find((item) => item.team_member_id === teamMemberId);
     return Number.isFinite(start) && segment ? [[start, segment.duration_minutes ?? 0]] : [];
   }));
-}
-
-export async function isSquareSlotAvailable(teamMemberId: string, startMs: number, durationMinutes: number, locationId: string): Promise<boolean> {
-  const rangeStart = Math.max(Date.now(), startMs - DAY_MS / 2);
-  const starts = await getSquareAvailableStarts(teamMemberId, rangeStart, rangeStart + DAY_MS, locationId);
-  for (let offsetMinutes = 0; offsetMinutes < durationMinutes; offsetMinutes += 30) {
-    if (!starts.has(startMs + offsetMinutes * 60_000)) return false;
-  }
-  return true;
 }
