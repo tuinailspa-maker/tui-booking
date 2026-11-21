@@ -215,16 +215,21 @@ export async function POST(request: Request) {
     }
 
     if (!deviceId) {
-      const pairingResult = await squareRequest("/devices/codes", {
-        method: "POST",
-        body: JSON.stringify({
-          idempotency_key: crypto.randomUUID(),
-          device_code: { name: "Tui Nail Spa Terminal", product_type: "TERMINAL_API", location_id: locationId },
-        }),
-      });
-      const code = isRecord(pairingResult) && isRecord(pairingResult.device_code) ? pairingResult.device_code : null;
-      if (!code || typeof code.id !== "string" || typeof code.code !== "string") throw new Error("Square did not return a Terminal pairing code.");
-      return NextResponse.json({ pairingRequired: true, deviceCodeId: code.id, pairingCode: code.code, pairBy: code.pair_by ?? null }, { headers: { "Cache-Control": "no-store" } });
+      const pairedDevices = await squareRequest(`/devices/codes?status=PAIRED`);
+      const deviceCodes = isRecord(pairedDevices) && Array.isArray(pairedDevices.device_codes) ? pairedDevices.device_codes : [];
+      const pairedDeviceCode = deviceCodes.find((candidate) =>
+        isRecord(candidate)
+        && candidate.status === "PAIRED"
+        && candidate.location_id === locationId
+        && candidate.product_type === "TERMINAL_API"
+        && typeof candidate.device_id === "string"
+        && candidate.device_id.length > 0,
+      );
+      if (isRecord(pairedDeviceCode) && typeof pairedDeviceCode.device_id === "string") {
+        deviceId = pairedDeviceCode.device_id;
+      } else {
+        throw new Error("No paired Square Terminal was found for this location. Check that the Terminal is paired and online, or use Square Web Checkout / Payment Link instead.");
+      }
     }
 
     const checkout = await createSquareTerminalCheckout(input, deviceId);

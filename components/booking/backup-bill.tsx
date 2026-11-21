@@ -179,6 +179,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
   const [terminalPairingCode, setTerminalPairingCode] = useState("");
   const [openDrawer, setOpenDrawer] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
+  const [terminalFallbackAvailable, setTerminalFallbackAvailable] = useState(false);
   const [copied, setCopied] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState("");
   const [activeBillGuest, setActiveBillGuest] = useState(0);
@@ -265,6 +266,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
     const popup = window.open("about:blank", "_blank");
     setCheckoutBusy(true);
     setCheckoutError("");
+    setTerminalFallbackAvailable(false);
     try {
       const items = guests.flatMap((guest, guestIndex) => guest.map(({ service, addOnKey }) => ({
         name: `Guest ${guestIndex + 1} — ${serviceDisplayNameWithAddOn(service, receiptLanguage, addOnKey)}`,
@@ -293,6 +295,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
     if (subtotal <= 0) { setCheckoutError("The bill total must be greater than $0.00."); return; }
     setCheckoutBusy(true);
     setCheckoutError("");
+    setTerminalFallbackAvailable(false);
     setTerminalPairingCode("");
     setTerminalStatus("PAIRING");
     setTerminalStatusMessage("Connecting to Square Terminal…");
@@ -376,6 +379,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
       setTerminalStatusMessage("Square Terminal is still waiting. Check the device before starting another checkout.");
     } catch (error) {
       setCheckoutError(error instanceof Error ? error.message : "Could not send this order to Square Terminal.");
+      setTerminalFallbackAvailable(true);
       setTerminalStatusMessage("");
       setTerminalStatus("");
     } finally {
@@ -589,6 +593,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
             <label className="bill-payment-method">{receiptLanguage === "en" ? "Last 4 / Auth code" : "4 derniers chiffres / code d’autorisation"}<input value={paymentAuth} onChange={(event) => setPaymentAuth(event.target.value.slice(0, 40))} /></label>
           </div>
           {checkoutError && <p className="admin-form-error" role="alert">{checkoutError}</p>}
+          {terminalFallbackAvailable && <button className="button button-primary" type="button" onClick={() => void sendToSquareCheckout()} disabled={checkoutBusy}>Open Square Web Checkout / Payment Link</button>}
           {terminalStatusMessage && <p className="bill-terminal-status" role="status">{terminalPairingCode && <strong>Pairing code: {terminalPairingCode}</strong>}{terminalStatusMessage}</p>}
           {onMarkCheckedOut && <button className="bill-mark-checked-out" type="button" onClick={() => void markCheckedOut()} disabled={checkoutBusy}>{checkoutBusy ? (receiptLanguage === "en" ? "Saving checkout…" : "Enregistrement…") : markCheckedOutLabel ?? text.markCheckedOut}</button>}
         </div>
