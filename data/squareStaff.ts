@@ -6,7 +6,7 @@ const PRODUCTION_URL = "https://connect.squareup.com/v2";
 const SANDBOX_URL = "https://connect.squareupsandbox.com/v2";
 const ROSTER_TTL_MS = 5 * 60_000;
 const INACTIVE_BOOKING_STATUSES = new Set(["CANCELLED_BY_CUSTOMER", "CANCELLED_BY_SELLER", "DECLINED", "NO_SHOW"]);
-const SLOT_STEP_MINUTES = 30;
+const SLOT_STEP_MINUTES = 15;
 
 export type BusyWindow = { bookingId: string; startMs: number; endMs: number };
 
@@ -20,6 +20,27 @@ function authHeaders(json = false) {
     "Square-Version": SQUARE_API_VERSION,
     ...(json ? { "Content-Type": "application/json" } : {}),
   };
+}
+
+async function fetchBookableTeamMemberIds(): Promise<Set<string> | null> {
+  try {
+    const ids = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const params = new URLSearchParams({ limit: "100", bookable_only: "true" });
+      if (cursor) params.set("cursor", cursor);
+      const response = await fetch(`${squareBaseUrl()}/bookings/team-member-booking-profiles?${params}`, { cache: "no-store", headers: authHeaders() });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) return null;
+      for (const profile of (data.team_member_booking_profiles ?? []) as { team_member_id?: string; is_bookable?: boolean }[]) {
+        if (profile.team_member_id && profile.is_bookable !== false) ids.add(profile.team_member_id);
+      }
+      cursor = data.cursor;
+    } while (cursor);
+    return ids;
+  } catch {
+    return null;
+  }
 }
 
 let rosterCache: { locationId: string; expiresAt: number; roster: StaffMember[] } | null = null;
@@ -48,9 +69,13 @@ export async function getStaffRoster(locationId: string): Promise<StaffMember[]>
       cursor = data.cursor;
     } while (cursor);
     if (members.length === 0) return DEFAULT_STAFF_ROSTER;
+    // Owners/admins can be ACTIVE team members without performing services; Square rejects
+    // availability searches for them, so only bookable members (plus known columns) count.
+    const bookable = await fetchBookableTeamMemberIds();
+    const bookableMembers = bookable ? members.filter((member) => bookable.has(member.id) || knownById.has(member.id)) : members;
 
     const usedNames = new Set<string>();
-    const roster = members.map((member) => {
+    const roster = bookableMembers.map((member) => {
       const known = knownById.get(member.id);
       let name = known ?? ([member.given_name, member.family_name].filter(Boolean).join(" ").trim() || `Team ${member.id.slice(-4)}`);
       if (usedNames.has(name)) name = `${name} (${member.id.slice(-4)})`;
@@ -103,10 +128,18 @@ export function overlapsBusy(windows: BusyWindow[], startMs: number, endMs: numb
   return windows.some((window) => !excludeBookingIds.includes(window.bookingId) && window.startMs < endMs && window.endMs > startMs);
 }
 
-/** Square availability (working hours, days off, blocked time) must cover every 30-min step of the window. */
+/**
+ * Square availability (working hours, days off, blocked/clocked-out time, existing bookings) must
+ * cover the full [startMs, startMs + duration] window. Square aligns starts quarter-hourly and each
+ * start is free for its probe segment's duration, so chain starts until the window is covered.
+ */
 export function availabilityCovers(starts: Map<number, number>, startMs: number, durationMinutes: number): boolean {
-  for (let offset = 0; offset < durationMinutes; offset += SLOT_STEP_MINUTES) {
-    if (!starts.has(startMs + offset * 60_000)) return false;
+  let offset = 0;
+  while (offset < durationMinutes) {
+    const segmentMinutes = starts.get(startMs + offset * 60_000);
+    if (segmentMinutes === undefined) return false;
+    if (offset + Math.max(segmentMinutes, SLOT_STEP_MINUTES) >= durationMinutes) return true;
+    offset += SLOT_STEP_MINUTES;
   }
   return true;
 }

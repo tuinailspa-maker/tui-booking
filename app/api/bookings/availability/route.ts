@@ -37,11 +37,20 @@ export async function POST(request: Request) {
       const dayEnd = dayStart + 24 * 60 * 60_000;
       const rangeStart = Math.max(Date.now(), localTorontoStart(requestedDate, slots[0].time) - 12 * 60 * 60_000);
       // Working hours, days off and blocked time come from Square availability; existing bookings are re-checked per segment.
-      const staffData = await Promise.all(roster.map(async (member) => ({
-        member,
-        starts: await getSquareAvailableStarts(member.teamMemberId, rangeStart, rangeStart + 24 * 60 * 60_000, locationId),
-        busy: await fetchBusyWindows(locationId, member.teamMemberId, dayStart, dayEnd),
-      })));
+      // One column failing in Square (e.g. not assigned to the probe service) must not hide every other column's slots.
+      const settled = await Promise.allSettled(roster.map(async (member) => {
+        const [starts, busy] = await Promise.all([
+          getSquareAvailableStarts(member.teamMemberId, rangeStart, rangeStart + 24 * 60 * 60_000, locationId),
+          fetchBusyWindows(locationId, member.teamMemberId, dayStart, dayEnd),
+        ]);
+        return { member, starts, busy };
+      }));
+      const staffData = settled.flatMap((result, index) => {
+        if (result.status === "fulfilled") return [result.value];
+        console.error(`[v0] Square availability skipped for ${roster[index].name}:`, result.reason instanceof Error ? result.reason.message : result.reason);
+        return [];
+      });
+      if (staffData.length === 0) throw new Error("Square availability failed for every team member.");
       const available: Record<string, string[]> = {};
       for (const slot of slots) {
         const startMs = localTorontoStart(requestedDate, slot.time);

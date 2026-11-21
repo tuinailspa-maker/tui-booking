@@ -428,7 +428,7 @@ export function BookingApp() {
                 <button className="button button-primary" type="button" disabled={!date || !time} onClick={() => setStep(2)}>{copy.continue}<span aria-hidden="true">→</span></button>
               )}
               {step === 2 && (
-                <button className="button button-primary" type="button" onClick={continueFromServices}>{copy.continue}<span aria-hidden="true">→</span></button>
+                <button className="button button-primary" type="button" disabled={isAvailabilityLoading} aria-busy={isAvailabilityLoading} onClick={continueFromServices}>{copy.continue}<span aria-hidden="true">→</span></button>
               )}
               {step === 3 && (
                 <button className="button button-primary" type="submit" form="client-details-form" disabled={isSubmitting} aria-busy={isSubmitting}>{isSubmitting ? (language === "en" ? "Booking…" : "Réservation…") : copy.confirm}<span aria-hidden="true">→</span></button>
