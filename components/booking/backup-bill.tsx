@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
+import { billRequestPayload, calculateBill, centsToDollars, TIP_CHOICES, type BillInput, type TipChoice } from "@/data/billing";
 import { allServices, selectedServiceDuration, selectedServicePrice, serviceById, serviceDisplayName, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import type { Language } from "./copy";
 
@@ -23,13 +24,6 @@ type BackupBillProps = {
   onMarkCheckedOut?: (checkout: { tipAmount: number; paymentMethod: "Card" | "Cash" }) => void | Promise<void>;
   onBillSelectionChange?: (selections: string[][], addOns: Record<string, ServiceAddOnKey>[]) => void;
 };
-
-type TipChoice = "none" | "15" | "20" | "25" | "custom";
-
-const TPS_RATE = 0.05;
-const TVQ_RATE = 0.09975;
-const TIP_PERCENTS: Partial<Record<TipChoice, number>> = { "15": 0.15, "20": 0.2, "25": 0.25 };
-const TIP_CHOICES: TipChoice[] = ["none", "15", "20", "25", "custom"];
 
 const labels = {
   en: {
@@ -209,16 +203,22 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
     const service = serviceById.get(id);
     return service ? [{ service, addOnKey: billServiceAddOns[guestIndex]?.[id] }] : [];
   }));
-  const grossSubtotal = toCents(guests.flat().reduce((sum, item) => sum + selectedServicePrice(item.service, item.addOnKey), 0));
-  const comboDiscount = getComboDiscountDetails(billSelections, billServiceAddOns).amount;
-  const subtotal = customSubtotal ? sanitizeCustomTip(customSubtotal) : toCents(Math.max(0, grossSubtotal - comboDiscount - manualDiscountAmount));
-  const tps = toCents(subtotal * TPS_RATE);
-  const tvq = toCents(subtotal * TVQ_RATE);
-  const totalBeforeTip = toCents(subtotal + tps + tvq);
-  const tipAmount = tipChoice === "custom"
-    ? sanitizeCustomTip(customTip)
-    : toCents(subtotal * (TIP_PERCENTS[tipChoice] ?? 0));
-  const grandTotal = toCents(totalBeforeTip + tipAmount);
+  const billInput: BillInput = {
+    selections: billSelections,
+    addOns: billServiceAddOns,
+    manualDiscountCents: Math.round(manualDiscountAmount * 100),
+    subtotalOverrideCents: customSubtotal ? Math.round(sanitizeCustomTip(customSubtotal) * 100) : null,
+    tipChoice,
+    customTipCents: Math.round(sanitizeCustomTip(customTip) * 100),
+  };
+  const bill = calculateBill(billInput);
+  const comboDiscount = centsToDollars(bill.comboDiscountCents);
+  const subtotal = centsToDollars(bill.subtotalCents);
+  const tps = centsToDollars(bill.tpsCents);
+  const tvq = centsToDollars(bill.tvqCents);
+  const totalBeforeTip = centsToDollars(bill.totalBeforeTipCents);
+  const tipAmount = centsToDollars(bill.tipCents);
+  const grandTotal = centsToDollars(bill.grandTotalCents);
 
   function updateBillSelections(nextSelections: string[][], nextAddOns = billServiceAddOns) {
     if (onBillSelectionChange) {
@@ -267,15 +267,10 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
     setCheckoutBusy(true);
     setCheckoutError("");
     try {
-      const items = guests.flatMap((guest, guestIndex) => guest.map(({ service, addOnKey }) => ({
-        name: `Guest ${guestIndex + 1} — ${serviceDisplayNameWithAddOn(service, receiptLanguage, addOnKey)}`,
-        amountCents: Math.round(selectedServicePrice(service, addOnKey) * 100),
-      })));
-      if (subtotal > grossSubtotal) items.push({ name: "Manual subtotal adjustment", amountCents: Math.round((subtotal - grossSubtotal) * 100) });
       const response = await fetch("/api/square/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items, discountCents: Math.max(0, Math.round((grossSubtotal - subtotal) * 100)), tipCents: Math.round(tipAmount * 100), customerName, customerPhone }),
+        body: JSON.stringify({ ...billRequestPayload(billInput), bookingId, customerName, customerPhone, idempotencyKey: crypto.randomUUID() }),
       });
       const result = await response.json().catch(() => null);
       if (!response.ok || typeof result?.url !== "string") throw new Error(result?.error || "Could not create a Square checkout link.");
@@ -289,11 +284,9 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
     }
   }
 
-  function billAmountsInCents() {
+  function billCheckoutPayload() {
     return {
-      subtotalCents: Math.round(subtotal * 100),
-      tipCents: Math.round(tipAmount * 100),
-      totalCents: Math.round(grandTotal * 100),
+      ...billRequestPayload(billInput),
     };
   }
 
@@ -323,7 +316,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
     setCheckoutBusy(true);
     setTerminalStatus("");
     try {
-      const result = await postTerminal({ action: "payment-link", bookingId, customerName, customerPhone, ...billAmountsInCents(), idempotencyKey: paymentLinkFallback.idempotencyKey });
+      const result = await postTerminal({ action: "payment-link", bookingId, customerName, customerPhone, ...billCheckoutPayload(), idempotencyKey: paymentLinkFallback.idempotencyKey });
       if (typeof result.url !== "string") throw new Error("Square did not return a payment link.");
       if (popup) popup.location.href = result.url;
       else window.location.assign(result.url);
@@ -354,9 +347,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
         bookingId,
         customerName,
         customerPhone,
-        serviceIds: billSelections,
-        addOns: billServiceAddOns,
-        ...billAmountsInCents(),
+        ...billCheckoutPayload(),
         idempotencyKey,
       });
 

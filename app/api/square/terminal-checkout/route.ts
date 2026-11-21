@@ -1,16 +1,13 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { isAdminRequestAuthorized } from "@/data/adminAuth";
+import { calculateBill, parseBillInput, type BillInput, type BillTotals } from "@/data/billing";
 import { SQUARE_API_VERSION } from "@/data/squareConfig";
-import { selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
+import { assertSquareOrderMatchesBill, buildSquareOrder, loadLiveVariations } from "@/data/squareOrder";
 
-const MAX_AMOUNT_CENTS = 10_000_000;
-const TPS_RATE = 0.05;
-const TVQ_RATE = 0.09975;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const NO_STORE = { "Cache-Control": "no-store" };
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
-const isCents = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= MAX_AMOUNT_CENTS;
 
 class SquareError extends Error {
   constructor(message: string, readonly status: number) {
@@ -60,64 +57,39 @@ type TerminalCheckoutInput = {
   bookingId: string;
   customerName: string;
   customerPhone: string;
-  serviceIds: string[][];
-  addOns: Record<string, ServiceAddOnKey>[];
-  subtotalCents: number;
-  tpsCents: number;
-  tvqCents: number;
-  tipCents: number;
-  totalCents: number;
+  bill: BillInput;
   idempotencyKey: string;
 };
 
 type Validation<T> = { value: T } | { error: string };
 
-function validateAmounts(body: Record<string, unknown>): Validation<Pick<TerminalCheckoutInput, "subtotalCents" | "tpsCents" | "tvqCents" | "tipCents" | "totalCents">> {
-  const { subtotalCents, tipCents, totalCents } = body;
-  if (!isCents(subtotalCents) || !isCents(tipCents) || !isCents(totalCents)) return { error: "Provide a valid bill subtotal, tip, and total in cents." };
-  const tpsCents = Math.round(subtotalCents * TPS_RATE);
-  const tvqCents = Math.round(subtotalCents * TVQ_RATE);
-  const expectedTotal = subtotalCents + tpsCents + tvqCents + tipCents;
-  // The bill rounds taxes in dollars while this rounds in cents; allow a one-cent float rounding difference per tax.
-  if (Math.abs(expectedTotal - totalCents) > 2) return { error: `The bill total (${(totalCents / 100).toFixed(2)}) does not match subtotal + TPS + TVQ + tip (${(expectedTotal / 100).toFixed(2)}). Refresh the bill and try again.` };
-  if (totalCents <= 0) return { error: "The checkout total must be greater than $0.00." };
-  return { value: { subtotalCents, tpsCents: tpsCents + (totalCents - expectedTotal), tvqCents, tipCents, totalCents } };
-}
-
-function validateCheckoutInput(body: Record<string, unknown>): Validation<TerminalCheckoutInput> {
+function validateCheckoutInput(body: Record<string, unknown>, requireIdempotencyKey = true): Validation<TerminalCheckoutInput> {
   const bookingId = typeof body.bookingId === "string" ? body.bookingId.trim().slice(0, 100) : "";
   const customerName = typeof body.customerName === "string" ? body.customerName.trim().slice(0, 100) : "";
   const customerPhone = typeof body.customerPhone === "string" ? body.customerPhone.trim().slice(0, 30) : "";
-  const idempotencyKey = typeof body.idempotencyKey === "string" && UUID_PATTERN.test(body.idempotencyKey) ? body.idempotencyKey : "";
-  const { serviceIds, addOns } = body;
+  const providedKey = typeof body.idempotencyKey === "string" && UUID_PATTERN.test(body.idempotencyKey) ? body.idempotencyKey : "";
+  const idempotencyKey = providedKey || (requireIdempotencyKey ? "" : crypto.randomUUID());
+  if (requireIdempotencyKey && (!bookingId || !idempotencyKey)) return { error: "Provide a valid booking and checkout request ID." };
+  const parsed = parseBillInput(body);
+  if ("error" in parsed) return parsed;
+  return { value: { bookingId, customerName, customerPhone, bill: parsed.value, idempotencyKey } };
+}
 
-  if (!bookingId || !idempotencyKey || !Array.isArray(serviceIds) || serviceIds.length < 1 || serviceIds.length > 3 || !Array.isArray(addOns) || addOns.length !== serviceIds.length) {
-    return { error: "Provide a valid booking, services, and checkout request ID." };
-  }
-  const amounts = validateAmounts(body);
-  if ("error" in amounts) return amounts;
+/** Recomputes the bill server-side from the internal price list; client totals are never trusted. */
+function serverBill(input: TerminalCheckoutInput) {
+  const bill = calculateBill(input.bill);
+  if (bill.grandTotalCents <= 0) throw new SquareError("The checkout total must be greater than $0.00.", 400);
+  return bill;
+}
 
-  const normalizedServiceIds: string[][] = [];
-  const normalizedAddOns: Record<string, ServiceAddOnKey>[] = [];
-  for (let guestIndex = 0; guestIndex < serviceIds.length; guestIndex += 1) {
-    const guestServices: unknown = serviceIds[guestIndex];
-    const guestAddOns: unknown = addOns[guestIndex];
-    if (!Array.isArray(guestServices) || guestServices.length > 30 || !isRecord(guestAddOns)) return { error: "Each guest must have valid services." };
-    const validIds: string[] = [];
-    const validAddOns: Record<string, ServiceAddOnKey> = {};
-    for (const id of guestServices) {
-      if (typeof id !== "string" || !serviceById.has(id)) return { error: "A selected service is not in the salon service menu." };
-      const service = serviceById.get(id)!;
-      const addOn = guestAddOns[id];
-      if (addOn !== undefined && (!service.addOn || addOn !== service.addOn.key)) return { error: "A selected add-on is not available for that service." };
-      validIds.push(id);
-      if (addOn !== undefined) validAddOns[id] = addOn as ServiceAddOnKey;
-    }
-    normalizedServiceIds.push(validIds);
-    normalizedAddOns.push(validAddOns);
-  }
-
-  return { value: { bookingId, customerName, customerPhone, serviceIds: normalizedServiceIds, addOns: normalizedAddOns, idempotencyKey, ...amounts.value } };
+function checkoutNote(input: Pick<TerminalCheckoutInput, "customerName" | "customerPhone">, bill: BillTotals) {
+  const dollars = (cents: number) => (cents / 100).toFixed(2);
+  return [
+    "Tui Nail Spa",
+    input.customerName,
+    input.customerPhone,
+    `Subtotal ${dollars(bill.subtotalCents)} + TPS ${dollars(bill.tpsCents)} + TVQ ${dollars(bill.tvqCents)}${bill.tipCents > 0 ? ` + Tip ${dollars(bill.tipCents)}` : ""}`,
+  ].filter(Boolean).join(" · ").slice(0, 500);
 }
 
 type TerminalDevice = { deviceId: string; name: string };
@@ -199,93 +171,48 @@ async function resolveTerminalDevice(locationId: string): Promise<TerminalDevice
   );
 }
 
-async function createItemizedOrder(input: TerminalCheckoutInput, locationId: string) {
-  const lineItems = new Map<string, { name: string; quantity: number; amountCents: number }>();
-  let grossSubtotalCents = 0;
-  for (let guestIndex = 0; guestIndex < input.serviceIds.length; guestIndex += 1) {
-    for (const id of input.serviceIds[guestIndex]) {
-      const service = serviceById.get(id)!;
-      const addOn = input.addOns[guestIndex][id];
-      const amountCents = Math.round(selectedServicePrice(service, addOn) * 100);
-      const name = serviceDisplayNameWithAddOn(service, "en", addOn);
-      grossSubtotalCents += amountCents;
-      const key = `${name}\u0000${amountCents}`;
-      const existing = lineItems.get(key);
-      if (existing) existing.quantity += 1;
-      else lineItems.set(key, { name, quantity: 1, amountCents });
-    }
-  }
-  const adjustmentCents = input.subtotalCents - grossSubtotalCents;
-  if (adjustmentCents > 0) lineItems.set("tui-subtotal-adjustment", { name: "Subtotal adjustment", quantity: 1, amountCents: adjustmentCents });
-  const taxed = Array.from(lineItems.values());
-  if (taxed.length === 0) return null;
-
-  const appliedTaxes = [{ tax_uid: "tui-gst" }, { tax_uid: "tui-qst" }];
-  const discountCents = adjustmentCents < 0 ? Math.min(grossSubtotalCents, -adjustmentCents) : 0;
+async function createItemizedOrder(input: TerminalCheckoutInput, bill: BillTotals, locationId: string) {
+  const live = await loadLiveVariations();
   const orderResult = await squareRequest("/orders", {
     method: "POST",
     body: JSON.stringify({
-      idempotency_key: createHash("sha256").update(`tui-terminal-order:${input.idempotencyKey}`).digest("hex").slice(0, 64),
-      order: {
-        location_id: locationId,
-        reference_id: input.bookingId.slice(-40),
-        line_items: [
-          ...taxed.map((item, index) => ({
-            uid: `tui-${index + 1}`,
-            name: item.name,
-            quantity: String(item.quantity),
-            base_price_money: { amount: item.amountCents, currency: "CAD" },
-            applied_taxes: appliedTaxes,
-            ...(discountCents > 0 ? { applied_discounts: [{ discount_uid: "tui-bill-discount" }] } : {}),
-          })),
-          ...(input.tipCents > 0 ? [{ uid: "tui-tip", name: "Tip", quantity: "1", base_price_money: { amount: input.tipCents, currency: "CAD" } }] : []),
-        ],
-        discounts: discountCents > 0 ? [{ uid: "tui-bill-discount", name: "Bill discount", type: "FIXED_AMOUNT", scope: "LINE_ITEM", amount_money: { amount: discountCents, currency: "CAD" } }] : [],
-        taxes: [
-          { uid: "tui-gst", name: "TPS / GST (5%)", type: "ADDITIVE", scope: "LINE_ITEM", percentage: "5" },
-          { uid: "tui-qst", name: "TVQ / QST (9.975%)", type: "ADDITIVE", scope: "LINE_ITEM", percentage: "9.975" },
-        ],
-        ...(input.customerName || input.customerPhone ? { metadata: { customer_name: input.customerName || "-", customer_phone: input.customerPhone || "-" } } : {}),
-      },
+      idempotency_key: createHash("sha256").update(`tui-terminal-order:${input.idempotencyKey}`).digest("hex").slice(0, 45),
+      order: buildSquareOrder(bill, live, {
+        locationId,
+        referenceId: input.bookingId.slice(-40),
+        includeTipAsServiceCharge: false,
+        metadata: { ...(input.customerName ? { customer_name: input.customerName } : {}), ...(input.customerPhone ? { customer_phone: input.customerPhone } : {}) },
+      }),
     }),
   });
   const order = isRecord(orderResult) && isRecord(orderResult.order) ? orderResult.order : null;
   const orderId = order && typeof order.id === "string" ? order.id : "";
-  const totalMoney = order && isRecord(order.total_money) ? order.total_money : null;
-  const orderTotal = totalMoney && Number.isSafeInteger(totalMoney.amount) ? Number(totalMoney.amount) : null;
-  return orderId ? { orderId, orderTotal } : null;
-}
-
-function checkoutNote(input: Pick<TerminalCheckoutInput, "customerName" | "customerPhone" | "subtotalCents" | "tpsCents" | "tvqCents" | "tipCents">) {
-  const dollars = (cents: number) => (cents / 100).toFixed(2);
-  return [
-    "Tui Nail Spa",
-    input.customerName,
-    input.customerPhone,
-    `Subtotal ${dollars(input.subtotalCents)} + TPS ${dollars(input.tpsCents)} + TVQ ${dollars(input.tvqCents)}${input.tipCents > 0 ? ` + Tip ${dollars(input.tipCents)}` : ""}`,
-  ].filter(Boolean).join(" · ").slice(0, 500);
+  if (!order || !orderId) throw new SquareError("Square did not return a valid order.", 502);
+  assertSquareOrderMatchesBill(order, bill, false);
+  return orderId;
 }
 
 async function createTerminalCheckout(input: TerminalCheckoutInput) {
   const locationId = process.env.SQUARE_LOCATION_ID!;
+  const bill = serverBill(input);
   const device = await resolveTerminalDevice(locationId);
 
-  // Attach the itemized order only when Square's tax math lands on the exact bill total; otherwise charge the bill total directly.
-  const order = await createItemizedOrder(input, locationId).catch((error) => {
+  // Attach the catalog-linked order only when Square's TPS/TVQ math matches the internal bill to the cent; otherwise charge the bill total directly.
+  const orderId = await createItemizedOrder(input, bill, locationId).catch((error) => {
     console.error("[square-terminal] Itemized order creation failed; charging bill total without order.", error instanceof Error ? error.message : error);
     return null;
   });
-  const orderId = order && order.orderTotal === input.totalCents ? order.orderId : null;
 
   const terminalResult = await squareRequest("/terminals/checkouts", {
     method: "POST",
     body: JSON.stringify({
       idempotency_key: input.idempotencyKey,
       checkout: {
-        amount_money: { amount: input.totalCents, currency: "CAD" },
+        amount_money: { amount: bill.totalBeforeTipCents, currency: "CAD" },
+        ...(bill.tipCents > 0 ? { tip_money: { amount: bill.tipCents, currency: "CAD" } } : {}),
         ...(orderId ? { order_id: orderId } : {}),
         reference_id: input.bookingId.slice(-40),
-        note: checkoutNote(input),
+        note: checkoutNote(input, bill),
         device_options: { device_id: device.deviceId, show_itemized_cart: Boolean(orderId), skip_receipt_screen: false, tip_settings: { allow_tipping: false } },
         payment_options: { autocomplete: true },
       },
@@ -293,33 +220,31 @@ async function createTerminalCheckout(input: TerminalCheckoutInput) {
   });
   const checkout = isRecord(terminalResult) && isRecord(terminalResult.checkout) ? terminalResult.checkout : null;
   if (!checkout || typeof checkout.id !== "string" || typeof checkout.status !== "string") throw new SquareError("Square did not return a valid Terminal checkout.", 502);
-  return { checkoutId: checkout.id, orderId, status: checkout.status, amountCents: input.totalCents, deviceName: device.name };
+  return { checkoutId: checkout.id, orderId, status: checkout.status, amountCents: bill.totalBeforeTipCents, tipCents: bill.tipCents, grandTotalCents: bill.grandTotalCents, deviceName: device.name };
 }
 
 async function createPaymentLink(body: Record<string, unknown>, origin: string) {
-  const amounts = validateAmounts(body);
-  if ("error" in amounts) throw new SquareError(amounts.error, 400);
-  const idempotencyKey = typeof body.idempotencyKey === "string" && UUID_PATTERN.test(body.idempotencyKey) ? body.idempotencyKey : crypto.randomUUID();
-  const bookingId = typeof body.bookingId === "string" ? body.bookingId.trim().slice(0, 100) : "";
-  const customerName = typeof body.customerName === "string" ? body.customerName.trim().slice(0, 100) : "";
-  const customerPhone = typeof body.customerPhone === "string" ? body.customerPhone.trim().slice(0, 30) : "";
+  const validated = validateCheckoutInput(body, false);
+  if ("error" in validated) throw new SquareError(validated.error, 400);
+  const input = validated.value;
+  const bill = serverBill(input);
   const result = await squareRequest("/online-checkout/payment-links", {
     method: "POST",
     body: JSON.stringify({
-      idempotency_key: createHash("sha256").update(`tui-payment-link:${idempotencyKey}`).digest("hex").slice(0, 64),
-      description: checkoutNote({ customerName, customerPhone, ...amounts.value }).slice(0, 255),
+      idempotency_key: createHash("sha256").update(`tui-payment-link:${input.idempotencyKey}`).digest("hex").slice(0, 64),
+      description: checkoutNote(input, bill).slice(0, 255),
       quick_pay: {
-        name: `Tui Nail Spa${customerName ? ` — ${customerName}` : ""}`.slice(0, 255),
-        price_money: { amount: amounts.value.totalCents, currency: "CAD" },
+        name: `Tui Nail Spa${input.customerName ? ` — ${input.customerName}` : ""}`.slice(0, 255),
+        price_money: { amount: bill.grandTotalCents, currency: "CAD" },
         location_id: process.env.SQUARE_LOCATION_ID,
       },
       checkout_options: { allow_tipping: false, redirect_url: `${origin}/admin?checkout=complete` },
-      ...(bookingId ? { payment_note: `Booking ${bookingId}`.slice(0, 500) } : {}),
+      ...(input.bookingId ? { payment_note: `Booking ${input.bookingId}`.slice(0, 500) } : {}),
     }),
   });
   const link = isRecord(result) && isRecord(result.payment_link) ? result.payment_link : null;
   if (!link || typeof link.url !== "string") throw new SquareError("Square did not return a payment link.", 502);
-  return { url: link.url, orderId: typeof link.order_id === "string" ? link.order_id : null, amountCents: amounts.value.totalCents };
+  return { url: link.url, orderId: typeof link.order_id === "string" ? link.order_id : null, amountCents: bill.grandTotalCents };
 }
 
 export async function POST(request: Request) {

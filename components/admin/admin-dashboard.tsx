@@ -11,6 +11,7 @@ import { allServices, selectedServiceDuration, selectedServicePrice, serviceById
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { ServiceEditor } from "./service-editor";
 import { ReportsDashboard } from "./reports-dashboard";
+import { SquareCatalogSync } from "./square-catalog-sync";
 import { formatSlotTime, getClosingTimeForDate } from "@/data/staffSchedule";
 
 type AdminBooking = {
@@ -358,6 +359,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
             <article><span>Walk-ins waiting</span><strong>{appointments.filter((booking) => booking.status.startsWith("WALK_IN")).length}</strong><small>arrival queue</small></article>
             <article><span>Checked out</span><strong>${totalSales.toFixed(2)}</strong><small>{checkedOutCount} completed tickets</small></article>
           </section>
+          <SquareCatalogSync />
         </> : activeTab === "reports" ? <ReportsDashboard /> : <>
           <div className="admin-schedule-heading"><div><h2>{activeTab === "queue" ? "Arrival queue" : "Daily schedule"}</h2><p>{displayBookings.length} {displayBookings.length === 1 ? "appointment" : "appointments"} · 8:00 AM–{formatSlotTime(getClosingTimeForDate(date), "en")}</p></div><span className="admin-sync-note">Auto-refreshes every 60 seconds</span></div>
           {bookings.isLoading && <div className="admin-loading" role="status"><span className="admin-spinner" />Loading Square appointments…</div>}

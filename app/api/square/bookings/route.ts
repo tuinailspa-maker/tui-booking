@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { selectedServiceDuration, selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
-import { resolveSquareBookingVariation } from "@/data/squareVariations";
-import { getComboDiscountDetails } from "@/data/comboDiscount";
+import { getServiceVariationLinks } from "@/data/squareVariations";
+import { calculateBill, centsToDollars } from "@/data/billing";
 import { isSquareSlotAvailable } from "@/data/squareAvailability";
 import { isWithinBusinessHours, type Technician } from "@/data/staffSchedule";
 
@@ -180,21 +180,55 @@ function buildSellerNote(request: BookingRequest, guest: BookingGuest, guestInde
     const addOnKey = guest.addOns[id];
     return service ? `${serviceDisplayNameWithAddOn(service, "en", addOnKey)} — $${selectedServicePrice(service, addOnKey)} (${selectedServiceDuration(service, addOnKey)} min)` : id;
   });
-  const total = guest.serviceIds.reduce((sum, id) => {
-    const service = serviceById.get(id);
-    return sum + (service ? selectedServicePrice(service, guest.addOns[id]) : 0);
-  }, 0);
-  const discount = getComboDiscountDetails(request.guests.map((item) => item.serviceIds), request.guests.map((item) => item.addOns));
-  const guestDiscount = discount.qualifyingGuests.find((item) => item.guestIndex === guestIndex)?.subtotal ? 5 : 0;
-  const taxableSubtotal = Math.max(0, total - guestDiscount);
+  const guestBill = calculateBill({
+    selections: [guest.serviceIds],
+    addOns: [guest.addOns],
+    manualDiscountCents: calculateBill({ selections: request.guests.map((item) => item.serviceIds), addOns: request.guests.map((item) => item.addOns) }).guestComboDiscountCents[guestIndex],
+  });
+  const money = (cents: number) => `$${centsToDollars(cents).toFixed(2)}`;
   const note = [
     `Booking ${request.requestId} · GUEST ${guestIndex + 1}/${request.guests.length}.`,
     `Services: ${lines.join("; ")}. Total ${guestDurationMinutes(guest)} min.`,
-    `Purchase Subtotal $${taxableSubtotal.toFixed(2)} CAD; TVQ 9.975% $${(taxableSubtotal * 0.09975).toFixed(2)}; TPS 5% $${(taxableSubtotal * 0.05).toFixed(2)}; Tip $0.00; Total $${(taxableSubtotal * 1.14975).toFixed(2)} CAD.`,
-    `Combo discount -$${guestDiscount.toFixed(2)}; client note: ${request.client.notes || "none"}.`,
+    `Purchase Subtotal ${money(guestBill.subtotalCents)} CAD; TVQ 9.975% ${money(guestBill.tvqCents)}; TPS 5% ${money(guestBill.tpsCents)}; Tip $0.00; Total ${money(guestBill.totalBeforeTipCents)} CAD.`,
+    `Combo discount -${money(guestBill.manualDiscountCents)}; client note: ${request.client.notes || "none"}.`,
     `Client: ${request.client.firstName} ${request.client.lastName}, ${request.client.phone}, ${request.client.email || ""}.`,
   ].join(" ");
   return note.slice(0, MAX_SQUARE_NOTE_LENGTH);
+}
+
+type AppointmentSegment = { duration_minutes: number; service_variation_id: string; service_variation_version: number; team_member_id: string };
+
+/** One segment per mapped service, using its exact live Square variation and version. Never falls back to another service. */
+async function buildAppointmentSegments(request: BookingRequest): Promise<AppointmentSegment[][]> {
+  let live: Awaited<ReturnType<typeof getServiceVariationLinks>>;
+  try {
+    live = await getServiceVariationLinks();
+  } catch (error) {
+    throw new SquareStepError("fetch_catalog", 502, [{ code: "CATALOG_LOOKUP_FAILED", field: null, detail: error instanceof Error ? error.message : "Could not load the Square service catalog." }]);
+  }
+  const bill = calculateBill({ selections: request.guests.map((guest) => guest.serviceIds), addOns: request.guests.map((guest) => guest.addOns) });
+
+  return request.guests.map((guest, guestIndex) => {
+    const teamMemberId = SQUARE_TEAM_MEMBER_IDS[guest.technician];
+    const segments: AppointmentSegment[] = [];
+    let unmappedMinutes = 0;
+    for (const line of bill.guestLines[guestIndex]) {
+      const variation = live.get(line.serviceId);
+      if (!variation) {
+        if (line.square) {
+          throw new SquareStepError("match_service", 502, [{ code: "SERVICE_VARIATION_NOT_FOUND", field: line.serviceId, detail: `"${line.nameEn}" has no bookable Square variation. Run the Square catalog sync in the admin.` }]);
+        }
+        unmappedMinutes += line.durationMinutes;
+        continue;
+      }
+      segments.push({ duration_minutes: line.durationMinutes, service_variation_id: variation.variationId, service_variation_version: variation.version, team_member_id: teamMemberId });
+    }
+    if (segments.length === 0) {
+      throw new SquareStepError("match_service", 400, [{ code: "NO_BOOKABLE_SERVICE", field: null, detail: `Guest ${guestIndex + 1} has no service that exists in the Square booking catalog.` }]);
+    }
+    segments[segments.length - 1].duration_minutes += unmappedMinutes;
+    return segments;
+  });
 }
 
 function guestDurationMinutes(guest: BookingGuest) {
@@ -238,16 +272,7 @@ export async function POST(request: Request) {
       note: parsed.client.notes || undefined,
     });
 
-    let variation: { id: string; version: number };
-    try {
-      variation = await resolveSquareBookingVariation();
-    } catch (error) {
-      throw new SquareStepError("fetch_default_service", 502, [{
-        code: "CATALOG_LOOKUP_FAILED",
-        field: "SQUARE_DEFAULT_SERVICE_VARIATION_ID",
-        detail: error instanceof Error ? error.message : "Could not resolve a Square service variation.",
-      }]);
-    }
+    const segmentsByGuest = await buildAppointmentSegments(parsed);
 
     const bookings = [];
     for (const [index, guest] of parsed.guests.entries()) {
@@ -259,14 +284,7 @@ export async function POST(request: Request) {
           customer_id: customer.id,
           customer_note: buildSellerNote(parsed, guest, index),
           seller_note: buildSellerNote(parsed, guest, index),
-          appointment_segments: [
-            {
-              duration_minutes: guestDurationMinutes(guest),
-              service_variation_id: variation.id,
-              service_variation_version: variation.version,
-              team_member_id: SQUARE_TEAM_MEMBER_IDS[guest.technician],
-            },
-          ],
+          appointment_segments: segmentsByGuest[index],
         },
       });
       bookings.push(booking.id);

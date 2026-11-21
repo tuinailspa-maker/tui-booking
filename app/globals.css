@@ -989,3 +989,44 @@ button { color: inherit; }
   .admin-drawer-scroll { padding-right: 14px; padding-left: 14px; }
   .admin-drawer-status button { font-size: 7px; }
 }
+
+.catalog-sync { margin-top: 20px; display: flex; flex-direction: column; gap: 12px; padding: 18px 20px; border: 1px solid var(--admin-line, #e5e7eb); background: #fff; }
+.catalog-sync-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.catalog-sync-header h2 { margin: 0; color: #191919; font: 600 16px/1.35 Arial, Helvetica, sans-serif; }
+.catalog-sync-header p { margin: 4px 0 0; max-width: 560px; color: #737983; font-size: 11px; line-height: 1.5; }
+.catalog-sync-actions { display: flex; gap: 8px; }
+.catalog-sync-actions button { min-height: 36px; padding: 0 12px; border: 1px solid #111; border-radius: 6px; font-size: 11px; cursor: pointer; }
+.catalog-sync-actions .admin-secondary-button { background: #fff; color: #111; border-color: var(--admin-line, #e5e7eb); }
+.catalog-sync-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.catalog-sync-meta { margin: 0; color: #525963; font-size: 11px; }
+.catalog-sync-success { padding: 12px 14px; border: 1px solid #b9dcc3; background: #f1f9f3; color: #245a33; font-size: 11px; }
+.catalog-sync-permission { border-color: #e2a49a; background: #fdf1ef; color: #7a2e22; }
+.catalog-sync-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.catalog-sync-table th { padding: 8px 10px; border-bottom: 1px solid var(--admin-line, #e5e7eb); color: #737983; font-weight: 600; text-align: left; }
+.catalog-sync-table td { padding: 9px 10px; border-bottom: 1px solid #f0f1f3; vertical-align: top; color: #525963; }
+.catalog-sync-table td strong, .catalog-sync-table td small { display: block; }
+.catalog-sync-table td strong { color: #191919; font-weight: 600; }
+.catalog-sync-table td small { margin-top: 2px; color: #8a9099; }
+.catalog-sync-table td.is-changed b { color: #111; }
+.catalog-sync-warning { color: #9a5b12 !important; }
+.catalog-sync-notes { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; background: #f7f7f7; font-size: 11px; color: #525963; }
+.catalog-sync-notes h3 { margin: 0; color: #191919; font-size: 12px; }
+.catalog-sync-notes ul { margin: 4px 0; padding-left: 18px; }
+.catalog-sync-notes small { color: #8a9099; line-height: 1.5; }
+.catalog-compare { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--admin-line, #e5e7eb); }
+.catalog-compare-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.catalog-compare-head h3 { margin: 0; color: #191919; font-size: 13px; font-weight: 600; }
+.catalog-compare-head p { margin: 3px 0 0; color: #737983; font-size: 11px; line-height: 1.5; }
+.catalog-compare-filter { display: flex; gap: 4px; }
+.catalog-compare-filter button { min-height: 30px; padding: 0 10px; border: 1px solid var(--admin-line, #e5e7eb); border-radius: 6px; background: #fff; color: #525963; font-size: 11px; cursor: pointer; }
+.catalog-compare-filter button[aria-pressed="true"] { border-color: #111; background: #111; color: #fff; }
+.catalog-compare-scroll { max-height: 420px; overflow: auto; }
+.catalog-compare-scroll thead th { position: sticky; top: 0; background: #fff; }
+.catalog-compare-empty { margin: 0; padding: 10px 0; color: #245a33; font-size: 11px; }
+.catalog-compare-tag { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: #eef0f3; color: #525963; font-size: 10px; font-weight: 500; }
+.catalog-compare-status { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 600; white-space: nowrap; }
+.catalog-compare-status.is-ok { background: #eaf6ee; color: #245a33; }
+.catalog-compare-status.is-bad { background: #fdf1ef; color: #7a2e22; }
+.catalog-compare-status.is-info { background: #eef0f3; color: #525963; }
+.catalog-compare .is-ok { color: #245a33; }
+.catalog-compare span.is-bad, .catalog-sync-table td.is-bad { color: #a3341f; font-weight: 600; }
