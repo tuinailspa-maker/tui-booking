@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAdminRequestAuthorized } from "@/data/adminAuth";
 import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
-import { allServices, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
+import { allServices, selectedServiceDuration, selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import { BUSINESS_TIME_ZONE } from "@/data/staffSchedule";
 
 const SQUARE_PRODUCTION_URL = "https://connect.squareup.com/v2";
@@ -264,7 +264,19 @@ export async function PATCH(request: Request) {
   const teamMemberId = typeof body?.teamMemberId === "string" ? body.teamMemberId : "";
   const status = typeof body?.status === "string" && ["BOOKED", "CHECKED_IN", "IN_SERVICE", "CHECKED_OUT"].includes(body.status) ? body.status : "";
   const shouldAssign = Boolean(teamMemberId && Object.values(SQUARE_TEAM_MEMBER_IDS).includes(teamMemberId));
-  if (!bookingId || (!status && !shouldAssign) || (teamMemberId && !shouldAssign)) {
+  const hasServiceSelection = Array.isArray(body?.serviceIds);
+  const serviceIds = hasServiceSelection && body.serviceIds.every((id: unknown) => typeof id === "string" && serviceById.has(id)) ? body.serviceIds as string[] : null;
+  const addOnsInput = body?.addOns && typeof body.addOns === "object" && !Array.isArray(body.addOns) ? body.addOns as Record<string, unknown> : {};
+  const addOns: Record<string, ServiceAddOnKey> = {};
+  for (const [serviceId, addOnKey] of Object.entries(addOnsInput)) {
+    const service = serviceById.get(serviceId);
+    if (!serviceIds?.includes(serviceId) || !service?.addOn || addOnKey !== service.addOn.key) {
+      return NextResponse.json({ error: "Choose valid services and add-ons." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    }
+    addOns[serviceId] = service.addOn.key;
+  }
+  const shouldUpdateServices = hasServiceSelection && Boolean(serviceIds);
+  if (!bookingId || (!status && !shouldAssign && !shouldUpdateServices) || (teamMemberId && !shouldAssign) || (hasServiceSelection && !serviceIds)) {
     return NextResponse.json({ error: "Choose a valid appointment, technician, or status." }, { status: 400, headers: { "Cache-Control": "no-store" } });
   }
   try {
@@ -277,6 +289,39 @@ export async function PATCH(request: Request) {
     }
     const patch: Record<string, unknown> = { version: current.booking.version };
     if (shouldAssign) patch.appointment_segments = current.booking.appointment_segments?.map((segment) => ({ ...segment, team_member_id: teamMemberId }));
+    if (shouldUpdateServices && serviceIds) {
+      const durationMinutes = serviceIds.reduce((sum, id) => {
+        const service = serviceById.get(id);
+        return sum + (service ? selectedServiceDuration(service, addOns[id]) : 0);
+      }, 0);
+      const lines = serviceIds.map((id) => {
+        const service = serviceById.get(id)!;
+        return `${serviceDisplayNameWithAddOn(service, "en", addOns[id])} — $${selectedServicePrice(service, addOns[id])} (${selectedServiceDuration(service, addOns[id])} min)`;
+      });
+      const oldNote = current.booking.seller_note ?? "";
+      const serviceNote = `Services: ${lines.join("; ")}. Total ${durationMinutes} min.`;
+      const updatedNote = /Services:[\s\S]+?\. Total \d+ min\./.test(oldNote)
+        ? oldNote.replace(/Services:[\s\S]+?\. Total \d+ min\./, serviceNote)
+        : `${oldNote} ${serviceNote}`.trim();
+      patch.seller_note = updatedNote.slice(0, 500);
+      if (current.booking.start_at) patch.start_at = current.booking.start_at;
+      const segments = current.booking.appointment_segments ?? [];
+      if (segments.length === 0) {
+        return NextResponse.json({ error: "This appointment has no service segments to update." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+      }
+      const existingDuration = segments.reduce((sum, segment) => sum + (segment.duration_minutes ?? 0), 0);
+      let remainingDuration = durationMinutes;
+      patch.appointment_segments = segments.map((segment, index) => {
+        const currentDuration = segment.duration_minutes ?? 0;
+        const nextDuration = index === segments.length - 1
+          ? remainingDuration
+          : existingDuration > 0
+            ? Math.min(remainingDuration, Math.round(durationMinutes * currentDuration / existingDuration))
+            : Math.floor(durationMinutes / segments.length);
+        remainingDuration -= nextDuration;
+        return { ...segment, duration_minutes: nextDuration };
+      });
+    }
     if (status) {
       const marker = `[TUI_STATUS:${status}]`;
       let note = (current.booking.seller_note ?? "").replace(/\s?\[TUI_STATUS:(?:BOOKED|CHECKED_IN|IN_SERVICE|CHECKED_OUT)\]/g, "").trim();

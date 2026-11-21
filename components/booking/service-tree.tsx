@@ -10,6 +10,7 @@ type ServiceTreeProps = {
   selectedAddOns: Record<string, ServiceAddOnKey>;
   onToggleService: (serviceId: string) => void;
   onToggleAddOn: (serviceId: string) => void;
+  disabled?: boolean;
 };
 
 function visibleNodes(nodes: ServiceNode[], query: string, language: Language): ServiceNode[] {
@@ -54,9 +55,9 @@ function formatPrice(price: number, language: Language) {
   return formatted;
 }
 
-export function ServiceTree({ language, copy, selectedIds, selectedAddOns, onToggleService, onToggleAddOn }: ServiceTreeProps) {
+export function ServiceTree({ language, copy, selectedIds, selectedAddOns, onToggleService, onToggleAddOn, disabled = false }: ServiceTreeProps) {
   const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState<string[]>(["hands", "feet", "waxing", "variable-add-ons"]);
+  const [expanded, setExpanded] = useState<string[]>([]);
   const tree = useMemo(() => visibleNodes(
     // Keep the canonical category order from the source data.
     serviceTree,
@@ -81,7 +82,7 @@ export function ServiceTree({ language, copy, selectedIds, selectedAddOns, onTog
       const price = selectedServicePrice(node, selectedAddOn);
       return (
         <div className={`service-leaf${checked ? " is-added" : ""}`} key={node.id} style={{ "--depth": depth } as CSSProperties}>
-          <input id={`service-${node.id}`} type="checkbox" checked={checked} onChange={() => onToggleService(node.id)} />
+          <input id={`service-${node.id}`} type="checkbox" checked={checked} onChange={() => onToggleService(node.id)} disabled={disabled} />
           <label className="leaf-name" htmlFor={`service-${node.id}`}>{name}</label>
           <span className="leaf-duration">{selectedServiceDuration(node, selectedAddOn)} min</span>
           <span className="leaf-price">{node.priceLabel && !addOnSelected ? node.priceLabel : formatPrice(price, language)}</span>
@@ -91,6 +92,7 @@ export function ServiceTree({ language, copy, selectedIds, selectedAddOns, onTog
               type="button"
               aria-pressed={addOnSelected}
               onClick={() => onToggleAddOn(node.id)}
+              disabled={disabled || !checked}
             >
               {addOnName} (+{addOnPrice})
             </button>
