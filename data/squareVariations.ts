@@ -14,6 +14,7 @@ type SquareCatalogVariation = {
     name?: string;
     service_duration?: number;
     available_for_booking?: boolean;
+    price_money?: { amount?: number; currency?: string };
   };
 };
 
@@ -39,6 +40,7 @@ export type SquareServiceVariation = {
   variationId: string;
   version: number;
   durationMinutes: number | null;
+  priceCents: number | null;
 };
 
 let cachedVariations: { expiresAt: number; variations: SquareServiceVariation[] } | undefined;
@@ -114,6 +116,7 @@ async function searchSquareCatalog(): Promise<SquareServiceVariation[]> {
         durationMinutes: typeof data.service_duration === "number" && data.service_duration > 0
           ? Math.round(data.service_duration / 60_000)
           : null,
+        priceCents: typeof data.price_money?.amount === "number" ? data.price_money.amount : null,
       };
     });
 
@@ -131,6 +134,12 @@ export async function listSquareServiceVariations(): Promise<SquareServiceVariat
     });
   }
   return pendingVariations;
+}
+
+/** Live catalog variations keyed by id, used to confirm the current version and price of mapped services. */
+export async function getLiveSquareVariationsById(): Promise<Map<string, SquareServiceVariation>> {
+  const variations = await listSquareServiceVariations();
+  return new Map(variations.map((variation) => [variation.variationId, variation]));
 }
 
 export async function resolveSquareBookingVariation() {

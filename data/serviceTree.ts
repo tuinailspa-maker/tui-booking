@@ -1,3 +1,5 @@
+import { squareMappingFor } from "@/data/squareServiceMap";
+
 export type ServiceAddOnKey = "length-ml" | "over-3-weeks";
 
 export type ServiceAddOn = {
@@ -64,7 +66,7 @@ export const serviceTree: ServiceBranch[] = [
         service("enhancement-refill-no-polish", "No polish", "Sans vernis", 32, 50, undefined, overThreeWeeksAddOn),
         service("enhancement-refill-regular-polish", "Regular polish", "Vernis classique", 42, 50, undefined, overThreeWeeksAddOn),
         service("enhancement-refill-shellac", "Shellac", "Shellac", 47, 50, undefined, overThreeWeeksAddOn),
-      ], "If nails are over 3 weeks +$3 · 50 mins", "Ongles de plus de 3 semaines +3 $ · 50 min"),
+      ], "If nails are over 3 weeks +$3 · 60 mins", "Ongles de plus de 3 semaines +3 $ · 60 min"),
     ]),
   ]),
   branch("feet", "Feets", "Pieds", [
@@ -203,6 +205,11 @@ function assignDisplayPaths(nodes: ServiceNode[], parents: ServiceBranch[] = [])
       const override = DISPLAY_PATH_OVERRIDES[node.id];
       node.displayNameEn = override?.en ?? buildPath(node, parents, "en");
       node.displayNameFr = override?.fr ?? buildPath(node, parents, "fr");
+      const squareMapping = squareMappingFor(node.id);
+      if (squareMapping) {
+        node.squareVariationId = squareMapping.variationId;
+        node.durationMinutes = squareMapping.durationMinutes;
+      }
     }
   }
 }
