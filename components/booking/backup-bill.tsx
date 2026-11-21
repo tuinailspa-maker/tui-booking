@@ -177,6 +177,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
   const [terminalStatus, setTerminalStatus] = useState("");
   const [terminalStatusMessage, setTerminalStatusMessage] = useState("");
   const [terminalPairingCode, setTerminalPairingCode] = useState("");
+  const [paymentLinkFallback, setPaymentLinkFallback] = useState<{ idempotencyKey: string } | null>(null);
   const [openDrawer, setOpenDrawer] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [copied, setCopied] = useState(false);
@@ -288,70 +289,92 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
     }
   }
 
-  async function sendToSquareTerminal() {
-    if (!terminalEnabled || !bookingId || !onMarkCheckedOut || checkoutBusy) return;
-    if (subtotal <= 0) { setCheckoutError("The bill total must be greater than $0.00."); return; }
-    setCheckoutBusy(true);
-    setCheckoutError("");
-    setTerminalPairingCode("");
-    setTerminalStatus("PAIRING");
-    setTerminalStatusMessage("Connecting to Square Terminal…");
-    const idempotencyKey = crypto.randomUUID();
-    const deviceCodeKey = "tui-square-terminal-device-code";
-    const checkoutBody = {
-      bookingId,
-      customerName,
-      customerPhone,
-      serviceIds: billSelections,
-      addOns: billServiceAddOns,
+  function billAmountsInCents() {
+    return {
       subtotalCents: Math.round(subtotal * 100),
       tipCents: Math.round(tipAmount * 100),
-      idempotencyKey,
+      totalCents: Math.round(grandTotal * 100),
     };
-    const pause = () => new Promise((resolve) => window.setTimeout(resolve, 3_000));
-    const postTerminal = async (body: Record<string, unknown>) => {
-      const response = await fetch("/api/square/terminal-checkout", {
+  }
+
+  async function postTerminal(body: Record<string, unknown>) {
+    let response: Response;
+    try {
+      response = await fetch("/api/square/terminal-checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30_000),
       });
-      const result = await response.json().catch(() => ({})) as Record<string, unknown>;
-      if (!response.ok) throw new Error(typeof result.error === "string" ? result.error : "Square Terminal could not process this request.");
-      return result;
-    };
+    } catch (error) {
+      throw new Error(error instanceof DOMException && error.name === "TimeoutError" ? "Square did not respond within 30 seconds." : "Could not reach the server. Check the internet connection.");
+    }
+    const result = await response.json().catch(() => ({})) as Record<string, unknown>;
+    if (!response.ok) {
+      const reason = typeof result.error === "string" ? result.error : `Square Terminal request failed (HTTP ${response.status}).`;
+      throw Object.assign(new Error(reason), { pairingCode: typeof result.pairingCode === "string" ? result.pairingCode : "", fallbackAvailable: result.fallbackAvailable !== false });
+    }
+    return result;
+  }
+
+  async function openPaymentLinkFallback() {
+    if (checkoutBusy || !paymentLinkFallback) return;
+    const popup = window.open("about:blank", "_blank");
+    setCheckoutBusy(true);
+    setTerminalStatus("");
+    try {
+      const result = await postTerminal({ action: "payment-link", bookingId, customerName, customerPhone, ...billAmountsInCents(), idempotencyKey: paymentLinkFallback.idempotencyKey });
+      if (typeof result.url !== "string") throw new Error("Square did not return a payment link.");
+      if (popup) popup.location.href = result.url;
+      else window.location.assign(result.url);
+      setTerminalStatusMessage(`Square payment link opened for ${money(Number(result.amountCents) / 100)}. After the card is paid, choose "Mark checked out".`);
+    } catch (error) {
+      popup?.close();
+      setCheckoutError(`Square payment link failed: ${error instanceof Error ? error.message : "unknown error"}`);
+    } finally {
+      setCheckoutBusy(false);
+    }
+  }
+
+  async function sendToSquareTerminal() {
+    if (!terminalEnabled || !bookingId || !onMarkCheckedOut || checkoutBusy) return;
+    if (grandTotal <= 0) { setCheckoutError("The bill total must be greater than $0.00."); return; }
+    setCheckoutBusy(true);
+    setCheckoutError("");
+    setPaymentLinkFallback(null);
+    setTerminalPairingCode("");
+    setTerminalStatus("CONNECTING");
+    setTerminalStatusMessage(`Looking for a Square Terminal and sending ${money(grandTotal)}…`);
+    const idempotencyKey = crypto.randomUUID();
+    const offerFallback = () => setPaymentLinkFallback({ idempotencyKey: crypto.randomUUID() });
+    const pause = () => new Promise((resolve) => window.setTimeout(resolve, 3_000));
 
     try {
-      const savedDeviceCodeId = window.sessionStorage.getItem(deviceCodeKey);
-      let result = await postTerminal({ ...checkoutBody, ...(savedDeviceCodeId ? { action: "pairing-status", deviceCodeId: savedDeviceCodeId } : {}) });
-      if (result.pairingRequired === true) {
-        const deviceCodeId = typeof result.deviceCodeId === "string" ? result.deviceCodeId : savedDeviceCodeId;
-        if (!deviceCodeId) throw new Error("Square did not return a Terminal pairing request.");
-        window.sessionStorage.setItem(deviceCodeKey, deviceCodeId);
-        if (typeof result.pairingCode === "string") setTerminalPairingCode(result.pairingCode);
-        setTerminalStatus("PAIRING");
-        setTerminalStatusMessage("Enter this pairing code on your Square Terminal. Waiting for the device to connect…");
-        for (let attempt = 0; attempt < 100; attempt += 1) {
-          await pause();
-          result = await postTerminal({ ...checkoutBody, action: "pairing-status", deviceCodeId });
-          if (result.pairingRequired !== true) break;
-          if (typeof result.pairingCode === "string") setTerminalPairingCode(result.pairingCode);
-        }
-      }
+      const result = await postTerminal({
+        bookingId,
+        customerName,
+        customerPhone,
+        serviceIds: billSelections,
+        addOns: billServiceAddOns,
+        ...billAmountsInCents(),
+        idempotencyKey,
+      });
 
-      if (typeof result.checkoutId !== "string" || typeof result.orderId !== "string") throw new Error("Terminal pairing did not complete. Please try again.");
+      if (typeof result.checkoutId !== "string") throw new Error("Square did not return a Terminal checkout.");
       const checkoutId = result.checkoutId;
-      const orderId = result.orderId;
-      setTerminalPairingCode("");
+      const orderId = typeof result.orderId === "string" ? result.orderId : "";
       setTerminalStatus(typeof result.status === "string" ? result.status : "PENDING");
-      setTerminalStatusMessage("Waiting for the customer to tap, insert, or swipe their card on Square Terminal…");
+      setTerminalStatusMessage(`Sent ${money(grandTotal)} to ${typeof result.deviceName === "string" ? result.deviceName : "Square Terminal"}. Waiting for the customer to tap, insert, or swipe their card…`);
 
       for (let attempt = 0; attempt < 100; attempt += 1) {
         const statusResult = await postTerminal({ action: "checkout-status", checkoutId });
         const status = typeof statusResult.status === "string" ? statusResult.status : "PENDING";
         setTerminalStatus(status);
         if (status === "COMPLETED") {
-          window.sessionStorage.setItem(`tui-square-order:${bookingId}`, orderId);
-          window.dispatchEvent(new Event("tui-square-order-change"));
+          if (orderId) {
+            window.sessionStorage.setItem(`tui-square-order:${bookingId}`, orderId);
+            window.dispatchEvent(new Event("tui-square-order-change"));
+          }
           setPaymentMethod("Card");
           setPaymentDateTime(new Intl.DateTimeFormat("en-CA", { dateStyle: "short", timeStyle: "short", timeZone: "America/Toronto" }).format(new Date()));
           setTerminalStatusMessage("Payment completed on Square Terminal. Checkout is saved.");
@@ -363,7 +386,11 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
           return;
         }
         if (status === "CANCELED") {
-          setTerminalStatusMessage("The Square Terminal checkout was canceled. You can send the order again.");
+          const reason = typeof statusResult.cancelReason === "string" ? ` (${statusResult.cancelReason.replace(/_/g, " ").toLowerCase()})` : "";
+          setTerminalStatus("");
+          setTerminalStatusMessage("");
+          setCheckoutError(`The Square Terminal checkout was canceled${reason}. Send the order again or use the Square payment link.`);
+          offerFallback();
           return;
         }
         setTerminalStatusMessage(status === "IN_PROGRESS"
@@ -373,11 +400,15 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
             : "Waiting for the customer to tap, insert, or swipe their card on Square Terminal…");
         await pause();
       }
+      setTerminalStatus("");
       setTerminalStatusMessage("Square Terminal is still waiting. Check the device before starting another checkout.");
+      offerFallback();
     } catch (error) {
       setCheckoutError(error instanceof Error ? error.message : "Could not send this order to Square Terminal.");
+      setTerminalPairingCode(error instanceof Error && "pairingCode" in error && typeof error.pairingCode === "string" ? error.pairingCode : "");
       setTerminalStatusMessage("");
       setTerminalStatus("");
+      if (!(error instanceof Error && "fallbackAvailable" in error && error.fallbackAvailable === false)) offerFallback();
     } finally {
       setCheckoutBusy(false);
     }
@@ -492,7 +523,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
               <label className="bill-drawer-toggle"><input type="checkbox" checked={openDrawer} onChange={(event) => setOpenDrawer(event.target.checked)} />Open Drawer</label>
               <button className="button button-primary" type="button" onClick={print58mm}>{text.printStar}</button>
               <button className="button button-back" type="button" onClick={printInBrowser}>{text.print}</button>
-              <button className="button button-primary" type="button" onClick={() => void (terminalEnabled ? sendToSquareTerminal() : sendToSquareCheckout())} disabled={checkoutBusy || (terminalEnabled && paymentMethod === "Cash") || terminalStatus === "COMPLETED"}>{checkoutBusy ? terminalStatus === "PAIRING" ? "Connecting to Square Terminal…" : "Waiting on Square Terminal…" : terminalStatus === "COMPLETED" ? "Payment completed on Terminal" : terminalEnabled ? "Send Order to Square Terminal" : "Send Order to Square Checkout"}</button>
+              <button className="button button-primary" type="button" onClick={() => void (terminalEnabled ? sendToSquareTerminal() : sendToSquareCheckout())} disabled={checkoutBusy || (terminalEnabled && paymentMethod === "Cash") || terminalStatus === "COMPLETED"}>{checkoutBusy ? terminalStatus === "CONNECTING" ? "Connecting to Square Terminal…" : terminalStatus ? "Waiting on Square Terminal…" : "Working…" : terminalStatus === "COMPLETED" ? "Payment completed on Terminal" : terminalEnabled ? "Send Order to Square Terminal" : "Send Order to Square Checkout"}</button>
               <button className="bill-close" type="button" onClick={closeBill} aria-label={text.close}>×</button>
             </div>
           </header>
@@ -588,8 +619,9 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
             <label className="bill-payment-method">{receiptLanguage === "en" ? "Payment method" : "Mode de paiement"}<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as "Interac" | "Card" | "Cash")}><option value="Interac">Interac</option><option value="Card">{receiptLanguage === "en" ? "Card" : "Carte"}</option><option value="Cash">{receiptLanguage === "en" ? "Cash" : "Espèces"}</option></select></label>
             <label className="bill-payment-method">{receiptLanguage === "en" ? "Last 4 / Auth code" : "4 derniers chiffres / code d’autorisation"}<input value={paymentAuth} onChange={(event) => setPaymentAuth(event.target.value.slice(0, 40))} /></label>
           </div>
-          {checkoutError && <p className="admin-form-error" role="alert">{checkoutError}</p>}
-          {terminalStatusMessage && <p className="bill-terminal-status" role="status">{terminalPairingCode && <strong>Pairing code: {terminalPairingCode}</strong>}{terminalStatusMessage}</p>}
+          {checkoutError && <p className="admin-form-error" role="alert">{terminalPairingCode && <strong>Terminal pairing code: {terminalPairingCode}<br /></strong>}{checkoutError}</p>}
+          {terminalEnabled && paymentLinkFallback && <button className="button button-primary" type="button" onClick={() => void openPaymentLinkFallback()} disabled={checkoutBusy}>{checkoutBusy ? "Creating Square payment link…" : `Open Square Payment Link · ${money(grandTotal)}`}</button>}
+          {terminalStatusMessage && <p className="bill-terminal-status" role="status">{terminalStatusMessage}</p>}
           {onMarkCheckedOut && <button className="bill-mark-checked-out" type="button" onClick={() => void markCheckedOut()} disabled={checkoutBusy}>{checkoutBusy ? (receiptLanguage === "en" ? "Saving checkout…" : "Enregistrement…") : markCheckedOutLabel ?? text.markCheckedOut}</button>}
         </div>
       </dialog>
