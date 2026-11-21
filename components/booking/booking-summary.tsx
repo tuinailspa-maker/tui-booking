@@ -2,7 +2,6 @@ import { selectedServiceDuration, selectedServicePrice, serviceById, serviceDisp
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { formatSlotTime } from "@/data/staffSchedule";
 import type { BookingCopy, Language } from "./copy";
-import { BackupBill } from "./backup-bill";
 
 type BookingSummaryProps = {
   language: Language;
@@ -112,7 +111,6 @@ export function BookingSummary({ language, copy, partySize, date, time, selectio
         <div className="subtotal-row"><span>{copy.subtotal}</span><strong>{formatCad(totals.subtotal - totals.comboDiscount, language)}</strong></div>
         <p className="tax-note">{copy.taxNote}</p>
       </div>
-      <BackupBill language={language} date={date} time={time} selections={selections} serviceAddOns={serviceAddOns} />
     </div>
   );
 }
