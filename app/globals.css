@@ -760,7 +760,11 @@ button { color: inherit; }
 .admin-schedule-heading p, .admin-summary-intro p { margin: 4px 0 0; color: #737983; font-size: 11px; }
 .admin-sync-note, .admin-summary-live { color: #747b83; font-size: 10px; }
 .admin-calendar-shell { overflow: auto; border: 1px solid var(--admin-line); background: #fff; }
-.admin-calendar-header, .admin-calendar-body { min-width: 960px; display: grid; grid-template-columns: 68px repeat(6, minmax(160px, 1fr)); grid-template-rows: auto; }
+.admin-cal-row { display: flex; align-items: stretch; width: 100%; }
+.admin-cal-row > .admin-time-header, .admin-cal-row > .admin-time-axis { position: sticky; left: 0; z-index: 6; flex: 0 0 68px; width: 68px; background: #fff; border-right: 1px solid #cfd4da; }
+.admin-cal-lanes { position: relative; display: flex; flex: 1 1 auto; min-width: 0; height: 100%; }
+.admin-cal-lane { flex: 1 1 0; min-width: 160px; box-sizing: border-box; }
+.admin-cal-lanes > .admin-staff-column:first-of-type, .admin-calendar-header > .admin-staff-header:nth-child(2) { border-left: 0; }
 .admin-staff-header, .admin-staff-column { min-width: 0; overflow: hidden; }
 .admin-calendar-wrap { display: flex; flex-direction: column; gap: 10px; }
 .admin-column-toggles { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -781,12 +785,12 @@ button { color: inherit; }
 .admin-staff-avatar.avatar-1 { background: #fdf3ec; }
 .admin-staff-avatar.avatar-2 { background: #f2effb; }
 .admin-staff-avatar.avatar-3 { background: #f3f4f5; }
-.admin-calendar-body { position: relative; min-height: 1152px; grid-template-rows: 1fr; }
-.admin-time-axis { position: relative; height: 1152px; background: #fff; }
+.admin-calendar-body { position: relative; }
+.admin-time-axis { position: relative; height: 100%; background: #fff; }
 .admin-time-axis span:first-child { transform: translateY(2px); }
 .admin-time-axis span { position: absolute; right: 9px; transform: translateY(-50%); padding: 0 2px; background: #fff; color: #777e87; font-size: 9px; white-space: nowrap; }
-.admin-staff-column { position: relative; height: 1152px; border-left: 1px solid #cfd4da; background: transparent; }
-.admin-staff-column:nth-of-type(odd), .admin-staff-header:nth-of-type(odd) { background: #fafbfc; }
+.admin-staff-column { position: relative; height: 100%; border-left: 1px solid #cfd4da; background: transparent; }
+.admin-staff-column:nth-of-type(even), .admin-staff-header:nth-of-type(even) { background: #fafbfc80; }
 .admin-staff-header { border-left-color: #cfd4da; }
 .admin-calendar-slot { position: absolute; z-index: 1; left: 0; width: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .admin-calendar-slot:hover { background: #fafafa; }
@@ -803,7 +807,7 @@ button { color: inherit; }
 .admin-calendar-card b { flex-shrink: 0; max-width: 100%; overflow: hidden; font-size: 10px; font-weight: 650; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
 .admin-calendar-card small { flex-shrink: 0; overflow: hidden; max-width: 100%; color: #626c78; font-size: 8px; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
 .admin-calendar-card > span { position: absolute; top: 3px; right: 4px; padding: 2px 4px; border-radius: 20px; background: #ffffffa8; color: #4c5a68; font-size: 7px; line-height: 1; }
-.admin-current-time { position: absolute; z-index: 4; right: 0; left: 54px; display: flex; align-items: center; gap: 5px; color: #d93025; font-size: 9px; pointer-events: none; }
+.admin-current-time { position: absolute; z-index: 4; right: 0; left: 0; display: flex; align-items: center; gap: 5px; color: #d93025; font-size: 9px; pointer-events: none; }
 .admin-current-time::after { height: 1px; flex: 1; background: #e5483b; content: ""; }
 .admin-current-time > span { position: absolute; left: 10px; width: 7px; height: 7px; border-radius: 50%; background: #e5483b; }
 .admin-appointment-list { display: grid; gap: 0; border: 1px solid var(--admin-line); background: #fff; }
