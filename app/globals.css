@@ -807,9 +807,6 @@ button { color: inherit; }
 .admin-calendar-card b { flex-shrink: 0; max-width: 100%; overflow: hidden; font-size: 10px; font-weight: 650; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
 .admin-calendar-card small { flex-shrink: 0; overflow: hidden; max-width: 100%; color: #626c78; font-size: 8px; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
 .admin-calendar-card > span { position: absolute; top: 3px; right: 4px; padding: 2px 4px; border-radius: 20px; background: #ffffffa8; color: #4c5a68; font-size: 7px; line-height: 1; }
-.admin-current-time { position: absolute; z-index: 4; right: 0; left: 0; display: flex; align-items: center; gap: 5px; color: #d93025; font-size: 9px; pointer-events: none; }
-.admin-current-time::after { height: 1px; flex: 1; background: #e5483b; content: ""; }
-.admin-current-time > span { position: absolute; left: 10px; width: 7px; height: 7px; border-radius: 50%; background: #e5483b; }
 .admin-appointment-list { display: grid; gap: 0; border: 1px solid var(--admin-line); background: #fff; }
 .admin-list-booking { min-height: 68px; display: grid; grid-template-columns: 100px minmax(0, 1fr) 100px; align-items: center; gap: 15px; padding: 10px 15px; border: 0; border-bottom: 1px solid #eceef0; border-left: 4px solid #006aff; background: #fff; color: #111; text-align: left; cursor: pointer; }
 .admin-list-booking:last-child { border-bottom: 0; }
