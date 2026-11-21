@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useSyncExternalStore } from "react";
+import useSWR from "swr";
 import { allServices, selectedServiceDuration, selectedServicePrice, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import { ServiceTree } from "@/components/booking/service-tree";
 import { translations } from "@/components/booking/copy";
@@ -8,6 +9,7 @@ import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { getClosingTimeForDate } from "@/data/staffSchedule";
 import { BackupBill } from "@/components/booking/backup-bill";
 import { AppointmentDrawer, type AppointmentStatus } from "./appointment-drawer";
+import "./availability-panel.css";
 
 function datePartsForTime(iso: string) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(iso)).map((part) => [part.type, part.value]));
@@ -47,6 +49,31 @@ type ServiceEditorProps = {
   bookingId: string;
   staffNames?: string[];
 };
+
+async function fetchSlotAvailability([url, date, partySize, durationMinutes]: readonly [string, string, number, number]): Promise<Record<string, string[]>> {
+  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, partySize, durationMinutes }) });
+  const result = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(result?.error || "Could not load Square availability.");
+  return result?.slots ?? {};
+}
+
+function upcomingDates(count: number) {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const [year, month, day] = today.split("-").map(Number);
+  return Array.from({ length: count }, (_, offset) => {
+    const date = new Date(Date.UTC(year, month - 1, day + offset, 12));
+    return {
+      value: date.toISOString().slice(0, 10),
+      weekday: offset === 0 ? "Today" : new Intl.DateTimeFormat("en-CA", { weekday: "short", timeZone: "UTC" }).format(date),
+      label: new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", timeZone: "UTC" }).format(date),
+    };
+  });
+}
+
+function formatSlot(time: string) {
+  const [hour, minute] = time.split(":").map(Number);
+  return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
+}
 
 export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, customerName, customerPhone, startAt, technician, initialTechnicians = [], squareServiceReference = [], onBillSelectionChange, status, busy, checkedOut, onMarkCheckedOut, walkIn, onCancel, onTechnicianChange, onStatusChange, onSave, onBookingCreated, bookingId, staffNames = ["Jenny", "Melika", "Nana", "Option 1", "Option 2"] }: ServiceEditorProps) {
   const guestCount = Math.max(1, initialServiceIds.length);
@@ -94,6 +121,28 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
   const dateParts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(startAt)).map((part) => [part.type, part.value]));
   const billDate = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
   const billTime = `${dateParts.hour}:${dateParts.minute}`;
+  const requestedDuration = Math.max(0, ...serviceIds.slice(0, partySize).map((ids, index) => ids.reduce((total, id) => {
+    const service = allServices.find((item) => item.id === id);
+    return total + (service ? selectedServiceDuration(service, addOns[index]?.[id]) : 0);
+  }, 0)));
+  const findingAppointment = walkIn && mode === "appointment";
+  const availabilityKey = findingAppointment && bookingDate && requestedDuration > 0 ? ["/api/bookings/availability", bookingDate, partySize, requestedDuration] as const : null;
+  const availability = useSWR(availabilityKey, fetchSlotAvailability, { refreshInterval: 60_000, revalidateOnFocus: true, keepPreviousData: false });
+  const availableSlots = availability.data ?? {};
+  const availableTimes = Object.keys(availableSlots).sort();
+  const quickDates = upcomingDates(7);
+
+  function chooseSlot(time: string) {
+    const free = availableSlots[time] ?? [];
+    setBookingTime(time);
+    setValidation("");
+    setTechnicians((current) => {
+      const kept = current.slice(0, partySize).filter((name, index, list) => free.includes(name) && list.indexOf(name) === index);
+      const extra = free.filter((name) => !kept.includes(name));
+      const assigned = current.slice(0, partySize).map((name) => kept.includes(name) ? name : extra.shift() ?? name);
+      return [...assigned, ...current.slice(partySize)];
+    });
+  }
 
   function queueSelectionSync(nextServiceIds: string[][], nextAddOns: Record<string, ServiceAddOnKey>[]) {
     if (!onBillSelectionChange || squareOrderId || nextServiceIds.some((ids) => ids.length === 0)) return;
@@ -266,6 +315,22 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
         <label>Start time<input type="time" min="08:00" max={lastStartTime} step="1800" value={bookingTime} onChange={(event) => setBookingTime(event.target.value)} /></label>
         <label>Party size<select value={partySize} onChange={(event) => { const size = Number(event.target.value); setPartySize(size); setServiceIds((current) => Array.from({ length: size }, (_, index) => current[index] ?? [])); setAddOns((current) => Array.from({ length: size }, (_, index) => current[index] ?? {})); setActiveGuest(Math.min(activeGuest, size - 1)); }}>{[1, 2, 3].map((size) => <option key={size} value={size}>{size} {size === 1 ? "guest" : "guests"}</option>)}</select></label>
       </div>}
+      {findingAppointment && <section className="admin-availability" aria-labelledby="admin-availability-title">
+        <div className="admin-availability-heading">
+          <h4 id="admin-availability-title">Live Square availability</h4>
+          <button type="button" className="admin-secondary-button" onClick={() => void availability.mutate()} disabled={!availabilityKey || availability.isValidating}>{availability.isValidating ? "Checking…" : "Refresh"}</button>
+        </div>
+        <div className="admin-availability-dates" role="group" aria-label="Choose a date">
+          {quickDates.map((day) => <button key={day.value} type="button" aria-pressed={bookingDate === day.value} onClick={() => { setBookingDate(day.value); setValidation(""); }}><small>{day.weekday}</small><b>{day.label}</b></button>)}
+        </div>
+        <p className="admin-availability-meta">{requestedDuration > 0 ? `${partySize} ${partySize === 1 ? "guest" : "guests"} · ${requestedDuration} min needed (longest guest)` : "Choose services to see open times."}</p>
+        {availabilityKey && availability.isLoading && <p className="admin-availability-state" role="status">Checking Square Appointments…</p>}
+        {availabilityKey && availability.error && <p className="admin-availability-state is-error" role="alert">{availability.error instanceof Error ? availability.error.message : "Could not load Square availability."} You can still enter a time manually.</p>}
+        {availabilityKey && !availability.isLoading && !availability.error && availableTimes.length === 0 && <p className="admin-availability-state" role="status">No open slots on this date for {partySize} {partySize === 1 ? "guest" : "guests"}. Try another day.</p>}
+        {availableTimes.length > 0 && <div className="admin-availability-slots" role="group" aria-label="Available start times">
+          {availableTimes.map((time) => <button key={time} type="button" aria-pressed={bookingTime === time} onClick={() => chooseSlot(time)}><b>{formatSlot(time)}</b><small>Available · {availableSlots[time].join(", ")}</small></button>)}
+        </div>}
+      </section>}
       {walkIn && mode === "appointment" && <label className="admin-search-label">Notes<textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={500} placeholder="Anything the team should know?" /></label>}
       {(mode === "appointment" ? partySize : guestCount) > 1 && <div className="admin-guest-tabs" role="group" aria-label="Choose a guest">
         {Array.from({ length: mode === "appointment" ? partySize : guestCount }, (_, index) => <button key={index} type="button" aria-pressed={activeGuest === index} className={activeGuest === index ? "is-active" : ""} onClick={() => setActiveGuest(index)}>{`Guest ${index + 1}`}</button>)}
