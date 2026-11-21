@@ -1,5 +1,5 @@
 import { SQUARE_API_VERSION } from "@/data/squareConfig";
-import { resolveServiceVariation } from "@/data/squareServiceMap";
+import { SURCHARGE_SKU_MARKER, resolveServiceVariation, squareSurchargeSkuFor, surchargeLinkKey } from "@/data/squareServiceMap";
 import { allServices } from "@/data/serviceTree";
 
 const PRODUCTION_URL = "https://connect.squareup.com/v2";
@@ -164,6 +164,10 @@ export async function getServiceVariationLinks(): Promise<Map<string, SquareServ
   for (const service of allServices) {
     const variation = resolveServiceVariation(service.id, bySku, byId, (item) => item.sku);
     if (variation) links.set(service.id, variation);
+    if (service.addOn) {
+      const surcharge = bySku.get(squareSurchargeSkuFor(service.id, service.addOn.key));
+      if (surcharge) links.set(surchargeLinkKey(service.id, service.addOn.key), surcharge);
+    }
   }
   return links;
 }
@@ -188,7 +192,7 @@ export async function resolveSquareBookingVariation() {
     return { id: variation.id, version: variation.version };
   }
 
-  const variations = await listSquareServiceVariations();
+  const variations = (await listSquareServiceVariations()).filter((variation) => !variation.sku?.includes(SURCHARGE_SKU_MARKER));
   const preferred = variations.find((variation) => PREFERRED_SERVICE_NAMES.has(variation.serviceName.trim().toLowerCase()));
   const selected = preferred ?? variations[0];
   if (!selected) throw new Error("No active Square service variation that supports booking was found.");

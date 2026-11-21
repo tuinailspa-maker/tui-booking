@@ -22,6 +22,7 @@ const CREATION_REASON: Record<CatalogCreation["reason"], string> = {
   split_shared: "Separated from a shared variation",
   missing_variation: "Mapped variation was deleted",
   unmapped: "Not on Square yet",
+  surcharge: "Option surcharge — new Square variation",
 };
 
 function ChangeRow({ change }: { change: CatalogSyncChange }) {
@@ -128,7 +129,7 @@ export function SquareCatalogSync() {
       </div>}
 
       {data.addOnModifiers.length > 0 && <div className="catalog-sync-notes">
-        <h3>Option surcharges (billed as their own line)</h3>
+        <h3>Option surcharges (synced as their own Square variations, billed next to the service)</h3>
         <ul>{data.addOnModifiers.map((addOn) => <li key={addOn.serviceId}>{addOn.name} ({money(addOn.priceCents)})</li>)}</ul>
       </div>}
     </>}

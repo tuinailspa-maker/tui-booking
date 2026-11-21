@@ -183,7 +183,17 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
         </div>;
       })}
       </div>
-      {showNow && <div className="admin-current-time" aria-label={`Current time ${timeLabel(nowMinute)}`} style={{ top: `${((nowMinute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT}px` }}><span />{timeLabel(nowMinute)}</div>}
+      {showNow && (
+            <div
+              className="admin-current-time"
+              aria-label={`Current time ${timeLabel(nowMinute)}`}
+              style={{ position: "absolute", zIndex: 7, left: 0, right: 0, top: `${((nowMinute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT}px`, display: "flex", alignItems: "center", gap: 0, transform: "translateY(-50%)", pointerEvents: "none", color: "#d93025", fontSize: 9 }}
+            >
+              <em style={{ flex: "0 0 68px", width: 68, boxSizing: "border-box", paddingRight: 6, background: "#fff", fontStyle: "normal", fontWeight: 600, textAlign: "right", whiteSpace: "nowrap" }}>{timeLabel(nowMinute)}</em>
+              <span style={{ position: "static", flex: "0 0 7px", width: 7, height: 7, marginLeft: -4, borderRadius: "50%", background: "#e5483b" }} />
+              <i aria-hidden="true" style={{ flex: 1, height: 1, background: "#e5483b" }} />
+            </div>
+          )}
     </div>
   </div>}
   </div>;

@@ -78,6 +78,15 @@ export function squareSkuFor(serviceId: string) {
   return `${SQUARE_SKU_PREFIX}${serviceId}`;
 }
 
+export const SURCHARGE_SKU_MARKER = "--addon-";
+
+/** Option surcharges (e.g. "+ Extra Strong Calcium gel") get their own SKU-tagged Square variation. */
+export function squareSurchargeSkuFor(serviceId: string, addOnKey: string) {
+  return `${SQUARE_SKU_PREFIX}${serviceId}${SURCHARGE_SKU_MARKER}${addOnKey}`;
+}
+
+export const surchargeLinkKey = (serviceId: string, addOnKey: string) => `${serviceId}:${addOnKey}`;
+
 export function resolveServiceVariation<T>(
   serviceId: string,
   bySku: Map<string, T>,
