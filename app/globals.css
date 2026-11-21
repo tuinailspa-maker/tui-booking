@@ -760,7 +760,7 @@ button { color: inherit; }
 .admin-schedule-heading p, .admin-summary-intro p { margin: 4px 0 0; color: #737983; font-size: 11px; }
 .admin-sync-note, .admin-summary-live { color: #747b83; font-size: 10px; }
 .admin-calendar-shell { overflow: auto; border: 1px solid var(--admin-line); background: #fff; }
-.admin-calendar-header, .admin-calendar-body { min-width: 960px; display: grid; grid-template-columns: 68px repeat(6, minmax(160px, 1fr)); grid-auto-flow: column; }
+.admin-calendar-header, .admin-calendar-body { min-width: 960px; display: grid; grid-template-columns: 68px repeat(6, minmax(160px, 1fr)); grid-template-rows: auto; }
 .admin-staff-header, .admin-staff-column { min-width: 0; overflow: hidden; }
 .admin-calendar-wrap { display: flex; flex-direction: column; gap: 10px; }
 .admin-column-toggles { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -785,10 +785,12 @@ button { color: inherit; }
 .admin-time-axis { position: relative; height: 1152px; background: #fff; }
 .admin-time-axis span:first-child { transform: translateY(2px); }
 .admin-time-axis span { position: absolute; right: 9px; transform: translateY(-50%); padding: 0 2px; background: #fff; color: #777e87; font-size: 9px; white-space: nowrap; }
-.admin-staff-column { position: relative; height: 1152px; border-left: 1px solid var(--admin-line); background: transparent; }
+.admin-staff-column { position: relative; height: 1152px; border-left: 1px solid #cfd4da; background: transparent; }
+.admin-staff-column:nth-of-type(odd), .admin-staff-header:nth-of-type(odd) { background: #fafbfc; }
+.admin-staff-header { border-left-color: #cfd4da; }
 .admin-calendar-slot { position: absolute; z-index: 1; left: 0; width: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .admin-calendar-slot:hover { background: #fafafa; }
-.admin-grid-lines { position: absolute; z-index: 0; inset: 0 0 0 68px; pointer-events: none; }
+.admin-grid-lines { position: absolute; z-index: 0; inset: 0; pointer-events: none; }
 .admin-grid-lines span { position: absolute; right: 0; left: 0; border-top: 1px dashed #eceef0; }
 .admin-grid-lines span.is-hour { border-top-style: solid; border-color: #e5e7eb; }
 .admin-calendar-card { position: absolute; z-index: 3; left: 4px; width: calc(100% - 8px); overflow: hidden; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 3px 6px; border: 0; border-left: 4px solid #006aff; border-radius: 4px; background: #ebf5ff; color: #17212e; text-align: left; cursor: pointer; }

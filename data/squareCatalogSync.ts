@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
 import { resolveServiceVariation, squareMappingFor, squareSkuFor } from "@/data/squareServiceMap";
-import { allServices, serviceDisplayName, serviceTree, type ServiceLeaf, type ServiceNode } from "@/data/serviceTree";
+import { allServices, selectedServiceDuration, selectedServicePrice, serviceDisplayName, serviceTree, type ServiceLeaf, type ServiceNode } from "@/data/serviceTree";
 import { TPS_RATE_PERCENT, TVQ_RATE_PERCENT } from "@/data/billing";
 import { clearSquareVariationCache } from "@/data/squareVariations";
 
@@ -423,20 +423,24 @@ function compare(catalog: Catalog): CatalogComparison {
     }
 
     if (target.service.addOn) {
+      const addOn = target.service.addOn;
       rows.push({
-        serviceId: `${target.id}:${target.service.addOn.key}`,
-        name: `${target.name} + ${target.service.addOn.nameEn}`,
+        serviceId: `${target.id}:${addOn.key}`,
+        name: `${target.name} + ${addOn.nameEn}`,
         group: target.group,
         isAddOn: true,
         variationId: null,
         squareName: null,
-        internalPriceCents: Math.round(target.service.addOn.priceCad * 100),
+        internalPriceCents: Math.round(selectedServicePrice(target.service, addOn.key) * 100),
         squarePriceCents: null,
         squareCurrency: null,
-        internalDurationMinutes: target.service.addOn.durationMinutes,
+        internalDurationMinutes: selectedServiceDuration(target.service, addOn.key),
         squareDurationMinutes: null,
         status: "custom_line",
-        issues: ["Option surcharge — billed as its own CAD line on the Square order next to the service."],
+        issues: [
+          `Base ${formatCents(target.priceCents)} + ${formatCents(Math.round(addOn.priceCad * 100))} surcharge · ${target.durationMinutes} + ${addOn.durationMinutes} min.`,
+          "Surcharge is billed as its own CAD line on the Square order next to the service.",
+        ],
       });
     }
   }

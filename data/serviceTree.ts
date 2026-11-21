@@ -50,8 +50,8 @@ const surcharge = (key: ServiceAddOnKey, nameEn: string, nameFr: string, basePri
   nameEn,
   nameFr,
   priceCad,
-  labelEn: `${nameEn}, $${basePrice + priceCad} (+$${priceCad})`,
-  labelFr: `${nameFr}, ${basePrice + priceCad} $ (+${priceCad} $)`,
+  labelEn: `${nameEn}, $${basePrice + priceCad} (+$${priceCad} · +${SURCHARGE_EXTRA_MINUTES} min)`,
+  labelFr: `${nameFr}, ${basePrice + priceCad} $ (+${priceCad} $ · +${SURCHARGE_EXTRA_MINUTES} min)`,
   durationMinutes: SURCHARGE_EXTRA_MINUTES,
 });
 const lengthMlAddOn = (basePrice: number) => surcharge("length-ml", "M/L", "M/L", basePrice, 10);
