@@ -400,6 +400,9 @@ function variationComparison(target: ServiceTarget, variation: SquareVariationOb
   }
   const item = data.item_id ? catalog.items.get(data.item_id) : undefined;
   if (item && itemTaxFix(item, required)) issues.push("Square item taxes differ from TPS 5% + TVQ 9.975%.");
+  if (data.available_for_booking !== true) {
+    issues.push(target.surcharge ? "Not bookable in Square yet, so it can't be added to appointments. Sync will enable it." : "Not bookable in Square. Sync will enable online booking.");
+  }
 
   let status: ServiceComparisonStatus = priceMismatch && durationMismatch ? "price_and_duration_mismatch" : priceMismatch ? "price_mismatch" : durationMismatch ? "duration_mismatch" : "match";
   if (sharedWith.length) {
@@ -520,7 +523,7 @@ function inheritedData(template: SquareVariationObject | null): VariationData {
 
 function targetVariationData(target: ServiceTarget, base: VariationData, name: string): VariationData {
   const allTeamMembers = Object.values(SQUARE_TEAM_MEMBER_IDS);
-  const bookable = !target.surcharge;
+  // Square only accepts appointment segments whose variation is bookable, so surcharges must be too.
   return {
     ...base,
     name,
@@ -528,8 +531,8 @@ function targetVariationData(target: ServiceTarget, base: VariationData, name: s
     pricing_type: "FIXED_PRICING",
     price_money: { amount: target.priceCents, currency: "CAD" },
     service_duration: target.durationMinutes * 60_000,
-    available_for_booking: bookable,
-    ...(bookable ? { team_member_ids: base.team_member_ids?.length ? base.team_member_ids : allTeamMembers } : {}),
+    available_for_booking: true,
+    team_member_ids: base.team_member_ids?.length ? base.team_member_ids : allTeamMembers,
     ...(base.location_overrides ? { location_overrides: base.location_overrides.map(({ price_money: _price, ...override }) => override) } : {}),
   };
 }
@@ -560,8 +563,10 @@ async function buildPlan() {
     if (data.location_overrides?.some((override) => override.price_money)) warnings.push("Clears the location price override so every location uses the internal price.");
     if (renameTo && data.name !== renameTo) warnings.push(`Renames the variation to "${renameTo}" (it was shared by several services).`);
     if (data.sku?.trim() !== target.sku) warnings.push(`Tags the variation with SKU ${target.sku} to link it to this service.`);
-    if (!target.surcharge && data.available_for_booking !== true) warnings.push("Enables online booking for this variation.");
-    if (target.surcharge && data.available_for_booking === true) warnings.push("Hides this surcharge from online booking (it is billed with its service).");
+    if (data.available_for_booking !== true) {
+      warnings.push(target.surcharge ? "Makes this surcharge bookable so it can be added to appointments with its service." : "Enables online booking for this variation.");
+    }
+    if (!data.team_member_ids?.length) warnings.push("Assigns every technician to this variation.");
     if (locationId && !isPresentAt(variation, locationId)) warnings.push("Enables the variation at the salon location.");
     if (data.item_id) touchedItemIds.add(data.item_id);
 
