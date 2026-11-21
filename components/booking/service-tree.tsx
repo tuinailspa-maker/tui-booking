@@ -77,8 +77,7 @@ export function ServiceTree({ language, copy, selectedIds, selectedAddOns, onTog
       const selectedAddOn = selectedAddOns[node.id];
       const addOnSelected = node.addOn?.key === selectedAddOn;
       const name = language === "en" ? node.nameEn : node.nameFr;
-      const addOnName = node.addOn ? (language === "en" ? node.addOn.nameEn : node.addOn.nameFr) : "";
-      const addOnPrice = node.addOn ? formatPrice(node.addOn.priceCad, language) : "";
+      const addOnLabel = node.addOn ? (language === "en" ? node.addOn.labelEn : node.addOn.labelFr) : "";
       const price = selectedServicePrice(node, selectedAddOn);
       return (
         <div className={`service-leaf${checked ? " is-added" : ""}`} key={node.id} style={{ "--depth": depth } as CSSProperties}>
@@ -92,9 +91,9 @@ export function ServiceTree({ language, copy, selectedIds, selectedAddOns, onTog
               type="button"
               aria-pressed={addOnSelected}
               onClick={() => onToggleAddOn(node.id)}
-              disabled={disabled || !checked}
+              disabled={disabled}
             >
-              {addOnName} (+{addOnPrice})
+              {addOnLabel}
             </button>
           ) : <span className="leaf-addon-spacer" aria-hidden="true" />}
           <span className="leaf-action" aria-hidden="true">{checked ? copy.added : copy.add}</span>

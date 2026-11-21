@@ -540,7 +540,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
                   {selected && service.addOn && <label>{receiptLanguage === "en" ? "Optional add-on" : "Supplément facultatif"}
                     <select value={addOnKey} onChange={(event) => changeBillAddOn(service.id, event.target.value as ServiceAddOnKey | "")}>
                       <option value="">{receiptLanguage === "en" ? "No add-on" : "Aucun supplément"}</option>
-                      <option value={service.addOn.key}>{receiptLanguage === "en" ? service.addOn.nameEn : service.addOn.nameFr} +{money(service.addOn.priceCad)}</option>
+                      <option value={service.addOn.key}>{receiptLanguage === "en" ? service.addOn.labelEn : service.addOn.labelFr}</option>
                     </select>
                   </label>}
                 </article>;

@@ -7,6 +7,8 @@ export type ServiceAddOn = {
   nameEn: string;
   nameFr: string;
   priceCad: number;
+  labelEn: string;
+  labelFr: string;
   durationMinutes?: number;
 };
 
@@ -40,8 +42,16 @@ export type ServiceNode = ServiceBranch | ServiceLeaf;
 
 const branch = (id: string, nameEn: string, nameFr: string, children: ServiceNode[], noteEn?: string, noteFr?: string): ServiceBranch => ({ type: "branch", id, nameEn, nameFr, children, ...(noteEn ? { noteEn } : {}), ...(noteFr ? { noteFr } : {}) });
 const service = (id: string, nameEn: string, nameFr: string, price: number, durationMinutes: number, priceLabel?: string, addOn?: ServiceAddOn): ServiceLeaf => ({ type: "service", id, name: nameEn, nameEn, nameFr, price, priceCad: price, durationMinutes, ...(priceLabel ? { priceLabel } : {}), ...(addOn ? { addOn } : {}) });
-const lengthMlAddOn: ServiceAddOn = { key: "length-ml", nameEn: "M/L, +$10", nameFr: "M/L, +10 $", priceCad: 10 };
-const overThreeWeeksAddOn: ServiceAddOn = { key: "over-3-weeks", nameEn: "If nails are over 3 weeks +$5", nameFr: "Ongles de plus de 3 semaines +5 $", priceCad: 5 };
+const surcharge = (key: ServiceAddOnKey, nameEn: string, nameFr: string, basePrice: number, priceCad: number): ServiceAddOn => ({
+  key,
+  nameEn,
+  nameFr,
+  priceCad,
+  labelEn: `${nameEn}, $${basePrice + priceCad} (+$${priceCad})`,
+  labelFr: `${nameFr}, ${basePrice + priceCad} $ (+${priceCad} $)`,
+});
+const lengthMlAddOn = (basePrice: number) => surcharge("length-ml", "M/L", "M/L", basePrice, 10);
+const overThreeWeeksAddOn = (basePrice: number) => surcharge("over-3-weeks", "If nails over 3 weeks", "Ongles de plus de 3 semaines", basePrice, 5);
 
 export const serviceTree: ServiceBranch[] = [
   branch("hands", "Hands", "Mains", [
@@ -58,15 +68,15 @@ export const serviceTree: ServiceBranch[] = [
     ]),
     branch("nail-enhancement", "Nail Enhancement (Acrylic, Builder gel, Gel X)", "Extensions (acrylique, gel de construction, Gel X)", [
       branch("enhancement-new-set", "New set", "Nouvelle pose", [
-        service("enhancement-new-no-polish", "No polish", "Sans vernis", 40, 60, undefined, lengthMlAddOn),
-        service("enhancement-new-regular-polish", "Regular polish", "Vernis classique", 50, 60, undefined, lengthMlAddOn),
-        service("enhancement-new-shellac", "Shellac", "Shellac", 55, 60, undefined, lengthMlAddOn),
+        service("enhancement-new-no-polish", "No polish", "Sans vernis", 40, 60, undefined, lengthMlAddOn(40)),
+        service("enhancement-new-regular-polish", "Regular polish", "Vernis classique", 50, 60, undefined, lengthMlAddOn(50)),
+        service("enhancement-new-shellac", "Shellac", "Shellac", 55, 60, undefined, lengthMlAddOn(55)),
       ], "M/L +$10 · 60 mins", "M/L +10 $ · 60 min"),
       branch("enhancement-refill", "Refill", "Remplissage", [
-        service("enhancement-refill-no-polish", "No polish", "Sans vernis", 32, 50, undefined, overThreeWeeksAddOn),
-        service("enhancement-refill-regular-polish", "Regular polish", "Vernis classique", 42, 50, undefined, overThreeWeeksAddOn),
-        service("enhancement-refill-shellac", "Shellac", "Shellac", 47, 50, undefined, overThreeWeeksAddOn),
-      ], "If nails are over 3 weeks +$5 · 60 mins", "Ongles de plus de 3 semaines +5 $ · 60 min"),
+        service("enhancement-refill-no-polish", "No polish", "Sans vernis", 32, 50, undefined, overThreeWeeksAddOn(32)),
+        service("enhancement-refill-regular-polish", "Regular polish", "Vernis classique", 42, 50, undefined, overThreeWeeksAddOn(42)),
+        service("enhancement-refill-shellac", "Shellac", "Shellac", 47, 50, undefined, overThreeWeeksAddOn(47)),
+      ], "If nails over 3 weeks +$5 · 50 mins", "Ongles de plus de 3 semaines +5 $ · 50 min"),
     ]),
   ]),
   branch("feet", "Feets", "Pieds", [
