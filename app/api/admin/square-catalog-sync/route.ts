@@ -16,7 +16,7 @@ function failure(error: unknown) {
   return NextResponse.json({ error: message, code: "SQUARE_ERROR" }, { status: 502, headers: NO_STORE });
 }
 
-/** Dry run: compares the internal price list with the live Square catalog without changing anything. */
+/** Read-only: per-service comparison (`comparison`) and the sync plan, without changing anything on Square. */
 export async function GET(request: Request) {
   if (!isAdminRequestAuthorized(request)) return unauthorized();
   try {
@@ -34,8 +34,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Confirm the sync by sending { \"confirm\": true }." }, { status: 400, headers: NO_STORE });
   }
   try {
-    const { plan, updatedCount } = await applyCatalogSync();
-    return NextResponse.json({ ...plan, updatedCount }, { headers: NO_STORE });
+    const { plan, updatedCount, before, after } = await applyCatalogSync();
+    return NextResponse.json({ ...plan, updatedCount, before, after }, { headers: NO_STORE });
   } catch (error) {
     return failure(error);
   }

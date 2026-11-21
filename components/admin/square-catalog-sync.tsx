@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import type { CatalogSyncChange, CatalogSyncPlan } from "@/data/squareCatalogSync";
+import type { CatalogComparison, CatalogSyncChange, CatalogSyncPlan } from "@/data/squareCatalogSync";
+import { CatalogComparisonTable } from "@/components/admin/catalog-comparison";
 
 type SyncError = Error & { code?: string };
-type ApplyResult = CatalogSyncPlan & { updatedCount: number };
+type ApplyResult = CatalogSyncPlan & { updatedCount: number; before: CatalogComparison; after: CatalogComparison };
 
 async function fetchPlan(url: string): Promise<CatalogSyncPlan> {
   const response = await fetch(url, { cache: "no-store" });
@@ -77,7 +78,10 @@ export function SquareCatalogSync() {
     {result && <div className="catalog-sync-success" role="status">{result.updatedCount ? `Updated ${result.updatedCount} Square service ${result.updatedCount === 1 ? "variation" : "variations"}.` : "Nothing to update — Square already matches."}</div>}
     {plan.isLoading && <div className="admin-loading" role="status"><span className="admin-spinner" />Comparing with the Square catalog…</div>}
 
+    {result && <CatalogComparisonTable title="After sync — internal vs Square" comparison={result.after} previous={result.before} />}
+
     {plan.data && <>
+      {!result && <CatalogComparisonTable title="Current check — internal vs Square (read-only)" comparison={plan.data.comparison} />}
       <p className="catalog-sync-meta">Environment: <b>{plan.data.environment}</b> · {plan.data.changes.length} to update · {plan.data.inSync.length} already match · {plan.data.conflicts.length} conflicts{plan.data.permission.status !== "missing" && <> · {plan.data.permission.message}</>}</p>
 
       {changes.length > 0 && <table className="catalog-sync-table">

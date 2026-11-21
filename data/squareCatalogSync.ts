@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { SQUARE_API_VERSION } from "@/data/squareConfig";
 import { squareMappingFor } from "@/data/squareServiceMap";
-import { allServices, serviceDisplayName } from "@/data/serviceTree";
+import { allServices, serviceDisplayName, serviceTree, type ServiceNode } from "@/data/serviceTree";
 import { clearSquareVariationCache } from "@/data/squareVariations";
 
 const PRODUCTION_URL = "https://connect.squareup.com";
@@ -47,8 +47,40 @@ export type CatalogSyncConflict = {
   services: { id: string; name: string; priceCents: number; durationMinutes: number }[];
 };
 
+export type ServiceComparisonStatus =
+  | "match"
+  | "price_mismatch"
+  | "duration_mismatch"
+  | "price_and_duration_mismatch"
+  | "missing_variation"
+  | "unmapped"
+  | "custom_line";
+
+export type ServiceComparisonRow = {
+  serviceId: string;
+  name: string;
+  group: string;
+  isAddOn: boolean;
+  variationId: string | null;
+  squareName: string | null;
+  internalPriceCents: number;
+  squarePriceCents: number | null;
+  squareCurrency: string | null;
+  internalDurationMinutes: number | null;
+  squareDurationMinutes: number | null;
+  status: ServiceComparisonStatus;
+  issues: string[];
+};
+
+export type CatalogComparison = {
+  checkedAt: string;
+  rows: ServiceComparisonRow[];
+  summary: { total: number; match: number; mismatched: number; missingVariation: number; unmapped: number; customLines: number };
+};
+
 export type CatalogSyncPlan = {
   environment: "production" | "sandbox";
+  comparison: CatalogComparison;
   permission: { status: "granted" | "missing" | "unknown"; scopes: string[] | null; message: string };
   changes: CatalogSyncChange[];
   inSync: CatalogSyncChange[];
@@ -169,9 +201,132 @@ async function retrieveVariations(ids: string[]) {
   return byId;
 }
 
+function serviceGroups() {
+  const groups = new Map<string, { path: string; isAddOn: boolean }>();
+  const walk = (nodes: ServiceNode[], path: string[], isAddOn: boolean) => {
+    for (const node of nodes) {
+      if (node.type === "branch") {
+        walk(node.children, [...path, node.nameEn], isAddOn || node.id === "add-on" || node.id === "variable-add-ons");
+      } else {
+        groups.set(node.id, { path: path.join(" › "), isAddOn });
+      }
+    }
+  };
+  walk(serviceTree, [], false);
+  return groups;
+}
+
+function compareServicesWithSquare(live: Map<string, SquareVariationObject>): CatalogComparison {
+  const groups = serviceGroups();
+  const rows: ServiceComparisonRow[] = [];
+
+  for (const service of allServices) {
+    const name = serviceDisplayName(service, "en");
+    const group = groups.get(service.id) ?? { path: "", isAddOn: false };
+    const internalPriceCents = Math.round(service.priceCad * 100);
+    const mapping = squareMappingFor(service.id);
+    const base = {
+      serviceId: service.id,
+      name,
+      group: group.path,
+      isAddOn: group.isAddOn,
+      internalPriceCents,
+      internalDurationMinutes: service.durationMinutes,
+    };
+
+    if (!mapping) {
+      rows.push({
+        ...base, variationId: null, squareName: null, squarePriceCents: null, squareCurrency: null, squareDurationMinutes: null,
+        status: internalPriceCents > 0 ? "unmapped" : "custom_line",
+        issues: [internalPriceCents > 0
+          ? "No Square variation is mapped in data/squareServiceMap.ts."
+          : "Free option ($0) — nothing to bill on Square."],
+      });
+    } else {
+      const object = live.get(mapping.variationId);
+      if (!object) {
+        rows.push({
+          ...base, variationId: mapping.variationId, squareName: mapping.squareName, squarePriceCents: null, squareCurrency: null, squareDurationMinutes: null,
+          status: "missing_variation",
+          issues: [`Mapped variation ${mapping.variationId} was not found on Square (deleted or wrong ID).`],
+        });
+      } else {
+        const data = object.item_variation_data ?? {};
+        const squarePriceCents = typeof data.price_money?.amount === "number" ? data.price_money.amount : null;
+        const squareCurrency = data.price_money?.currency ?? null;
+        const squareDurationMinutes = typeof data.service_duration === "number" ? Math.round(data.service_duration / 60_000) : null;
+        const issues: string[] = [];
+        let priceMismatch = false;
+        if (data.pricing_type !== "FIXED_PRICING" || squarePriceCents === null) {
+          priceMismatch = true;
+          issues.push("Square uses variable pricing (no fixed price).");
+        } else if (squarePriceCents !== internalPriceCents) {
+          priceMismatch = true;
+          issues.push(`Price differs by ${formatCents(squarePriceCents - internalPriceCents)}.`);
+        }
+        if (squareCurrency && squareCurrency !== "CAD") {
+          priceMismatch = true;
+          issues.push(`Square price is in ${squareCurrency}, not CAD.`);
+        }
+        if (data.location_overrides?.some((override) => typeof override.price_money?.amount === "number" && override.price_money.amount !== internalPriceCents)) {
+          priceMismatch = true;
+          issues.push("A Square location price override differs from the internal price.");
+        }
+        const durationMismatch = squareDurationMinutes !== service.durationMinutes;
+        if (durationMismatch) {
+          issues.push(squareDurationMinutes === null ? "Square has no service duration set." : `Duration differs by ${squareDurationMinutes - service.durationMinutes} min.`);
+        }
+        rows.push({
+          ...base, variationId: mapping.variationId, squareName: mapping.squareName,
+          squarePriceCents, squareCurrency, squareDurationMinutes,
+          status: priceMismatch && durationMismatch ? "price_and_duration_mismatch" : priceMismatch ? "price_mismatch" : durationMismatch ? "duration_mismatch" : "match",
+          issues,
+        });
+      }
+    }
+
+    if (service.addOn) {
+      rows.push({
+        serviceId: `${service.id}:${service.addOn.key}`,
+        name: `${name} + ${service.addOn.nameEn}`,
+        group: group.path,
+        isAddOn: true,
+        variationId: null,
+        squareName: null,
+        internalPriceCents: Math.round(service.addOn.priceCad * 100),
+        squarePriceCents: null,
+        squareCurrency: null,
+        internalDurationMinutes: service.addOn.durationMinutes ?? null,
+        squareDurationMinutes: null,
+        status: "custom_line",
+        issues: ["Option surcharge — billed as a custom CAD line on the Square order, not a catalog variation."],
+      });
+    }
+  }
+
+  const count = (...statuses: ServiceComparisonStatus[]) => rows.filter((row) => statuses.includes(row.status)).length;
+  return {
+    checkedAt: new Date().toISOString(),
+    rows,
+    summary: {
+      total: rows.length,
+      match: count("match"),
+      mismatched: count("price_mismatch", "duration_mismatch", "price_and_duration_mismatch"),
+      missingVariation: count("missing_variation"),
+      unmapped: count("unmapped"),
+      customLines: count("custom_line"),
+    },
+  };
+}
+
+function formatCents(cents: number) {
+  return `${cents < 0 ? "-" : "+"}$${(Math.abs(cents) / 100).toFixed(2)}`;
+}
+
 async function buildPlanWithObjects() {
   const [permission, { targets, unmappedServices, addOnModifiers }] = await Promise.all([checkPermission(), Promise.resolve(internalTargetsByVariation())]);
   const live = await retrieveVariations([...targets.keys()]);
+  const comparison = compareServicesWithSquare(live);
 
   const changes: CatalogSyncChange[] = [];
   const inSync: CatalogSyncChange[] = [];
@@ -242,7 +397,7 @@ async function buildPlanWithObjects() {
     });
   }
 
-  const plan: CatalogSyncPlan = { environment: environment(), permission, changes, inSync, conflicts, missingOnSquare, unmappedServices, addOnModifiers };
+  const plan: CatalogSyncPlan = { environment: environment(), comparison, permission, changes, inSync, conflicts, missingOnSquare, unmappedServices, addOnModifiers };
   return { plan, objectsToUpsert };
 }
 
@@ -256,12 +411,14 @@ export async function applyCatalogSync() {
     throw new SquareCatalogSyncError(MISSING_PERMISSION_MESSAGE, 403, "MISSING_PERMISSION");
   }
   const objects = [...objectsToUpsert.values()];
-  if (objects.length === 0) return { plan, updatedCount: 0 };
+  const before = plan.comparison;
+  if (objects.length === 0) return { plan, updatedCount: 0, before, after: before };
 
   await squarePost("/v2/catalog/batch-upsert", {
     idempotency_key: randomUUID(),
     batches: [{ objects }],
   });
   clearSquareVariationCache();
-  return { plan, updatedCount: objects.length };
+  const after = compareServicesWithSquare(await retrieveVariations([...internalTargetsByVariation().targets.keys()]));
+  return { plan, updatedCount: objects.length, before, after };
 }
