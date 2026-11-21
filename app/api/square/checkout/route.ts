@@ -29,26 +29,24 @@ export async function POST(request: Request) {
 
   const money = (amount: number) => ({ amount, currency: "CAD" });
   const lineItems = [
-    ...items.map((item) => ({ name: item.name, quantity: "1", base_price_money: money(item.amountCents), tax_ids: ["TVQ", "TPS"] })),
+    ...items.map((item) => ({ name: item.name, quantity: "1", base_price_money: money(item.amountCents), applied_taxes: [{ tax_uid: "TVQ" }, { tax_uid: "TPS" }] })),
     ...(tipCents > 0 ? [{ name: "Tip", quantity: "1", base_price_money: money(tipCents) }] : []),
   ];
   const payload = {
     idempotency_key: crypto.randomUUID(),
-    payment_link: {
+    description: `Tui Nail Spa${customerName ? ` — ${customerName}` : ""}${customerPhone ? ` · ${customerPhone}` : ""}`.slice(0, 255),
+    order: {
+      location_id: locationId,
       reference_id: (customerName || customerPhone ? `${customerName} ${customerPhone}`.trim() : `TUI-${Date.now().toString(36).toUpperCase()}`).slice(0, 40),
-      description: `Tui Nail Spa${customerName ? ` — ${customerName}` : ""}${customerPhone ? ` · ${customerPhone}` : ""}`.slice(0, 255),
-      order: {
-        location_id: locationId,
-        line_items: lineItems,
-        discounts: discountCents > 0 ? [{ name: "Combo discount", type: "FIXED_AMOUNT", amount_money: money(discountCents), scope: "ORDER" }] : [],
-        taxes: [
-          { uid: "TVQ", name: "TVQ", type: "ADDITIVE", percentage: "9.975", scope: "LINE_ITEM" },
-          { uid: "TPS", name: "TPS", type: "ADDITIVE", percentage: "5", scope: "LINE_ITEM" },
-        ],
-        metadata: { internal_subtotal_cents: String(subtotalCents), tip_cents: String(tipCents) },
-      },
-      checkout_options: { allow_tipping: false, redirect_url: `${new URL(request.url).origin}/?checkout=complete` },
+      line_items: lineItems,
+      ...(discountCents > 0 ? { discounts: [{ uid: "DISCOUNT", name: "Combo discount", type: "FIXED_AMOUNT", amount_money: money(discountCents), scope: "ORDER" }] } : {}),
+      taxes: [
+        { uid: "TVQ", name: "TVQ", type: "ADDITIVE", percentage: "9.975", scope: "LINE_ITEM" },
+        { uid: "TPS", name: "TPS", type: "ADDITIVE", percentage: "5", scope: "LINE_ITEM" },
+      ],
+      metadata: { internal_subtotal_cents: String(subtotalCents), tip_cents: String(tipCents) },
     },
+    checkout_options: { allow_tipping: false, redirect_url: `${new URL(request.url).origin}/?checkout=complete` },
   };
   const baseUrl = process.env.SQUARE_ENVIRONMENT === "sandbox" ? "https://connect.squareupsandbox.com/v2" : "https://connect.squareup.com/v2";
   const response = await fetch(`${baseUrl}/online-checkout/payment-links`, {
