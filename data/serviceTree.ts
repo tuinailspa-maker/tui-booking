@@ -41,7 +41,7 @@ export type ServiceNode = ServiceBranch | ServiceLeaf;
 const branch = (id: string, nameEn: string, nameFr: string, children: ServiceNode[], noteEn?: string, noteFr?: string): ServiceBranch => ({ type: "branch", id, nameEn, nameFr, children, ...(noteEn ? { noteEn } : {}), ...(noteFr ? { noteFr } : {}) });
 const service = (id: string, nameEn: string, nameFr: string, price: number, durationMinutes: number, priceLabel?: string, addOn?: ServiceAddOn): ServiceLeaf => ({ type: "service", id, name: nameEn, nameEn, nameFr, price, priceCad: price, durationMinutes, ...(priceLabel ? { priceLabel } : {}), ...(addOn ? { addOn } : {}) });
 const lengthMlAddOn: ServiceAddOn = { key: "length-ml", nameEn: "M/L, +$10", nameFr: "M/L, +10 $", priceCad: 10 };
-const overThreeWeeksAddOn: ServiceAddOn = { key: "over-3-weeks", nameEn: "If nails are over 3 weeks +$3", nameFr: "Ongles de plus de 3 semaines +3 $", priceCad: 3 };
+const overThreeWeeksAddOn: ServiceAddOn = { key: "over-3-weeks", nameEn: "If nails are over 3 weeks +$5", nameFr: "Ongles de plus de 3 semaines +5 $", priceCad: 5 };
 
 export const serviceTree: ServiceBranch[] = [
   branch("hands", "Hands", "Mains", [
@@ -66,7 +66,7 @@ export const serviceTree: ServiceBranch[] = [
         service("enhancement-refill-no-polish", "No polish", "Sans vernis", 32, 50, undefined, overThreeWeeksAddOn),
         service("enhancement-refill-regular-polish", "Regular polish", "Vernis classique", 42, 50, undefined, overThreeWeeksAddOn),
         service("enhancement-refill-shellac", "Shellac", "Shellac", 47, 50, undefined, overThreeWeeksAddOn),
-      ], "If nails are over 3 weeks +$3 · 60 mins", "Ongles de plus de 3 semaines +3 $ · 60 min"),
+      ], "If nails are over 3 weeks +$5 · 60 mins", "Ongles de plus de 3 semaines +5 $ · 60 min"),
     ]),
   ]),
   branch("feet", "Feets", "Pieds", [
