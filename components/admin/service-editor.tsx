@@ -74,6 +74,10 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
   const [manualDiscountValue, setManualDiscountValue] = useState("");
   const activeIds = serviceIds[activeGuest] ?? [];
   const activeAddOns = addOns[activeGuest] ?? {};
+  const activeDuration = activeIds.reduce((total, id) => {
+    const service = allServices.find((item) => item.id === id);
+    return total + (service ? selectedServiceDuration(service, activeAddOns[id]) : 0);
+  }, 0);
   const subtotal = serviceIds.reduce((sum, ids, guestIndex) => sum + ids.reduce((guestTotal, id) => {
     const service = allServices.find((item) => item.id === id);
     return guestTotal + (service ? selectedServicePrice(service, addOns[guestIndex]?.[id]) : 0);
@@ -271,14 +275,34 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
         <ServiceTree language="en" copy={translations.en} selectedIds={activeIds} selectedAddOns={activeAddOns} onToggleService={toggleService} onToggleAddOn={toggleAddOn} disabled={Boolean(squareOrderId)} />
       </div>
       {activeIds.length > 0 && <div className="admin-selected-services" aria-label={`Selected services for guest ${activeGuest + 1}`}>
-        <span>Selected for Guest {activeGuest + 1}</span>
-        {activeIds.map((id) => {
-          const service = allServices.find((item) => item.id === id);
-          if (!service) return null;
-          return <button key={id} type="button" onClick={() => toggleService(id)} disabled={Boolean(squareOrderId)}>
-            <span>{serviceDisplayNameWithAddOn(service, "en", activeAddOns[id])}</span><strong>${selectedServicePrice(service, activeAddOns[id])}</strong>
-          </button>;
-        })}
+        <div className="admin-selected-heading">
+          <span>Selected for Guest {activeGuest + 1}</span>
+          <span>{activeIds.length} {activeIds.length === 1 ? "item" : "items"} · {activeDuration} min</span>
+        </div>
+        <ul className="admin-selected-list">
+          {activeIds.map((id) => {
+            const service = allServices.find((item) => item.id === id);
+            if (!service) return null;
+            const addOn = service.addOn;
+            const addOnOn = Boolean(addOn && activeAddOns[id] === addOn.key);
+            const label = serviceDisplayNameWithAddOn(service, "en", activeAddOns[id]);
+            return <li key={id} className="admin-selected-row">
+              <div className="admin-selected-main">
+                <span className="admin-selected-name">{label}</span>
+                <span className="admin-selected-meta">{selectedServiceDuration(service, activeAddOns[id])} min</span>
+              </div>
+              <strong className="admin-selected-price">${selectedServicePrice(service, activeAddOns[id])}</strong>
+              <div className="admin-selected-actions">
+                {addOn && <button type="button" className={`admin-selected-addon${addOnOn ? " is-on" : ""}`} aria-pressed={addOnOn} onClick={() => toggleAddOn(id)} disabled={Boolean(squareOrderId)}>
+                  {addOnOn ? "−" : "+"} {addOn.nameEn} (+${addOn.priceCad} / +{addOn.durationMinutes} min)
+                </button>}
+                <button type="button" className="admin-selected-remove" onClick={() => toggleService(id)} disabled={Boolean(squareOrderId)} aria-label={`Remove ${label}`}>
+                  <span aria-hidden="true">×</span> Remove
+                </button>
+              </div>
+            </li>;
+          })}
+        </ul>
       </div>}
       {selectionSyncStatus === "syncing" && <p className="admin-access-copy" role="status">Updating services in Square…</p>}
       {selectionSyncStatus === "saved" && <p className="admin-access-copy" role="status">Services updated in Square.</p>}
