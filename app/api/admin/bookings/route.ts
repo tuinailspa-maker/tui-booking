@@ -4,6 +4,8 @@ import { SQUARE_API_VERSION } from "@/data/squareConfig";
 import { getStaffRoster, isStaffFree } from "@/data/squareStaff";
 import { allServices, selectedServiceDuration, selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import { BUSINESS_TIME_ZONE } from "@/data/staffSchedule";
+import { getServiceVariationLinks } from "@/data/squareVariations";
+import { buildGuestSegments, SegmentMappingError } from "@/data/squareSegments";
 
 const SQUARE_PRODUCTION_URL = "https://connect.squareup.com/v2";
 const SQUARE_SANDBOX_URL = "https://connect.squareupsandbox.com/v2";
@@ -335,18 +337,16 @@ export async function PATCH(request: Request) {
       if (segments.length === 0) {
         return NextResponse.json({ error: "This appointment has no service segments to update." }, { status: 400, headers: { "Cache-Control": "no-store" } });
       }
-      const existingDuration = segments.reduce((sum, segment) => sum + (segment.duration_minutes ?? 0), 0);
-      let remainingDuration = durationMinutes;
-      patch.appointment_segments = segments.map((segment, index) => {
-        const currentDuration = segment.duration_minutes ?? 0;
-        const nextDuration = index === segments.length - 1
-          ? remainingDuration
-          : existingDuration > 0
-            ? Math.min(remainingDuration, Math.round(durationMinutes * currentDuration / existingDuration))
-            : Math.floor(durationMinutes / segments.length);
-        remainingDuration -= nextDuration;
-        return { ...segment, duration_minutes: nextDuration };
-      });
+      const segmentMemberId = shouldAssign ? teamMemberId : segments.find((segment) => segment.team_member_id)?.team_member_id;
+      if (!segmentMemberId) {
+        return NextResponse.json({ error: "Assign a technician before changing services." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+      }
+      try {
+        patch.appointment_segments = buildGuestSegments(serviceIds, addOns, await getServiceVariationLinks(), segmentMemberId);
+      } catch (error) {
+        if (!(error instanceof SegmentMappingError)) throw error;
+        return NextResponse.json({ error: error.message }, { status: 502, headers: { "Cache-Control": "no-store" } });
+      }
     }
     if (status) {
       const marker = `[TUI_STATUS:${status}]`;
