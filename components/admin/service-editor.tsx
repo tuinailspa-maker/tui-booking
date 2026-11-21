@@ -1,7 +1,9 @@
 "use client";
 
-import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { allServices, selectedServiceDuration, selectedServicePrice, serviceDisplayNameWithAddOn, serviceTree, type ServiceAddOnKey, type ServiceNode } from "@/data/serviceTree";
+import { useRef, useState, useSyncExternalStore } from "react";
+import { allServices, selectedServiceDuration, selectedServicePrice, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
+import { ServiceTree } from "@/components/booking/service-tree";
+import { translations } from "@/components/booking/copy";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { getClosingTimeForDate } from "@/data/staffSchedule";
 import { BackupBill } from "@/components/booking/backup-bill";
@@ -15,22 +17,6 @@ function datePartsForTime(iso: string) {
 function subscribeToSquareOrders(callback: () => void) {
   window.addEventListener("tui-square-order-change", callback);
   return () => window.removeEventListener("tui-square-order-change", callback);
-}
-
-function filterServiceNodes(nodes: ServiceNode[], query: string): ServiceNode[] {
-  if (!query) return nodes;
-  const normalizedQuery = query.trim().toLocaleLowerCase("en-CA");
-  return nodes.flatMap((node) => {
-    const names = node.type === "branch"
-      ? `${node.nameEn} ${node.nameFr}`
-      : `${node.nameEn} ${node.nameFr} ${node.displayNameEn ?? ""} ${node.displayNameFr ?? ""}`;
-    if (names.toLocaleLowerCase("en-CA").includes(normalizedQuery)) return [node];
-    if (node.type === "branch") {
-      const children = filterServiceNodes(node.children, query);
-      if (children.length) return [{ ...node, children }];
-    }
-    return [];
-  });
 }
 
 function readSquareOrder(bookingId: string) {
@@ -68,8 +54,6 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
   const [addOns, setAddOns] = useState(() => Array.from({ length: guestCount }, (_, index) => initialAddOns[index] ?? {}));
   const [name, setName] = useState(customerName);
   const [phone, setPhone] = useState(customerPhone);
-  const [search, setSearch] = useState("");
-  const [expandedServiceBranches, setExpandedServiceBranches] = useState<string[]>([]);
   const [validation, setValidation] = useState("");
   const [mode, setMode] = useState<"walkin" | "appointment">("walkin");
   const [partySize, setPartySize] = useState(guestCount);
@@ -87,7 +71,6 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
   const squareOrderId = useSyncExternalStore(subscribeToSquareOrders, () => readSquareOrder(bookingId), () => "");
   const [manualDiscountType, setManualDiscountType] = useState<"FIXED_AMOUNT" | "PERCENTAGE">("FIXED_AMOUNT");
   const [manualDiscountValue, setManualDiscountValue] = useState("");
-  const visibleServiceTree = filterServiceNodes(serviceTree, search);
   const activeIds = serviceIds[activeGuest] ?? [];
   const activeAddOns = addOns[activeGuest] ?? {};
   const subtotal = serviceIds.reduce((sum, ids, guestIndex) => sum + ids.reduce((guestTotal, id) => {
@@ -99,12 +82,16 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
   const manualDiscountAmount = manualDiscountValue && Number.isFinite(manualDiscountNumber) && manualDiscountNumber > 0
     ? Math.min(Math.max(0, subtotal - discount), manualDiscountType === "PERCENTAGE" ? (subtotal - discount) * manualDiscountNumber / 100 : manualDiscountNumber)
     : 0;
+  const taxableSubtotal = Math.round(Math.max(0, subtotal - discount - manualDiscountAmount) * 100) / 100;
+  const tps = Math.round(taxableSubtotal * 0.05 * 100) / 100;
+  const tvq = Math.round(taxableSubtotal * 0.09975 * 100) / 100;
+  const estimatedTotal = Math.round((taxableSubtotal + tps + tvq) * 100) / 100;
   const dateParts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(startAt)).map((part) => [part.type, part.value]));
   const billDate = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
   const billTime = `${dateParts.hour}:${dateParts.minute}`;
 
   function queueSelectionSync(nextServiceIds: string[][], nextAddOns: Record<string, ServiceAddOnKey>[]) {
-    if (!onBillSelectionChange || squareOrderId) return;
+    if (!onBillSelectionChange || squareOrderId || nextServiceIds.some((ids) => ids.length === 0)) return;
     setSelectionSyncStatus("syncing");
     selectionSyncQueue.current = selectionSyncQueue.current
       .catch(() => undefined)
@@ -117,11 +104,21 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
   }
 
   function toggleService(id: string) {
+    const removing = activeIds.includes(id);
     const nextServiceIds = serviceIds.map((ids, index) => index !== activeGuest
       ? ids
-      : ids.includes(id) ? ids.filter((serviceId) => serviceId !== id) : [...ids, id]);
+      : removing ? ids.filter((serviceId) => serviceId !== id) : [...ids, id]);
+    const nextAddOns = removing
+      ? addOns.map((items, index) => {
+        if (index !== activeGuest) return items;
+        const next = { ...items };
+        delete next[id];
+        return next;
+      })
+      : addOns;
     setServiceIds(nextServiceIds);
-    queueSelectionSync(nextServiceIds, addOns);
+    setAddOns(nextAddOns);
+    queueSelectionSync(nextServiceIds, nextAddOns);
     setValidation("");
   }
 
@@ -135,6 +132,12 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
     });
     setAddOns(nextAddOns);
     queueSelectionSync(serviceIds, nextAddOns);
+  }
+
+  function toggleAddOn(serviceId: string) {
+    const service = allServices.find((item) => item.id === serviceId);
+    const currentKey = activeAddOns[serviceId];
+    changeAddOn(serviceId, service?.addOn?.key === currentKey ? "" : service?.addOn?.key ?? "");
   }
 
   async function createSquareAppointment() {
@@ -245,40 +248,6 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
     await onSave({ serviceIds, addOns, customerName: name.trim(), customerPhone: phone.trim() });
   }
 
-  function renderServiceNode(node: ServiceNode, depth = 0): ReactNode {
-    if (node.type === "service") {
-      const selected = activeIds.includes(node.id);
-      const selectedAddOn = activeAddOns[node.id] ?? "";
-      return <article className={`admin-tree-service${selected ? " is-selected" : ""}`} key={node.id}>
-        <button className="admin-tree-service-toggle" type="button" aria-pressed={selected} onClick={() => toggleService(node.id)} disabled={Boolean(squareOrderId)}>
-          <span className="admin-service-check" aria-hidden="true">{selected ? "✓" : "+"}</span>
-          <span className="admin-tree-service-name"><strong>{node.nameEn}</strong><small>{node.displayNameEn}</small></span>
-          <span className="admin-service-price">{selectedAddOn ? `$${selectedServicePrice(node, selectedAddOn)}` : node.priceLabel ?? `$${selectedServicePrice(node)}`}{selectedServiceDuration(node, selectedAddOn) > 0 && <small> · {selectedServiceDuration(node, selectedAddOn)} min</small>}</span>
-        </button>
-        {selected && node.addOn && <label className="admin-addon-choice">Optional: {node.addOn.nameEn}
-          <select value={selectedAddOn} onChange={(event) => changeAddOn(node.id, event.target.value as ServiceAddOnKey | "")} disabled={Boolean(squareOrderId)}>
-            <option value="">No add-on</option>
-            <option value={node.addOn.key}>{node.addOn.nameEn} +${node.addOn.priceCad}</option>
-          </select>
-        </label>}
-      </article>;
-    }
-
-    const isExpanded = Boolean(search) || expandedServiceBranches.includes(node.id);
-    const countSelected = (branch: ServiceNode): number => branch.type === "service"
-      ? Number(activeIds.includes(branch.id))
-      : branch.children.reduce((count, child) => count + countSelected(child), 0);
-    const selectedCount = countSelected(node);
-    return <section className={`admin-tree-branch depth-${Math.min(depth, 3)}`} key={node.id}>
-      <button className={`admin-tree-branch-toggle${depth === 0 ? " is-root" : ""}`} type="button" aria-expanded={isExpanded} onClick={() => setExpandedServiceBranches((current) => current.includes(node.id) ? current.filter((id) => id !== node.id) : [...current, node.id])}>
-        <span className={`admin-tree-chevron${isExpanded ? " is-open" : ""}`} aria-hidden="true">⌄</span>
-        <span className="admin-tree-branch-label">{node.nameEn}{node.noteEn && <small>{node.noteEn}</small>}</span>
-        {selectedCount > 0 && <span className="admin-tree-count">{selectedCount}</span>}
-      </button>
-      {isExpanded && <div className="admin-tree-children">{node.children.map((child) => renderServiceNode(child, depth + 1))}</div>}
-    </section>;
-  }
-
   return <AppointmentDrawer open name={walkIn ? (name || "New walk-in") : customerName || "Appointment"} phone={walkIn ? phone : customerPhone} startAt={startAt} technician={technician} status={status} busy={busy} onClose={onCancel} onTechnicianChange={onTechnicianChange} onStatusChange={onStatusChange}>
     <div className="admin-drawer-services">
       {walkIn && <div className="admin-booking-mode" role="group" aria-label="Ticket type"><button type="button" aria-pressed={mode === "appointment"} onClick={() => { setMode("appointment"); setValidation(""); }}>Book Appointment (Sync to Square)</button><button type="button" aria-pressed={mode === "walkin"} onClick={() => { setMode("walkin"); setValidation(""); }}>Quick Walk-in</button></div>}
@@ -297,9 +266,8 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
         {Array.from({ length: mode === "appointment" ? partySize : guestCount }, (_, index) => <button key={index} type="button" aria-pressed={activeGuest === index} className={activeGuest === index ? "is-active" : ""} onClick={() => setActiveGuest(index)}>{`Guest ${index + 1}`}</button>)}
       </div>}
       {walkIn && mode === "appointment" && <label className="admin-search-label">Technician for Guest {activeGuest + 1}<select value={technicians[activeGuest] || "Jenny"} onChange={(event) => setTechnicians((current) => current.map((value, index) => index === activeGuest ? event.target.value : value))}>{["Jenny", "Melika", "Nana"].map((name) => <option key={name}>{name}</option>)}</select></label>}
-      <label className="admin-search-label">Add or edit services<input type="search" aria-label="Search salon services" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search the service menu" /></label>
-      <div className="admin-service-tree" role="group" aria-label="Salon service menu">
-        {visibleServiceTree.length > 0 ? visibleServiceTree.map((node) => renderServiceNode(node)) : <p className="admin-tree-empty">No services match your search.</p>}
+      <div className="admin-service-tree">
+        <ServiceTree language="en" copy={translations.en} selectedIds={activeIds} selectedAddOns={activeAddOns} onToggleService={toggleService} onToggleAddOn={toggleAddOn} disabled={Boolean(squareOrderId)} />
       </div>
       {activeIds.length > 0 && <div className="admin-selected-services" aria-label={`Selected services for guest ${activeGuest + 1}`}>
         <span>Selected for Guest {activeGuest + 1}</span>
@@ -314,7 +282,7 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
       {selectionSyncStatus === "syncing" && <p className="admin-access-copy" role="status">Updating services in Square…</p>}
       {selectionSyncStatus === "saved" && <p className="admin-access-copy" role="status">Services updated in Square.</p>}
       {validation && <p className="admin-form-error" role="alert">{validation}</p>}
-      <div className="admin-ticket-totals"><span>Services subtotal<strong>${subtotal.toFixed(2)}</strong></span>{discount > 0 && <span>Combo discount<strong>−${discount.toFixed(2)}</strong></span>}{manualDiscountAmount > 0 && <span>Manual discount<strong>−${manualDiscountAmount.toFixed(2)}</strong></span>}<span className="admin-ticket-total">Estimated total before tax<strong>${Math.max(0, subtotal - discount - manualDiscountAmount).toFixed(2)}</strong></span></div>
+      <div className="admin-ticket-totals"><span>Services subtotal<strong>${subtotal.toFixed(2)}</strong></span>{discount > 0 && <span>Combo discount<strong>−${discount.toFixed(2)}</strong></span>}{manualDiscountAmount > 0 && <span>Manual discount<strong>−${manualDiscountAmount.toFixed(2)}</strong></span>}<span>Taxable subtotal<strong>${taxableSubtotal.toFixed(2)}</strong></span><span>TPS (5%)<strong>${tps.toFixed(2)}</strong></span><span>TVQ (9.975%)<strong>${tvq.toFixed(2)}</strong></span><span className="admin-ticket-total">Estimated total with tax<strong>${estimatedTotal.toFixed(2)}</strong></span></div>
       <div className="admin-manual-discount">
         <label>Manual discount
           <span className="admin-discount-controls">

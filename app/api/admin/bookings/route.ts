@@ -304,9 +304,23 @@ export async function PATCH(request: Request) {
         ? oldNote.replace(/Services:[\s\S]+?\. Total \d+ min\./, serviceNote)
         : `${oldNote} ${serviceNote}`.trim();
       patch.seller_note = updatedNote.slice(0, 500);
-      patch.appointment_segments = (current.booking.appointment_segments ?? []).map((segment, index) => index === 0
-        ? { ...segment, duration_minutes: durationMinutes }
-        : segment);
+      if (current.booking.start_at) patch.start_at = current.booking.start_at;
+      const segments = current.booking.appointment_segments ?? [];
+      if (segments.length === 0) {
+        return NextResponse.json({ error: "This appointment has no service segments to update." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+      }
+      const existingDuration = segments.reduce((sum, segment) => sum + (segment.duration_minutes ?? 0), 0);
+      let remainingDuration = durationMinutes;
+      patch.appointment_segments = segments.map((segment, index) => {
+        const currentDuration = segment.duration_minutes ?? 0;
+        const nextDuration = index === segments.length - 1
+          ? remainingDuration
+          : existingDuration > 0
+            ? Math.min(remainingDuration, Math.round(durationMinutes * currentDuration / existingDuration))
+            : Math.floor(durationMinutes / segments.length);
+        remainingDuration -= nextDuration;
+        return { ...segment, duration_minutes: nextDuration };
+      });
     }
     if (status) {
       const marker = `[TUI_STATUS:${status}]`;
