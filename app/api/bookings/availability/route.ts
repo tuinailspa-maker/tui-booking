@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSquareAvailableStarts } from "@/data/squareAvailability";
-import { availabilityCovers, fetchBusyWindows, getStaffRoster, overlapsBusy, verifyGuestAssignments } from "@/data/squareStaff";
+import { availabilityCovers, fetchBusyWindows, getStaffRoster, overlapsBusy, verifyGuestAssignments, type BusyWindow } from "@/data/squareStaff";
+import type { StaffMember } from "@/data/staffRoster";
 import { getSlotsForDate, isWithinBusinessHours } from "@/data/staffSchedule";
 
 function localTorontoStart(date: string, time: string): number {
@@ -12,6 +13,61 @@ function localTorontoStart(date: string, time: string): number {
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   const shown = Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day), Number(values.hour), Number(values.minute));
   return target - (shown - candidate.getTime());
+}
+
+type StaffAvailability = { member: StaffMember; starts: Map<number, number>; busy: BusyWindow[] };
+
+const NEXT_DATE_SEARCH_DAYS = 14;
+
+function openSlotsForDate(date: string, staffData: StaffAvailability[], partySize: number, durationMinutes: number): Record<string, string[]> {
+  const available: Record<string, string[]> = {};
+  for (const slot of getSlotsForDate(date, 1)) {
+    const startMs = localTorontoStart(date, slot.time);
+    if (startMs <= Date.now() || !isWithinBusinessHours(new Date(startMs), durationMinutes)) continue;
+    const endMs = startMs + durationMinutes * 60_000;
+    const free = staffData
+      .filter(({ starts, busy }) => availabilityCovers(starts, startMs, durationMinutes) && !overlapsBusy(busy, startMs, endMs))
+      .map(({ member }) => member);
+    // Distinct team members only; all five columns count equally toward capacity.
+    const names = Array.from(new Map(free.map((member) => [member.teamMemberId, member.name])).values());
+    if (names.length >= partySize) available[slot.time] = names;
+  }
+  return available;
+}
+
+async function loadStaffAvailability(roster: StaffMember[], locationId: string, rangeStart: number, rangeEnd: number): Promise<StaffAvailability[]> {
+  // One column failing in Square (e.g. not assigned to the probe service) must not hide every other column's slots.
+  const settled = await Promise.allSettled(roster.map(async (member) => {
+    const [starts, busy] = await Promise.all([
+      getSquareAvailableStarts(member.teamMemberId, rangeStart, rangeEnd, locationId),
+      fetchBusyWindows(locationId, member.teamMemberId, rangeStart, rangeEnd),
+    ]);
+    return { member, starts, busy };
+  }));
+  return settled.flatMap((result, index) => {
+    if (result.status === "fulfilled") return [result.value];
+    console.error(`[v0] Square availability skipped for ${roster[index].name}:`, result.reason instanceof Error ? result.reason.message : result.reason);
+    return [];
+  });
+}
+
+function addDays(date: string, days: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
+/** First later date where Square has enough distinct technicians free for the whole group. */
+async function findNextOpenDate(requestedDate: string, roster: StaffMember[], locationId: string, partySize: number, durationMinutes: number): Promise<string | null> {
+  const firstDate = addDays(requestedDate, 1);
+  const rangeStart = Math.max(Date.now(), localTorontoStart(firstDate, "00:00"));
+  const rangeEnd = localTorontoStart(addDays(firstDate, NEXT_DATE_SEARCH_DAYS), "00:00");
+  const staffData = await loadStaffAvailability(roster, locationId, rangeStart, rangeEnd);
+  if (staffData.length < partySize) return null;
+  for (let offset = 0; offset < NEXT_DATE_SEARCH_DAYS; offset += 1) {
+    const candidate = addDays(firstDate, offset);
+    if (Object.keys(openSlotsForDate(candidate, staffData, partySize, durationMinutes)).length > 0) return candidate;
+  }
+  return null;
 }
 
 export async function POST(request: Request) {
@@ -35,34 +91,16 @@ export async function POST(request: Request) {
       if (slots.length === 0 || roster.length < partySize) return NextResponse.json({ slots: {} });
       const dayStart = localTorontoStart(requestedDate, "00:00");
       const dayEnd = dayStart + 24 * 60 * 60_000;
-      const rangeStart = Math.max(Date.now(), localTorontoStart(requestedDate, slots[0].time) - 12 * 60 * 60_000);
+      // Square's availability search needs a range of at least 24h.
+      const rangeStart = Math.max(Date.now(), dayStart);
       // Working hours, days off and blocked time come from Square availability; existing bookings are re-checked per segment.
-      // One column failing in Square (e.g. not assigned to the probe service) must not hide every other column's slots.
-      const settled = await Promise.allSettled(roster.map(async (member) => {
-        const [starts, busy] = await Promise.all([
-          getSquareAvailableStarts(member.teamMemberId, rangeStart, rangeStart + 24 * 60 * 60_000, locationId),
-          fetchBusyWindows(locationId, member.teamMemberId, dayStart, dayEnd),
-        ]);
-        return { member, starts, busy };
-      }));
-      const staffData = settled.flatMap((result, index) => {
-        if (result.status === "fulfilled") return [result.value];
-        console.error(`[v0] Square availability skipped for ${roster[index].name}:`, result.reason instanceof Error ? result.reason.message : result.reason);
-        return [];
-      });
+      const staffData = await loadStaffAvailability(roster, locationId, rangeStart, Math.max(dayEnd, rangeStart + 24 * 60 * 60_000));
       if (staffData.length === 0) throw new Error("Square availability failed for every team member.");
-      const available: Record<string, string[]> = {};
-      for (const slot of slots) {
-        const startMs = localTorontoStart(requestedDate, slot.time);
-        const endMs = startMs + durationMinutes * 60_000;
-        const free = staffData
-          .filter(({ starts, busy }) => availabilityCovers(starts, startMs, durationMinutes) && !overlapsBusy(busy, startMs, endMs))
-          .map(({ member }) => member);
-        // Distinct team members only; all five columns count equally toward capacity.
-        const names = Array.from(new Map(free.map((member) => [member.teamMemberId, member.name])).values());
-        if (names.length >= partySize) available[slot.time] = names;
-      }
-      return NextResponse.json({ slots: available, staff: roster.map(({ name, kind }) => ({ name, kind })) });
+      const available = openSlotsForDate(requestedDate, staffData, partySize, durationMinutes);
+      const nextDate = Object.keys(available).length === 0
+        ? await findNextOpenDate(requestedDate, roster, locationId, partySize, durationMinutes).catch(() => null)
+        : null;
+      return NextResponse.json({ slots: available, nextDate, staff: roster.map(({ name, kind }) => ({ name, kind })) });
     } catch (error) {
       console.error("[v0] Square date availability search failed:", error instanceof Error ? error.message : error);
       return NextResponse.json({ error: "Square could not check appointment availability." }, { status: 502 });
