@@ -23,9 +23,10 @@ type AppointmentCalendarProps = {
   checkedOut: Record<string, boolean>;
   onOpenSlot: (technician: string, time: string) => void;
   onSelectBooking: (booking: CalendarBooking) => void;
+  staffNames?: string[];
 };
 
-const STAFF = ["Jenny", "Melika", "Nana", "Walk-in"];
+const DEFAULT_STAFF_NAMES = ["Jenny", "Melika", "Nana", "Option 1", "Option 2"];
 const START_MINUTE = 8 * 60;
 const HALF_HOUR_HEIGHT = 48;
 
@@ -43,8 +44,8 @@ function timeLabel(minutes: number) {
   return `${hour}:${String(minute).padStart(2, "0")} ${suffix}`;
 }
 
-function isUnassigned(booking: CalendarBooking) {
-  return !booking.status.startsWith("WALK_IN") && !booking.technicians.some((technician) => ["Jenny", "Melika", "Nana"].includes(technician));
+function isUnassigned(booking: CalendarBooking, staffNames: string[] = DEFAULT_STAFF_NAMES) {
+  return !booking.status.startsWith("WALK_IN") && !booking.technicians.some((technician) => staffNames.includes(technician));
 }
 
 function serviceSummary(booking: CalendarBooking) {
@@ -61,7 +62,8 @@ function statusInfo(booking: CalendarBooking, checkedOut: boolean) {
   return { label: booking.status.startsWith("WALK_IN") ? "Walk-in" : "Booked", className: "is-booked" };
 }
 
-export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSlot, onSelectBooking }: AppointmentCalendarProps) {
+export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSlot, onSelectBooking, staffNames = DEFAULT_STAFF_NAMES }: AppointmentCalendarProps) {
+  const STAFF = [...staffNames, "Walk-in"];
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const nowParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
   const nowValues = Object.fromEntries(nowParts.map((part) => [part.type, part.value]));
@@ -91,7 +93,7 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
       <div className="admin-time-header" aria-hidden="true">{timeZoneLabel}</div>
       {STAFF.map((name, index) => <div className="admin-staff-header" key={name}>
         <span className={`admin-staff-avatar avatar-${index}`}>{name === "Walk-in" ? "+" : name.charAt(0)}</span>
-        <span><strong>{name}</strong><small>{index === 3 ? "QUEUE" : "TECHNICIAN"}</small></span>
+        <span><strong>{name}</strong><small>{name === "Walk-in" ? "QUEUE" : name.startsWith("Option ") ? "OPTION" : "TECHNICIAN"}</small></span>
       </div>)}
     </div>
     <div className="admin-calendar-body">
@@ -103,7 +105,7 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
           const start = localMinutes(booking.startAt);
           if (start < START_MINUTE || start >= endMinute) return false;
           return staff === "Walk-in"
-            ? booking.status.startsWith("WALK_IN") || booking.technicians.includes("Walk-in") || isUnassigned(booking)
+            ? booking.status.startsWith("WALK_IN") || booking.technicians.includes("Walk-in") || isUnassigned(booking, staffNames)
             : booking.technicians.includes(staff) && !booking.status.startsWith("WALK_IN");
         });
         return <div className="admin-staff-column" key={staff}>

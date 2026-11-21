@@ -5,7 +5,9 @@ const BUSINESS_CLOSE_TIMES = ["19:00", "19:00", "19:00", "19:00", "20:00", "20:0
 
 export type PublicTechnician = "Jenny" | "Melika" | "Nana" | "Option 1";
 type InternalTechnician = "Option 2";
-export type Technician = PublicTechnician | InternalTechnician;
+export type KnownTechnician = PublicTechnician | InternalTechnician;
+// Additional active Square team members are resolved by display name at runtime.
+export type Technician = KnownTechnician | (string & {});
 
 export type ShiftBlock = {
   start: string;
