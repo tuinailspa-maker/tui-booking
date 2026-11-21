@@ -29,6 +29,8 @@ type AppointmentCalendarProps = {
 const DEFAULT_STAFF_NAMES = ["Jenny", "Melika", "Nana", "Option 1", "Option 2"];
 const START_MINUTE = 8 * 60;
 const HALF_HOUR_HEIGHT = 48;
+const TIME_AXIS_WIDTH = 68;
+const MIN_COLUMN_WIDTH = 160;
 
 function localMinutes(iso: string) {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(iso));
@@ -90,7 +92,7 @@ function layoutLanes(items: { id: string; start: number; end: number }[]) {
 }
 
 export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSlot, onSelectBooking, staffNames = DEFAULT_STAFF_NAMES }: AppointmentCalendarProps) {
-  const ALL_COLUMNS = [...staffNames, "Walk-in"];
+  const ALL_COLUMNS = Array.from(new Set(staffNames.filter((name) => name && name !== "Walk-in")));
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => new Set());
   const STAFF = ALL_COLUMNS.filter((name) => !hiddenColumns.has(name));
   const toggleColumn = (name: string) => setHiddenColumns((current) => {
@@ -99,8 +101,7 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
     else next.add(name);
     return next;
   });
-  const gridTemplateColumns = `68px repeat(${Math.max(1, STAFF.length)}, minmax(160px, 1fr))`;
-  const gridMinWidth = `${68 + Math.max(1, STAFF.length) * 160}px`;
+  const gridMinWidth = `${TIME_AXIS_WIDTH + Math.max(1, STAFF.length) * MIN_COLUMN_WIDTH}px`;
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const nowParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
   const nowValues = Object.fromEntries(nowParts.map((part) => [part.type, part.value]));
@@ -108,6 +109,7 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
   const closingTime = getClosingTimeForDate(date);
   const [closingHour, closingMinute] = closingTime.split(":").map(Number);
   const endMinute = closingHour * 60 + closingMinute;
+  const columnHeight = ((endMinute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT;
   const timeZoneLabel = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", timeZoneName: "short" }).formatToParts(new Date(`${date}T12:00:00Z`)).find((part) => part.type === "timeZoneName")?.value ?? "ET";
   const showNow = date === today && nowMinute >= START_MINUTE && nowMinute <= endMinute;
   const ticks = useMemo(() => Array.from({ length: (endMinute - START_MINUTE) / 30 + 1 }, (_, index) => START_MINUTE + index * 30), [endMinute]);
@@ -138,36 +140,35 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
   </div>
   {STAFF.length === 0 ? <p className="admin-calendar-empty" role="status">All columns are hidden. Use the toggles above to show a column.</p> :
   <div className="admin-calendar-shell" aria-label="Appointments calendar">
-    <div className="admin-calendar-header" style={{ gridTemplateColumns, minWidth: gridMinWidth }}>
-      <div className="admin-time-header" aria-hidden="true" style={{ gridColumn: 1, gridRow: 1 }}>{timeZoneLabel}</div>
-      {STAFF.map((name, index) => <div className="admin-staff-header" key={name} style={{ gridColumn: index + 2, gridRow: 1 }}>
-        <span className={`admin-staff-avatar avatar-${ALL_COLUMNS.indexOf(name) % 6}`}>{name === "Walk-in" ? "+" : name.charAt(0)}</span>
-        <span><strong>{name}</strong><small>{name === "Walk-in" ? "QUEUE" : name.startsWith("Option ") ? "OPTION" : "TECHNICIAN"}</small></span>
+    <div className="admin-cal-row admin-calendar-header" style={{ minWidth: gridMinWidth }}>
+      <div className="admin-time-header" aria-hidden="true">{timeZoneLabel}</div>
+      {STAFF.map((name) => <div className="admin-cal-lane admin-staff-header" key={name}>
+        <span className={`admin-staff-avatar avatar-${ALL_COLUMNS.indexOf(name) % 6}`}>{name.charAt(0)}</span>
+        <span><strong>{name}</strong><small>{name.startsWith("Option ") ? "OPTION" : "TECHNICIAN"}</small></span>
       </div>)}
     </div>
-    <div className="admin-calendar-body" style={{ gridTemplateColumns, minWidth: gridMinWidth }}>
-      <div className="admin-time-axis" aria-hidden="true" style={{ gridColumn: 1, gridRow: 1 }}>
+    <div className="admin-cal-row admin-calendar-body" style={{ minWidth: gridMinWidth, height: `${columnHeight}px` }}>
+      <div className="admin-time-axis" aria-hidden="true">
         {ticks.filter((minute) => minute % 60 === 0).map((minute) => <span key={minute} style={{ top: `${((minute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT}px` }}>{timeLabel(minute)}</span>)}
       </div>
-      {STAFF.map((staff, columnIndex) => {
+      <div className="admin-cal-lanes">
+      <div className="admin-grid-lines" aria-hidden="true">{ticks.map((minute) => <span className={minute % 60 === 0 ? "is-hour" : ""} key={minute} style={{ top: `${((minute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT}px` }} />)}</div>
+      {STAFF.map((staff) => {
         const assigned = bookings.filter((booking) => {
           const start = localMinutes(booking.startAt);
           if (start < START_MINUTE || start >= endMinute) return false;
-          return staff === "Walk-in"
-            ? booking.status.startsWith("WALK_IN") || booking.technicians.includes("Walk-in") || isUnassigned(booking, staffNames)
-            : booking.technicians.includes(staff) && !booking.status.startsWith("WALK_IN");
+          return booking.technicians.includes(staff);
         });
         const lanes = layoutLanes(assigned.map((booking) => {
           const start = localMinutes(booking.startAt);
           return { id: booking.id, start, end: start + Math.max(15, booking.durationMinutes || 30) };
         }));
-        return <div className="admin-staff-column" key={staff} style={{ gridColumn: columnIndex + 2, gridRow: 1 }}>
+        return <div className="admin-cal-lane admin-staff-column" key={staff}>
           {ticks.slice(0, -1).map((minute) => <button className="admin-calendar-slot" type="button" key={minute} aria-label={`New ${staff} appointment at ${timeLabel(minute)}`} style={{ top: `${((minute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT}px`, height: `${HALF_HOUR_HEIGHT}px` }} onClick={() => onOpenSlot(staff, `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`)} />)}
           {assigned.map((booking) => {
             const start = localMinutes(booking.startAt);
             const duration = Math.max(15, booking.durationMinutes || 30);
             const top = ((start - START_MINUTE) / 30) * HALF_HOUR_HEIGHT;
-            const columnHeight = ((endMinute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT;
             const height = Math.min(columnHeight - top, Math.max(34, (duration / 30) * HALF_HOUR_HEIGHT - 3));
             const status = statusInfo(booking, checkedOut[booking.id] === true);
             const { lane, lanes: laneCount } = lanes.get(booking.id) ?? { lane: 0, lanes: 1 };
@@ -181,8 +182,8 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
           })}
         </div>;
       })}
-      <div className="admin-grid-lines" aria-hidden="true" style={{ gridColumn: "2 / -1", gridRow: 1 }}>{ticks.map((minute) => <span className={minute % 60 === 0 ? "is-hour" : ""} key={minute} style={{ top: `${((minute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT}px` }} />)}</div>
-      {showNow && <div className="admin-current-time" aria-label={`Current time ${timeLabel(nowMinute)}`} style={{ gridColumn: "1 / -1", gridRow: 1, top: `${((nowMinute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT}px` }}><span />{timeLabel(nowMinute)}</div>}
+      </div>
+      {showNow && <div className="admin-current-time" aria-label={`Current time ${timeLabel(nowMinute)}`} style={{ top: `${((nowMinute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT}px` }}><span />{timeLabel(nowMinute)}</div>}
     </div>
   </div>}
   </div>;
