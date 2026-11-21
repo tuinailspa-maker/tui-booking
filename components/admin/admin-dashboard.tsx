@@ -124,6 +124,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
   const [date, setDate] = useState(initialDate);
   const [activeTab, setActiveTab] = useState<"schedule" | "queue" | "summary" | "reports">("schedule");
   const [scheduleView, setScheduleView] = useState<"day" | "list">("day");
+  const [showCatalogSync, setShowCatalogSync] = useState(false);
   const checkedOutSnapshot = useSyncExternalStore(subscribeToCheckedOut, readCheckedOutSnapshot, () => "{}");
   const checkedOut = useMemo<Record<string, boolean>>(() => JSON.parse(checkedOutSnapshot), [checkedOutSnapshot]);
   const [serviceOverrides, setServiceOverrides] = useState<Record<string, { serviceIds: string[][]; addOns: Record<string, ServiceAddOnKey>[] }>>({});
@@ -359,7 +360,11 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
             <article><span>Walk-ins waiting</span><strong>{appointments.filter((booking) => booking.status.startsWith("WALK_IN")).length}</strong><small>arrival queue</small></article>
             <article><span>Checked out</span><strong>${totalSales.toFixed(2)}</strong><small>{checkedOutCount} completed tickets</small></article>
           </section>
-          <SquareCatalogSync />
+          <section className="admin-catalog-tools" aria-label="Square catalog tools">
+            <div><h3>Square catalog sync</h3><p>Prices, durations, add-ons and taxes come from the internal service menu. Open only when Square needs to be re-synced.</p></div>
+            <button className="admin-secondary-button" type="button" aria-expanded={showCatalogSync} aria-controls="square-catalog-sync-panel" onClick={() => setShowCatalogSync((open) => !open)}>{showCatalogSync ? "Hide Square sync tools" : "Show Square sync tools"}</button>
+          </section>
+          {showCatalogSync && <div id="square-catalog-sync-panel"><SquareCatalogSync /></div>}
         </> : activeTab === "reports" ? <ReportsDashboard /> : <>
           <div className="admin-schedule-heading"><div><h2>{activeTab === "queue" ? "Arrival queue" : "Daily schedule"}</h2><p>{displayBookings.length} {displayBookings.length === 1 ? "appointment" : "appointments"} · 8:00 AM–{formatSlotTime(getClosingTimeForDate(date), "en")}</p></div><span className="admin-sync-note">Auto-refreshes every 60 seconds</span></div>
           {bookings.isLoading && <div className="admin-loading" role="status"><span className="admin-spinner" />Loading Square appointments…</div>}
@@ -370,6 +375,6 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
       </div>
     </div>
 
-    {drawerBooking && <ServiceEditor key={drawerBooking.id} initialServiceIds={currentEditorDraft?.serviceIds ?? drawerBooking.serviceIds} initialAddOns={currentEditorDraft?.addOns ?? drawerBooking.addOns} bookingId={drawerBooking.id} squareServiceReference={drawerBooking.squareBookingIds.length ? drawerBooking.serviceIds.flatMap((guestIds) => guestIds.map((id) => serviceById.get(id)?.nameEn).filter((name): name is string => Boolean(name))) : []} guestNames={drawerBooking.guestNames} customerName={drawerBooking.customerName} customerPhone={drawerBooking.phone} startAt={drawerBooking.startAt} technician={drawerTechnician} initialTechnicians={drawerBooking.technicians} status={drawerStatus} busy={assignmentBusy === drawerBooking.id} checkedOut={drawerStatus === "CHECKED_OUT"} onMarkCheckedOut={async () => { await updateBookingStatus(drawerBooking, "CHECKED_OUT"); }} onBillSelectionChange={(serviceIds, addOns) => saveBillingSelection(drawerBooking, serviceIds, addOns)} walkIn={Boolean(editor?.walkIn)} onCancel={() => setEditor(null)} onTechnicianChange={(technician) => void updateBookingTechnician(drawerBooking, technician)} onStatusChange={(status) => void updateBookingStatus(drawerBooking, status)} onSave={saveServices} onBookingCreated={async () => { setEditor(null); await bookings.mutate(); }} />}
+    {drawerBooking && <ServiceEditor key={drawerBooking.id} initialServiceIds={currentEditorDraft?.serviceIds ?? drawerBooking.serviceIds} initialAddOns={currentEditorDraft?.addOns ?? drawerBooking.addOns} bookingId={drawerBooking.id} guestNames={drawerBooking.guestNames} customerName={drawerBooking.customerName} customerPhone={drawerBooking.phone} startAt={drawerBooking.startAt} technician={drawerTechnician} initialTechnicians={drawerBooking.technicians} status={drawerStatus} busy={assignmentBusy === drawerBooking.id} checkedOut={drawerStatus === "CHECKED_OUT"} onMarkCheckedOut={async () => { await updateBookingStatus(drawerBooking, "CHECKED_OUT"); }} onBillSelectionChange={(serviceIds, addOns) => saveBillingSelection(drawerBooking, serviceIds, addOns)} walkIn={Boolean(editor?.walkIn)} onCancel={() => setEditor(null)} onTechnicianChange={(technician) => void updateBookingTechnician(drawerBooking, technician)} onStatusChange={(status) => void updateBookingStatus(drawerBooking, status)} onSave={saveServices} onBookingCreated={async () => { setEditor(null); await bookings.mutate(); }} />}
   </main>;
 }
