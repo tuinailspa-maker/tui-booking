@@ -26,7 +26,7 @@ export async function GET(request: Request) {
   }
 }
 
-/** Applies the internal prices and durations to Square via catalog batch-upsert. */
+/** Makes Square match the internal price list: updates, splits shared variations, creates missing ones, fixes item taxes. */
 export async function POST(request: Request) {
   if (!isAdminRequestAuthorized(request)) return unauthorized();
   const body = await request.json().catch(() => null);
@@ -34,8 +34,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Confirm the sync by sending { \"confirm\": true }." }, { status: 400, headers: NO_STORE });
   }
   try {
-    const { plan, updatedCount, before, after } = await applyCatalogSync();
-    return NextResponse.json({ ...plan, updatedCount, before, after }, { headers: NO_STORE });
+    return NextResponse.json(await applyCatalogSync().then(({ plan, ...result }) => ({ ...plan, ...result })), { headers: NO_STORE });
   } catch (error) {
     return failure(error);
   }

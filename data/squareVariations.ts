@@ -1,4 +1,6 @@
 import { SQUARE_API_VERSION } from "@/data/squareConfig";
+import { resolveServiceVariation } from "@/data/squareServiceMap";
+import { allServices } from "@/data/serviceTree";
 
 const PRODUCTION_URL = "https://connect.squareup.com/v2";
 const SANDBOX_URL = "https://connect.squareupsandbox.com/v2";
@@ -12,6 +14,8 @@ type SquareCatalogVariation = {
   version?: number;
   item_variation_data?: {
     name?: string;
+    sku?: string;
+    item_id?: string;
     service_duration?: number;
     available_for_booking?: boolean;
     price_money?: { amount?: number; currency?: string };
@@ -41,6 +45,7 @@ export type SquareServiceVariation = {
   version: number;
   durationMinutes: number | null;
   priceCents: number | null;
+  sku: string | null;
 };
 
 let cachedVariations: { expiresAt: number; variations: SquareServiceVariation[] } | undefined;
@@ -117,6 +122,7 @@ async function searchSquareCatalog(): Promise<SquareServiceVariation[]> {
           ? Math.round(data.service_duration / 60_000)
           : null,
         priceCents: typeof data.price_money?.amount === "number" ? data.price_money.amount : null,
+        sku: data.sku?.trim() || null,
       };
     });
 
@@ -144,6 +150,22 @@ export async function listSquareServiceVariations(): Promise<SquareServiceVariat
 export async function getLiveSquareVariationsById(): Promise<Map<string, SquareServiceVariation>> {
   const variations = await listSquareServiceVariations();
   return new Map(variations.map((variation) => [variation.variationId, variation]));
+}
+
+/** Internal service id -> its own live Square variation (SKU tag first, then the seeded static map). */
+export async function getServiceVariationLinks(): Promise<Map<string, SquareServiceVariation>> {
+  const variations = await listSquareServiceVariations();
+  const byId = new Map(variations.map((variation) => [variation.variationId, variation]));
+  const bySku = new Map<string, SquareServiceVariation>();
+  for (const variation of variations) {
+    if (variation.sku && !bySku.has(variation.sku)) bySku.set(variation.sku, variation);
+  }
+  const links = new Map<string, SquareServiceVariation>();
+  for (const service of allServices) {
+    const variation = resolveServiceVariation(service.id, bySku, byId, (item) => item.sku);
+    if (variation) links.set(service.id, variation);
+  }
+  return links;
 }
 
 export async function resolveSquareBookingVariation() {

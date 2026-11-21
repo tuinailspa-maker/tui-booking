@@ -8,6 +8,7 @@ const STATUS_LABEL: Record<ServiceComparisonStatus, string> = {
   price_mismatch: "Price mismatch",
   duration_mismatch: "Duration mismatch",
   price_and_duration_mismatch: "Price + duration mismatch",
+  shared_variation: "Shared variation",
   missing_variation: "Missing on Square",
   unmapped: "Not mapped",
   custom_line: "Custom line",
@@ -17,7 +18,7 @@ const money = (cents: number | null, currency?: string | null) =>
   cents === null ? "—" : `$${(cents / 100).toFixed(2)}${currency && currency !== "CAD" ? ` ${currency}` : ""}`;
 const minutes = (value: number | null) => (value === null ? "—" : `${value} min`);
 
-const isIssue = (row: ServiceComparisonRow) => row.status !== "match" && row.status !== "custom_line";
+const isIssue = (row: ServiceComparisonRow) => row.status !== "custom_line" && (row.status !== "match" || row.issues.length > 0);
 
 function statusTone(status: ServiceComparisonStatus) {
   if (status === "match") return "is-ok";
@@ -32,7 +33,7 @@ type Props = {
 };
 
 export function CatalogComparisonTable({ title, comparison, previous }: Props) {
-  const [filter, setFilter] = useState<"issues" | "all" | "add-ons">(comparison.summary.mismatched + comparison.summary.missingVariation + comparison.summary.unmapped > 0 ? "issues" : "all");
+  const [filter, setFilter] = useState<"issues" | "all" | "add-ons">(comparison.rows.some(isIssue) ? "issues" : "all");
   const previousById = new Map(previous?.rows.map((row) => [row.serviceId, row]));
   const rows = comparison.rows.filter((row) => (filter === "issues" ? isIssue(row) : filter === "add-ons" ? row.isAddOn : true));
   const { summary } = comparison;
@@ -45,8 +46,10 @@ export function CatalogComparisonTable({ title, comparison, previous }: Props) {
         <p>
           {summary.total} rows · <span className="is-ok">{summary.match} match</span>
           {" · "}<span className={summary.mismatched ? "is-bad" : ""}>{summary.mismatched} price/duration mismatch</span>
+          {" · "}<span className={summary.shared ? "is-bad" : ""}>{summary.shared} shared variation</span>
           {" · "}<span className={summary.missingVariation ? "is-bad" : ""}>{summary.missingVariation} missing on Square</span>
           {" · "}<span className={summary.unmapped ? "is-bad" : ""}>{summary.unmapped} not mapped</span>
+          {" · "}<span className={summary.taxIssues ? "is-bad" : ""}>{summary.taxIssues} tax issues</span>
           {" · "}{summary.customLines} custom add-on lines · checked {new Date(comparison.checkedAt).toLocaleTimeString()}
         </p>
       </div>

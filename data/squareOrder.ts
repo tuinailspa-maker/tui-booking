@@ -1,5 +1,5 @@
 import { TPS_RATE_PERCENT, TVQ_RATE_PERCENT, type BillLine, type BillTotals } from "@/data/billing";
-import { getLiveSquareVariationsById, type SquareServiceVariation } from "@/data/squareVariations";
+import { getServiceVariationLinks, type SquareServiceVariation } from "@/data/squareVariations";
 
 type Money = { amount: number; currency: "CAD" };
 const cad = (amount: number): Money => ({ amount, currency: "CAD" });
@@ -12,18 +12,20 @@ export type SquareOrderOptions = {
   metadata?: Record<string, string>;
 };
 
+/** Internal service id -> its live Square variation. */
 export async function loadLiveVariations(): Promise<Map<string, SquareServiceVariation>> {
   try {
-    return await getLiveSquareVariationsById();
+    return await getServiceVariationLinks();
   } catch (error) {
-    console.error("[v0] Square catalog lookup failed; billing every service as a custom line item:", error instanceof Error ? error.message : error);
+    console.error("Square catalog lookup failed; billing every service as a custom line item:", error instanceof Error ? error.message : error);
     return new Map();
   }
 }
 
-function lineUsesCatalog(line: BillLine, live: Map<string, SquareServiceVariation>) {
-  if (!line.square || !line.squarePriceMatches) return false;
-  return live.get(line.square.variationId)?.priceCents === line.basePriceCents;
+/** Uses the catalog item only when Square's live price equals the internal price, so the bill never shifts by a cent. */
+function catalogVariationFor(line: BillLine, links: Map<string, SquareServiceVariation>) {
+  const variation = links.get(line.serviceId);
+  return variation && variation.priceCents === line.basePriceCents ? variation : null;
 }
 
 export function buildSquareOrder(bill: BillTotals, live: Map<string, SquareServiceVariation>, options: SquareOrderOptions) {
@@ -31,8 +33,9 @@ export function buildSquareOrder(bill: BillTotals, live: Map<string, SquareServi
   bill.lines.forEach((line, index) => {
     const uid = `tui-${index + 1}`;
     const guestNote = `Guest ${line.guestIndex + 1}`;
-    if (lineUsesCatalog(line, live)) {
-      lineItems.push({ uid, catalog_object_id: line.square!.variationId, quantity: "1", note: guestNote });
+    const variation = catalogVariationFor(line, live);
+    if (variation) {
+      lineItems.push({ uid, catalog_object_id: variation.variationId, quantity: "1", note: guestNote });
       if (line.addOnPriceCents > 0) {
         lineItems.push({ uid: `${uid}-addon`, name: `${line.nameEn} + ${line.addOnNameEn ?? "Add-on"}`, quantity: "1", note: guestNote, base_price_money: cad(line.addOnPriceCents) });
       }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { selectedServiceDuration, selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
-import { getLiveSquareVariationsById } from "@/data/squareVariations";
+import { getServiceVariationLinks } from "@/data/squareVariations";
 import { calculateBill, centsToDollars } from "@/data/billing";
 import { isSquareSlotAvailable } from "@/data/squareAvailability";
 import { isWithinBusinessHours, type Technician } from "@/data/staffSchedule";
@@ -200,9 +200,9 @@ type AppointmentSegment = { duration_minutes: number; service_variation_id: stri
 
 /** One segment per mapped service, using its exact live Square variation and version. Never falls back to another service. */
 async function buildAppointmentSegments(request: BookingRequest): Promise<AppointmentSegment[][]> {
-  let live: Awaited<ReturnType<typeof getLiveSquareVariationsById>>;
+  let live: Awaited<ReturnType<typeof getServiceVariationLinks>>;
   try {
-    live = await getLiveSquareVariationsById();
+    live = await getServiceVariationLinks();
   } catch (error) {
     throw new SquareStepError("fetch_catalog", 502, [{ code: "CATALOG_LOOKUP_FAILED", field: null, detail: error instanceof Error ? error.message : "Could not load the Square service catalog." }]);
   }
@@ -213,13 +213,13 @@ async function buildAppointmentSegments(request: BookingRequest): Promise<Appoin
     const segments: AppointmentSegment[] = [];
     let unmappedMinutes = 0;
     for (const line of bill.guestLines[guestIndex]) {
-      if (!line.square) {
+      const variation = live.get(line.serviceId);
+      if (!variation) {
+        if (line.square) {
+          throw new SquareStepError("match_service", 502, [{ code: "SERVICE_VARIATION_NOT_FOUND", field: line.serviceId, detail: `"${line.nameEn}" has no bookable Square variation. Run the Square catalog sync in the admin.` }]);
+        }
         unmappedMinutes += line.durationMinutes;
         continue;
-      }
-      const variation = live.get(line.square.variationId);
-      if (!variation) {
-        throw new SquareStepError("match_service", 502, [{ code: "SERVICE_VARIATION_NOT_FOUND", field: line.serviceId, detail: `"${line.nameEn}" is mapped to Square variation ${line.square.variationId}, which is not bookable in the Square catalog.` }]);
       }
       segments.push({ duration_minutes: line.durationMinutes, service_variation_id: variation.variationId, service_variation_version: variation.version, team_member_id: teamMemberId });
     }

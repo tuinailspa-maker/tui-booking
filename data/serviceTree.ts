@@ -206,10 +206,7 @@ function assignDisplayPaths(nodes: ServiceNode[], parents: ServiceBranch[] = [])
       node.displayNameEn = override?.en ?? buildPath(node, parents, "en");
       node.displayNameFr = override?.fr ?? buildPath(node, parents, "fr");
       const squareMapping = squareMappingFor(node.id);
-      if (squareMapping) {
-        node.squareVariationId = squareMapping.variationId;
-        node.durationMinutes = squareMapping.durationMinutes;
-      }
+      if (squareMapping) node.squareVariationId = squareMapping.variationId;
     }
   }
 }

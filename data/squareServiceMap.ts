@@ -69,3 +69,28 @@ export const SQUARE_SERVICE_MAP: Record<string, SquareServiceMapping | null> = {
 export function squareMappingFor(serviceId: string): SquareServiceMapping | null {
   return SQUARE_SERVICE_MAP[serviceId] ?? null;
 }
+
+/**
+ * The catalog sync tags each Square variation with the SKU `TUI-<serviceId>`, so the link between an
+ * internal service and its Square variation lives on Square itself and survives variations the sync
+ * creates (split shared variations, missing services). The static map above is only the seed.
+ */
+export const SQUARE_SKU_PREFIX = "TUI-";
+
+export function squareSkuFor(serviceId: string) {
+  return `${SQUARE_SKU_PREFIX}${serviceId}`;
+}
+
+export function resolveServiceVariation<T>(
+  serviceId: string,
+  bySku: Map<string, T>,
+  byId: Map<string, T>,
+  skuOf: (variation: T) => string | null | undefined,
+): T | null {
+  const tagged = bySku.get(squareSkuFor(serviceId));
+  if (tagged) return tagged;
+  const mapping = squareMappingFor(serviceId);
+  const seeded = mapping ? byId.get(mapping.variationId) : undefined;
+  if (!seeded) return null;
+  return skuOf(seeded)?.startsWith(SQUARE_SKU_PREFIX) ? null : seeded;
+}
