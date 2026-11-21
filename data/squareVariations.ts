@@ -123,6 +123,10 @@ async function searchSquareCatalog(): Promise<SquareServiceVariation[]> {
   return allVariations;
 }
 
+export function clearSquareVariationCache() {
+  cachedVariations = undefined;
+}
+
 export async function listSquareServiceVariations(): Promise<SquareServiceVariation[]> {
   if (cachedVariations && cachedVariations.expiresAt > Date.now()) return cachedVariations.variations;
   if (!pendingVariations) {
