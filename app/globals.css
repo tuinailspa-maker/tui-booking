@@ -785,7 +785,9 @@ button { color: inherit; }
 .admin-time-axis { position: relative; height: 1152px; background: #fff; }
 .admin-time-axis span:first-child { transform: translateY(2px); }
 .admin-time-axis span { position: absolute; right: 9px; transform: translateY(-50%); padding: 0 2px; background: #fff; color: #777e87; font-size: 9px; white-space: nowrap; }
-.admin-staff-column { position: relative; height: 1152px; border-left: 1px solid var(--admin-line); background: transparent; }
+.admin-staff-column { position: relative; height: 1152px; border-left: 1px solid #cfd4da; background: transparent; }
+.admin-staff-column:nth-of-type(odd), .admin-staff-header:nth-of-type(odd) { background: #fafbfc; }
+.admin-staff-header { border-left-color: #cfd4da; }
 .admin-calendar-slot { position: absolute; z-index: 1; left: 0; width: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .admin-calendar-slot:hover { background: #fafafa; }
 .admin-grid-lines { position: absolute; z-index: 0; inset: 0 0 0 68px; pointer-events: none; }

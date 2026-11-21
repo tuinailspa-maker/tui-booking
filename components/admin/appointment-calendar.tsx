@@ -167,7 +167,8 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
             const start = localMinutes(booking.startAt);
             const duration = Math.max(15, booking.durationMinutes || 30);
             const top = ((start - START_MINUTE) / 30) * HALF_HOUR_HEIGHT;
-            const height = Math.max(34, (duration / 30) * HALF_HOUR_HEIGHT - 3);
+            const columnHeight = ((endMinute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT;
+            const height = Math.min(columnHeight - top, Math.max(34, (duration / 30) * HALF_HOUR_HEIGHT - 3));
             const status = statusInfo(booking, checkedOut[booking.id] === true);
             const { lane, lanes: laneCount } = lanes.get(booking.id) ?? { lane: 0, lanes: 1 };
             return <button type="button" key={booking.id} className={`admin-calendar-card ${status.className}`} style={{ top: `${top}px`, height: `${height}px`, left: `calc(${(lane / laneCount) * 100}% + 4px)`, width: `calc(${100 / laneCount}% - 8px)` }} onClick={() => onSelectBooking(booking)}>
