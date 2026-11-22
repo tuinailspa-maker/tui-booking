@@ -12,6 +12,7 @@ import { translations, type Language } from "./copy";
 import { Confirmation } from "./confirmation";
 import { ServiceTree } from "./service-tree";
 import { StepOne } from "./step-one";
+import { UpgradeOfferModal } from "./upgrade-offer-modal";
 
 type Step = 1 | 2 | 3 | 4;
 const initialClient: ClientDetailsValue = { firstName: "", lastName: "", countryCode: "+1", phone: "", email: "", notes: "" };
@@ -299,8 +300,16 @@ export function BookingApp() {
 
   const selectedPublicNames = Array.from(new Set(assignedTechnicians()));
 
+  function openServiceSelection() {
+    if (step === 1 && date && time) setStep(2);
+    requestAnimationFrame(() => {
+      document.getElementById("booking-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   return (
     <main className="booking-page">
+      <UpgradeOfferModal language={language} onLanguageChange={setLanguage} onBook={openServiceSelection} />
       <header className="booking-header">
         <a className="salon-wordmark" href="https://tuinailspa.ca" aria-label={`${copy.salon} — tuinailspa.ca`}>
           <Image src="/tui-logo.png" alt="Tui — La beauté des ongles" className="salon-logo" width={150} height={104} priority />
@@ -351,7 +360,7 @@ export function BookingApp() {
           onStartAgain={startAgain}
         />
       ) : (
-        <div className="booking-layout">
+        <div className="booking-layout" id="booking-workspace">
           <div className="booking-main-column">
             {step === 1 && (
               <StepOne
