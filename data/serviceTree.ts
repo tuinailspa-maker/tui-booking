@@ -116,7 +116,8 @@ export const serviceTree: ServiceBranch[] = [
       ]),
       service("treatment-collagen", "Collagen", "Collagène", 10, 10),
       service("treatment-extra-callus-remover-heels", "Extra Callus Remover Heels", "Callosités talons", 20, 15),
-      service("treatment-extra-calcium-strong-gel", "Extra Calcium Strong Gel", "Supplément Gel Calcium Renforcé", 10, 15),
+        service("treatment-extra-calcium-strong-gel", "Extra Calcium Strong Gel", "Supplément Gel Calcium Renforcé", 10, 15),
+        service("treatment-exfoliating-dry-skin-care", "Exfoliating & Dry-Skin Care", "Soin exfoliant peaux sèches", 20, 15),
     ]),
     branch("add-on", "Add-on", "Supplément", [
       service("add-on-basic-art", "Basic art — french, simple line, dots", "Décor simple : french, lignes, pois", 10, 15),
@@ -191,6 +192,7 @@ const DISPLAY_PATH_OVERRIDES: Record<string, { en: string; fr: string }> = {
   "treatment-collagen": { en: "Treatment / Collagen", fr: "Soin / Collagène" },
   "treatment-extra-callus-remover-heels": { en: "Treatment / Extra Callus Remover Heels", fr: "Soin / Callosités talons" },
   "treatment-extra-calcium-strong-gel": { en: "Treatment / Extra Calcium Strong Gel", fr: "Soin / Supplément Gel Calcium Renforcé" },
+  "treatment-exfoliating-dry-skin-care": { en: "Treatment / Exfoliating & Dry-Skin Care", fr: "Soin / Soin exfoliant peaux sèches" },
   "add-on-basic-art": { en: "Add-on / Basic art — french, simple line, dots", fr: "Supplément / Décor simple (French, lignes, pois)" },
   "add-on-chrome-cat-eye": { en: "Add-on / Chrome, cat eye", fr: "Supplément / Chrome, œil de chat" },
   "add-on-custom-art": { en: "Add-on / Hand painting 3D charms, custom", fr: "Supplément / Peinture à main levée, décor 3D, création sur mesure" },
