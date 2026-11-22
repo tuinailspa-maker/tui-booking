@@ -2,6 +2,7 @@
 
 import { useRef, useState, useSyncExternalStore } from "react";
 import useSWR from "swr";
+import { useSquareSync } from "@/hooks/use-square-sync";
 import { allServices, selectedServiceDuration, selectedServicePrice, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
 import { ServiceTree } from "@/components/booking/service-tree";
 import { translations } from "@/components/booking/copy";
@@ -127,7 +128,8 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
   }, 0)));
   const findingAppointment = walkIn && mode === "appointment";
   const availabilityKey = findingAppointment && bookingDate && requestedDuration > 0 ? ["/api/bookings/availability", bookingDate, partySize, requestedDuration] as const : null;
-  const availability = useSWR(availabilityKey, fetchSlotAvailability, { refreshInterval: 60_000, revalidateOnFocus: true, keepPreviousData: false });
+  const availability = useSWR(availabilityKey, fetchSlotAvailability, { refreshInterval: 30_000, revalidateOnFocus: true, keepPreviousData: false });
+  useSquareSync(() => void availability.mutate());
   const availableSlots = availability.data ?? {};
   const availableTimes = Object.keys(availableSlots).sort();
   const quickDates = upcomingDates(7);

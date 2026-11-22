@@ -4,12 +4,10 @@ import { DEFAULT_STAFF_ROSTER, sortStaff, staffKind, type StaffMember } from "@/
 
 const PRODUCTION_URL = "https://connect.squareup.com/v2";
 const SANDBOX_URL = "https://connect.squareupsandbox.com/v2";
-// Short TTL so a team member newly opened in Square Appointments joins availability within a minute.
-const ROSTER_TTL_MS = 60_000;
 const INACTIVE_BOOKING_STATUSES = new Set(["CANCELLED_BY_CUSTOMER", "CANCELLED_BY_SELLER", "DECLINED", "NO_SHOW"]);
 const SLOT_STEP_MINUTES = 15;
 
-export type BusyWindow = { bookingId: string; startMs: number; endMs: number };
+export type BusyWindow = { bookingId: string; startMs: number; endMs: number; createdAtMs: number };
 
 function squareBaseUrl() {
   return process.env.SQUARE_ENVIRONMENT === "sandbox" ? SANDBOX_URL : PRODUCTION_URL;
@@ -44,15 +42,16 @@ async function fetchBookableTeamMemberIds(): Promise<Set<string> | null> {
   }
 }
 
-let rosterCache: { locationId: string; expiresAt: number; roster: StaffMember[] } | null = null;
+// Only used when Square is unreachable; every successful lookup is fetched live so columns
+// opened or closed in Square Appointments take effect on the very next request.
+let lastGoodRoster: { locationId: string; roster: StaffMember[] } | null = null;
 
 /**
- * All ACTIVE Square team members at the location. Known staff keep their names
- * (Jenny, Melika, Nana, Option 1, Option 2); every member is equal booking capacity.
- * Falls back to the static roster if Square cannot be reached.
+ * All ACTIVE Square team members at the location, fetched live (no-store) on every call.
+ * Known staff keep their names (Jenny, Melika, Nana, Option 1, Option 2); every member is
+ * equal booking capacity. Falls back to the last live roster, then the static roster.
  */
 export async function getStaffRoster(locationId: string): Promise<StaffMember[]> {
-  if (rosterCache && rosterCache.locationId === locationId && rosterCache.expiresAt > Date.now()) return rosterCache.roster;
   const knownById = new Map(Object.entries(SQUARE_TEAM_MEMBER_IDS).map(([name, id]) => [id, name]));
   try {
     const members: { id: string; given_name?: string; family_name?: string }[] = [];
@@ -84,11 +83,11 @@ export async function getStaffRoster(locationId: string): Promise<StaffMember[]>
       return { name, teamMemberId: member.id, kind: known ? staffKind(known) : "real" as const };
     });
     const sorted = sortStaff(roster);
-    rosterCache = { locationId, expiresAt: Date.now() + ROSTER_TTL_MS, roster: sorted };
+    lastGoodRoster = { locationId, roster: sorted };
     return sorted;
   } catch (error) {
-    console.error("[v0] Square roster lookup failed, using static staff:", error instanceof Error ? error.message : error);
-    return DEFAULT_STAFF_ROSTER;
+    console.error("[v0] Square roster lookup failed, using last known staff:", error instanceof Error ? error.message : error);
+    return lastGoodRoster?.locationId === locationId ? lastGoodRoster.roster : DEFAULT_STAFF_ROSTER;
   }
 }
 
@@ -108,14 +107,15 @@ export async function fetchBusyWindows(locationId: string, teamMemberId: string,
     const response = await fetch(`${squareBaseUrl()}/bookings?${params}`, { cache: "no-store", headers: authHeaders() });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.errors?.map((error: { detail?: string }) => error.detail).filter(Boolean).join("; ") || "Square booking list failed.");
-    for (const booking of (data.bookings ?? []) as { id: string; status?: string; start_at?: string; appointment_segments?: { duration_minutes?: number; team_member_id?: string }[] }[]) {
+    for (const booking of (data.bookings ?? []) as { id: string; status?: string; start_at?: string; created_at?: string; appointment_segments?: { duration_minutes?: number; team_member_id?: string }[] }[]) {
       if (booking.status && INACTIVE_BOOKING_STATUSES.has(booking.status)) continue;
       let cursorMs = booking.start_at ? Date.parse(booking.start_at) : Number.NaN;
       if (!Number.isFinite(cursorMs)) continue;
+      const createdAtMs = booking.created_at ? Date.parse(booking.created_at) : 0;
       for (const segment of booking.appointment_segments ?? []) {
         const endMs = cursorMs + (segment.duration_minutes ?? 0) * 60_000;
         if (segment.team_member_id === teamMemberId && endMs > cursorMs && cursorMs < toMs && endMs > fromMs) {
-          windows.push({ bookingId: booking.id, startMs: cursorMs, endMs });
+          windows.push({ bookingId: booking.id, startMs: cursorMs, endMs, createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : 0 });
         }
         cursorMs = endMs;
       }
