@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
-import { resolveServiceVariation, squareMappingFor, squareSkuFor, squareSurchargeSkuFor, surchargeLinkKey } from "@/data/squareServiceMap";
+import { resolveServiceVariation, SQUARE_SKU_PREFIX, squareMappingFor, squareSkuFor, squareSurchargeSkuFor, SURCHARGE_SKU_MARKER, surchargeLinkKey } from "@/data/squareServiceMap";
 import { allServices, serviceDisplayName, serviceTree, type ServiceLeaf, type ServiceNode } from "@/data/serviceTree";
 import { TPS_RATE_PERCENT, TVQ_RATE_PERCENT } from "@/data/billing";
 import { clearSquareVariationCache } from "@/data/squareVariations";
@@ -396,7 +396,7 @@ function assign(catalog: Catalog, targets: ServiceTarget[]): Assignment {
       free.push(target);
       continue;
     }
-    const variation = resolveServiceVariation(target.id, catalog.bySku, catalog.variations, (item) => item.item_variation_data?.sku?.trim());
+    const variation = resolveServiceVariation(target.id, catalog.bySku, catalog.variations);
     if (variation) {
       const list = byVariation.get(variation.id) ?? [];
       list.push(target);
@@ -796,6 +796,37 @@ async function buildPlan() {
         sharedVariationId: null,
       });
     }
+  }
+
+  // A variation tagged with a service's SKU that is not that service's variation (e.g. a recreated
+  // "(Long M/L)" variant) only loses the tag; its price, duration and bookings stay untouched.
+  const resolvedBySku = new Map<string, string>();
+  for (const [variationId, services] of byVariation) {
+    for (const service of services) resolvedBySku.set(service.sku, variationId);
+  }
+  const updatedIds = new Set(updates.map((update) => update.id));
+  for (const variation of catalog.variations.values()) {
+    const data = variation.item_variation_data ?? {};
+    const sku = data.sku?.trim();
+    if (!sku?.startsWith(SQUARE_SKU_PREFIX) || sku.includes(SURCHARGE_SKU_MARKER) || updatedIds.has(variation.id)) continue;
+    const owner = targets.find((target) => target.sku === sku);
+    const ownerVariationId = resolvedBySku.get(sku);
+    if (!owner || !ownerVariationId || ownerVariationId === variation.id) continue;
+    const currentPriceCents = variationPrice(variation);
+    const currentDurationMinutes = variationMinutes(variation);
+    changes.push({
+      variationId: variation.id,
+      squareName: data.name ?? variation.id,
+      internalServices: [],
+      currentPriceCents,
+      targetPriceCents: currentPriceCents ?? 0,
+      currentDurationMinutes,
+      targetDurationMinutes: currentDurationMinutes ?? 0,
+      priceChanged: false,
+      durationChanged: false,
+      warnings: [`Removes the stale SKU ${sku}: this variation is not ${owner.name}. Price and duration stay as they are in Square.`],
+    });
+    updates.push({ ...variation, item_variation_data: { ...data, sku: undefined } });
   }
 
   const taxFixes = [...touchedItemIds]

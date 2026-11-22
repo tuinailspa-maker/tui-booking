@@ -162,7 +162,7 @@ export async function getServiceVariationLinks(): Promise<Map<string, SquareServ
   }
   const links = new Map<string, SquareServiceVariation>();
   for (const service of allServices) {
-    const variation = resolveServiceVariation(service.id, bySku, byId, (item) => item.sku);
+    const variation = resolveServiceVariation(service.id, bySku, byId);
     if (variation) links.set(service.id, variation);
     if (service.addOn) {
       const surcharge = bySku.get(squareSurchargeSkuFor(service.id, service.addOn.key));
