@@ -49,12 +49,63 @@ export async function loadStaffAvailability(roster: StaffMember[], locationId: s
   });
 }
 
-/** Today's (Toronto) open slots for a party, using a range that satisfies Square's 24h minimum. */
-export async function openSlotsToday(roster: StaffMember[], locationId: string, today: string, partySize: number, durationMinutes: number) {
-  const dayStart = localTorontoStart(today, "00:00");
+/** One day's (Toronto) staff availability, using a range that satisfies Square's 24h minimum. */
+async function loadDayStaff(roster: StaffMember[], locationId: string, date: string) {
+  const dayStart = localTorontoStart(date, "00:00");
   const rangeStart = Math.max(Date.now(), dayStart);
   const rangeEnd = Math.max(dayStart + 24 * 60 * 60_000, rangeStart + 24 * 60 * 60_000);
   const staffData = await loadStaffAvailability(roster, locationId, rangeStart, rangeEnd);
   if (staffData.length === 0) throw new Error("Square availability failed for every team member.");
-  return openSlotsForDate(today, staffData, partySize, durationMinutes);
+  return staffData;
+}
+
+/** Open slots for a party where every guest has the same duration. */
+export async function openSlotsToday(roster: StaffMember[], locationId: string, today: string, partySize: number, durationMinutes: number) {
+  return openSlotsForDate(today, await loadDayStaff(roster, locationId, today), partySize, durationMinutes);
+}
+
+/**
+ * Gives each guest a different technician from their own candidate list, or returns null.
+ * Guests with the fewest options are placed first so a flexible guest never takes a scarce technician.
+ */
+export function matchDistinctTechnicians(candidates: StaffMember[][]): StaffMember[] | null {
+  const order = candidates.map((_, index) => index).sort((a, b) => candidates[a].length - candidates[b].length);
+  const picked: StaffMember[] = new Array(candidates.length);
+  const used = new Set<string>();
+  const place = (position: number): boolean => {
+    if (position === order.length) return true;
+    const guest = order[position];
+    for (const member of candidates[guest]) {
+      if (used.has(member.teamMemberId)) continue;
+      used.add(member.teamMemberId);
+      picked[guest] = member;
+      if (place(position + 1)) return true;
+      used.delete(member.teamMemberId);
+    }
+    return false;
+  };
+  return place(0) ? picked : null;
+}
+
+/** Slot time (HH:MM) -> one distinct technician per guest, all starting at exactly that time. */
+export function groupSlotsForDate(date: string, staffData: StaffAvailability[], durations: number[]): Record<string, StaffMember[]> {
+  const longest = Math.max(...durations);
+  const members = Array.from(new Map(staffData.map((entry) => [entry.member.teamMemberId, entry])).values());
+  const open: Record<string, StaffMember[]> = {};
+  for (const slot of getSlotsForDate(date, 1)) {
+    const startMs = localTorontoStart(date, slot.time);
+    if (startMs <= Date.now() || !isWithinBusinessHours(new Date(startMs), longest)) continue;
+    const candidates = durations.map((duration) => members
+      .filter(({ starts, busy }) => availabilityCovers(starts, startMs, duration) && !overlapsBusy(busy, startMs, startMs + duration * 60_000))
+      .map(({ member }) => member));
+    const match = matchDistinctTechnicians(candidates);
+    if (match) open[slot.time] = match;
+  }
+  return open;
+}
+
+/** Times on `date` where the whole group can start together, each guest with their own technician. */
+export async function openGroupSlots(roster: StaffMember[], locationId: string, date: string, durations: number[]) {
+  if (durations.length === 0 || roster.length < durations.length) return {};
+  return groupSlotsForDate(date, await loadDayStaff(roster, locationId, date), durations);
 }

@@ -102,7 +102,7 @@ export async function POST(request: Request) {
   const name = typeof body?.name === "string" ? body.name.trim().slice(0, 100) : "";
   const phone = typeof body?.phone === "string" ? body.phone.trim().slice(0, 30) : "";
   const serviceIds: string[] = Array.isArray(body?.serviceIds) ? body.serviceIds.filter((id: unknown): id is string => typeof id === "string" && serviceById.has(id) && /^(hands-|enhancement-|feet-|waxing-)/.test(id)).slice(0, 8) : [];
-  const guestCount = Number.isInteger(body?.guestCount) && body.guestCount >= 1 && body.guestCount <= 3 ? body.guestCount : 1;
+  const guestCount = Number.isInteger(body?.guestCount) && body.guestCount >= 1 && body.guestCount <= 4 ? body.guestCount : 1;
   if (!name || normalizePhone(phone).length !== 10) return NextResponse.json({ error: "Enter a name and valid phone number." }, { status: 400 });
   try {
     const catalog = await square<{ objects?: CatalogItem[] }>("/catalog/search", "POST", { object_types: ["ITEM"], include_deleted_objects: false, limit: 100 });

@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
-import { localTorontoStart, openSlotsToday } from "@/data/dayAvailability";
+import { localTorontoStart, openGroupSlots } from "@/data/dayAvailability";
 import { notifyOwnerSms, recordCheckIn, square, telegram } from "@/data/lateCheckin";
 import { buildGuestSegments, SegmentMappingError } from "@/data/squareSegments";
 import { getStaffRoster, verifyGuestAssignments } from "@/data/squareStaff";
 import { bumpSquareSyncVersion } from "@/data/squareSync";
 import { getServiceVariationLinks } from "@/data/squareVariations";
+import type { StaffMember } from "@/data/staffRoster";
 import { getTorontoToday } from "@/data/staffSchedule";
-import { ownerDateTimeLabel, parseGuestCount, parseWalkinDate, parseWalkinServices, walkinDurationMinutes, walkinServiceSummary } from "@/data/walkin";
+import { ownerDateTimeLabel, parseWalkinDate, parseWalkinGuests, walkinDurationMinutes, walkinServiceSummary } from "@/data/walkin";
+import { saveWalkinBookings } from "@/data/walkinStore";
 
 const REQUEST_ID_PATTERN = /^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$/;
 const NO_STORE = { "Cache-Control": "no-store" };
@@ -34,52 +36,68 @@ async function cancelBookings(requestId: string, bookings: CreatedBooking[]) {
   }).catch((error) => console.error("[v0] Walk-in rollback failed:", booking.id, error instanceof Error ? error.message : error))));
 }
 
+/** The kiosk's suggested technicians, when they are real, distinct roster members (one per guest). */
+function requestedTechnicians(value: unknown, roster: StaffMember[], guestCount: number): StaffMember[] | null {
+  if (!Array.isArray(value) || value.length !== guestCount) return null;
+  const byId = new Map(roster.map((member) => [member.teamMemberId, member]));
+  const members = value.map((id) => (typeof id === "string" ? byId.get(id) : undefined));
+  if (members.some((member) => !member)) return null;
+  return new Set(value).size === value.length ? (members as StaffMember[]) : null;
+}
+
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const name = typeof body?.name === "string" ? body.name.trim().replace(/\s+/g, " ").slice(0, 100) : "";
   const digits = typeof body?.phone === "string" ? body.phone.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "") : "";
-  const services = parseWalkinServices(body?.serviceIds);
-  const guestCount = parseGuestCount(body?.guestCount);
+  const parsedGuests = parseWalkinGuests(body);
   const requestId = typeof body?.requestId === "string" && REQUEST_ID_PATTERN.test(body.requestId) ? body.requestId : null;
   const time = typeof body?.time === "string" && /^\d{2}:\d{2}$/.test(body.time) ? body.time : null;
   const today = getTorontoToday();
   const date = parseWalkinDate(body?.date, today);
-  if (!name || digits.length !== 10 || !services || !guestCount || !requestId || !time || !date) return fail("Invalid walk-in booking.", 400);
+  if (!name || digits.length !== 10 || !parsedGuests || !requestId || !time || !date) return fail("Invalid walk-in booking.", 400);
 
   const locationId = process.env.SQUARE_LOCATION_ID;
   if (!process.env.SQUARE_ACCESS_TOKEN || !locationId) return fail("Square is not configured.", 500);
 
+  // Guest 1 is always the person at the kiosk.
+  const guests = parsedGuests.map((guest, index) => (index === 0 ? { ...guest, name } : guest));
+  const guestCount = guests.length;
+  const isGroup = guestCount > 1;
   // Only same-day bookings count as an arrival; future bookings check in normally on the day.
   const isToday = date === today;
   const startMs = localTorontoStart(date, time);
-  const durationMinutes = walkinDurationMinutes(services);
-  const serviceIds = services.map((service) => service.id);
+  const durations = guests.map((guest) => walkinDurationMinutes(guest.services));
 
   try {
-    // Re-derive the free technicians for this exact slot on the server; the client only picks a time.
+    // Re-check the exact start time on the server: the whole group must still fit, each with a different technician.
     const roster = await getStaffRoster(locationId);
-    const open = await openSlotsToday(roster, locationId, date, guestCount, durationMinutes);
-    const technicians = open[time]?.slice(0, guestCount);
-    if (!technicians || technicians.length < guestCount) return fail(SLOT_TAKEN, 409);
-    const guests = technicians.map((technician) => ({ technician, durationMinutes }));
-    const assignment = await verifyGuestAssignments(locationId, startMs, guests);
+    const open = await openGroupSlots(roster, locationId, date, durations);
+    const fresh = open[time];
+    if (!fresh) return fail(SLOT_TAKEN, 409);
+    const verify = (members: StaffMember[]) => verifyGuestAssignments(locationId, startMs, members.map((member, index) => ({ technician: member.name, durationMinutes: durations[index] })));
+    const requested = requestedTechnicians(body?.assignments, roster, guestCount);
+    let assignment = requested ? await verify(requested) : null;
+    if (!assignment?.ok) assignment = await verify(fresh);
     if (!assignment.ok) return fail(SLOT_TAKEN, 409);
+    const technicians = assignment.members;
 
     const phoneE164 = `+1${digits}`;
     const customer = await findOrCreateCustomer(name, phoneE164, requestId);
     const live = await getServiceVariationLinks();
-    const segmentsByGuest = assignment.members.map((member) => buildGuestSegments(serviceIds, {}, live, member.teamMemberId));
+    const segmentsByGuest = guests.map((guest, index) => buildGuestSegments(guest.services.map((service) => service.id), {}, live, technicians[index].teamMemberId));
 
     const checkedInAt = new Date();
-    const summary = walkinServiceSummary(services);
+    const startIso = new Date(startMs).toISOString();
+    const statusTags = isToday ? `[CHECKED_IN] [TUI_CHECKED_IN:${checkedInAt.toISOString()}]` : "[KIOSK-BOOKED]";
     const created: CreatedBooking[] = [];
     try {
       for (const [index, segments] of segmentsByGuest.entries()) {
-        const tags = isToday ? `[WALK-IN] [CHECKED_IN] [TUI_CHECKED_IN:${checkedInAt.toISOString()}]` : "[KIOSK-BOOKED]";
-        const note = `${tags} Guests: ${guestCount} (guest ${index + 1}/${guestCount}). Services: ${summary}. Client: ${name}, ${phoneE164}.`;
+        const guest = guests[index];
+        const label = isGroup ? `[WALK-IN GROUP ${index + 1}/${guestCount}] - ${guest.name} ${statusTags}` : isToday ? `[WALK-IN] ${statusTags}` : statusTags;
+        const note = `${label} Guests: ${guestCount}. Services: ${walkinServiceSummary(guest.services)}. Client: ${name}, ${phoneE164}.`;
         const { booking } = await square<{ booking: CreatedBooking }>("/bookings", "POST", {
           idempotency_key: `${requestId}-${index + 1}`,
-          booking: { location_id: locationId, start_at: new Date(startMs).toISOString(), customer_id: customer.id, seller_note: note.slice(0, 500), appointment_segments: segments },
+          booking: { location_id: locationId, start_at: startIso, customer_id: customer.id, seller_note: note.slice(0, 500), appointment_segments: segments },
         });
         created.push(booking);
       }
@@ -92,29 +110,46 @@ export async function POST(request: Request) {
     if (isToday) {
       await Promise.all(created.map((booking) => recordCheckIn(booking.id, checkedInAt).catch((error) => console.error("[v0] Saving walk-in check-in failed:", booking.id, error))));
     }
+    await saveWalkinBookings(created.map((booking, index) => ({
+      bookingId: booking.id,
+      groupId: requestId,
+      guestIndex: index + 1,
+      guestCount,
+      guestName: guests[index].name,
+      representativeName: name,
+      phone: phoneE164,
+      startAt: startIso,
+      serviceIds: guests[index].services.map((service) => service.id),
+      teamMemberId: technicians[index].teamMemberId,
+      checkedIn: isToday,
+    }))).catch((error) => console.error("[v0] Saving walk-in bookings failed:", error instanceof Error ? error.message : error));
     await bumpSquareSyncVersion("booking.created.walkin").catch(() => undefined);
 
-    const startIso = new Date(startMs).toISOString();
+    // One combined notice per channel for the whole group.
     const when = ownerDateTimeLabel(startIso);
+    const serviceNames = (index: number) => guests[index].services.map((service) => service.displayNameEn).join(", ");
+    const smsGuests = isGroup ? guests.map((guest, index) => `G${index + 1} ${guest.name}: ${serviceNames(index)}`).join("; ") : `Services: ${serviceNames(0)}`;
     const ownerSms = notifyOwnerSms(
-      `Tui ${isToday ? "walk-in booked" : "kiosk booking"}: ${name}, ${phoneE164}, ${when}, ${guestCount} guest${guestCount > 1 ? "s" : ""}. Services: ${services.map((service) => service.displayNameEn).join(", ")}`,
+      `Tui ${isToday ? "walk-in" : "kiosk booking"}${isGroup ? " group" : ""}: ${name}, ${phoneE164}, ${when}, ${guestCount} guest${isGroup ? "s" : ""}. ${smsGuests}`,
     );
     const ownerChatId = process.env.OWNER_CHAT_ID;
     if (ownerChatId) {
+      const heading = isToday ? `Walk-in ${isGroup ? "group " : ""}booked and checked in` : `Kiosk ${isGroup ? "group " : ""}booking for a future date (not checked in)`;
       const text = [
-        isToday ? "Walk-in booked and checked in" : "Kiosk booking for a future date (not checked in)",
+        heading,
         `Name: ${name}`,
         `Phone: ${phoneE164}`,
         `Date & time: ${when}`,
         `Guests: ${guestCount}`,
-        `Services: ${services.map((service) => service.displayNameEn).join(", ")}`,
-        `Technician: ${technicians.join(", ")}`,
+        ...(isGroup
+          ? guests.map((guest, index) => `${index + 1}. ${guest.name} — ${serviceNames(index)} (Technician: ${technicians[index].name})`)
+          : [`Services: ${serviceNames(0)}`, `Technician: ${technicians[0].name}`]),
       ].join("\n");
       await telegram("sendMessage", { chat_id: ownerChatId, text }).catch((error) => console.error("[v0] Walk-in Telegram notice failed:", error instanceof Error ? error.message : error));
     }
     await ownerSms;
 
-    return NextResponse.json({ success: true, bookingIds: created.map((booking) => booking.id), startAt: startIso, isToday, technicians }, { headers: NO_STORE });
+    return NextResponse.json({ success: true, bookingIds: created.map((booking) => booking.id), startAt: startIso, isToday, technicians: technicians.map((member) => member.name) }, { headers: NO_STORE });
   } catch (error) {
     if (error instanceof SegmentMappingError) return fail("One of the selected services is not bookable in Square yet. Please ask a team member.", 400);
     console.error("[v0] Walk-in booking failed:", error instanceof Error ? error.message : error);
