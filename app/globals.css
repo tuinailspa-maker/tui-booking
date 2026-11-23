@@ -1072,3 +1072,12 @@ button { color: inherit; }
 .admin-catalog-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; padding: 14px 16px; border: 1px dashed var(--line); background: var(--paper); }
 .admin-catalog-tools h3 { margin: 0; font-size: 12px; }
 .admin-catalog-tools p { margin: 4px 0 0; font-size: 11px; color: #7a746a; max-width: 60ch; }
+
+.branch-total { flex: none; color: #9a9184; font-size: 9px; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.summary-service-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e7dccb; }
+.summary-action-link { padding: 4px 0; border: 0; background: transparent; color: #8a6f4c !important; cursor: pointer; font: inherit; font-size: 10px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.summary-action-link:hover { color: var(--gold) !important; }
+.summary-action-link.is-danger { color: #b4553f !important; }
+.summary-action-link:focus-visible, .change-services-button:focus-visible { outline: 2px solid var(--sage); outline-offset: 2px; }
+.change-services-button { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 14px; padding: 8px 14px; border: 1px solid #e7dccb; border-radius: 999px; background: #fffdf9; color: #8a6f4c !important; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; }
+.change-services-button:hover { border-color: var(--gold); color: var(--gold) !important; }

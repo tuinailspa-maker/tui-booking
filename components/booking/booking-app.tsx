@@ -149,6 +149,21 @@ export function BookingApp() {
     setAvailabilityError(false);
   }
 
+  function clearAllServices() {
+    setSelections((current) => current.map(() => []));
+    setServiceAddOns((current) => current.map(() => ({})));
+    setServiceError(false);
+    setDurationError(false);
+    setAvailabilityError(false);
+  }
+
+  function changeServices() {
+    setStep(2);
+    requestAnimationFrame(() => {
+      document.getElementById("booking-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   function toggleServiceAddOn(serviceId: string) {
     const addOn = serviceById.get(serviceId)?.addOn;
     if (!addOn) return;
@@ -431,6 +446,7 @@ export function BookingApp() {
 
             {step === 3 && (
               <>
+            <button type="button" className="change-services-button" onClick={changeServices}><span aria-hidden="true">←</span>{copy.changeServices}</button>
             {bookingError && <p className="validation-note" role="alert">{copy.bookingFailed} {bookingError}</p>}
             <ClientDetails copy={copy} value={client} onChange={setClient} onSubmit={submitClientDetails} />
           </>
@@ -451,7 +467,7 @@ export function BookingApp() {
           </div>
 
           <aside className="desktop-summary" aria-label={copy.summary}>
-            <BookingSummary language={language} copy={copy} partySize={partySize} date={date} time={time} selections={selections} serviceAddOns={serviceAddOns} onRemoveService={step === 2 || step === 3 ? removeService : undefined} />
+            <BookingSummary language={language} copy={copy} partySize={partySize} date={date} time={time} selections={selections} serviceAddOns={serviceAddOns} onRemoveService={step === 2 || step === 3 ? removeService : undefined} onClearAll={step === 2 || step === 3 ? clearAllServices : undefined} onChangeServices={step === 3 ? changeServices : undefined} />
           </aside>
         </div>
       )}
@@ -459,7 +475,7 @@ export function BookingApp() {
       {step !== 4 && (
         <div className="mobile-summary-wrap">
           <div className="mobile-summary-details" id="mobile-summary-details" hidden={!showMobileSummary}>
-            <BookingSummary language={language} copy={copy} partySize={partySize} date={date} time={time} selections={selections} serviceAddOns={serviceAddOns} onRemoveService={step === 2 || step === 3 ? removeService : undefined} />
+            <BookingSummary language={language} copy={copy} partySize={partySize} date={date} time={time} selections={selections} serviceAddOns={serviceAddOns} onRemoveService={step === 2 || step === 3 ? removeService : undefined} onClearAll={step === 2 || step === 3 ? clearAllServices : undefined} onChangeServices={step === 3 ? changeServices : undefined} />
           </div>
           <button className="mobile-summary-bar" type="button" aria-expanded={showMobileSummary} aria-controls="mobile-summary-details" onClick={() => setShowMobileSummary((open) => !open)}>
             <span className="mobile-summary-label"><span>{copy.summary}</span><small>{totals.serviceCount} {copy.summarySelected.toLowerCase()} · {totals.duration} min</small></span>
