@@ -13,10 +13,10 @@ export function parseWalkinServices(value: unknown): ServiceLeaf[] | null {
 }
 
 export function parseGuestCount(value: unknown): number | null {
-  return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 3 ? Number(value) : null;
+  return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= MAX_WALKIN_GUESTS ? Number(value) : null;
 }
 
-export const MAX_WALKIN_GUESTS = 3;
+export const MAX_WALKIN_GUESTS = 4;
 export type WalkinGuest = { name: string; services: ServiceLeaf[] };
 
 function guestName(value: unknown, index: number) {
