@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { selectedServiceDuration, serviceById, serviceDisplayNameWithAddOn } from "@/data/serviceTree";
 import { BUSINESS_TIME_ZONE } from "@/data/staffSchedule";
 import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
-import { recordCheckIn } from "@/data/lateCheckin";
+import { notifyOwnerSms, recordCheckIn, torontoTime } from "@/data/lateCheckin";
 
 const API = process.env.SQUARE_ENVIRONMENT === "sandbox" ? "https://connect.squareupsandbox.com/v2" : "https://connect.squareup.com/v2";
 const LOCATION_ID = process.env.SQUARE_LOCATION_ID || "R73A64VPAR34X";
@@ -92,6 +92,8 @@ export async function PATCH(request: Request) {
     const note = `${(booking.seller_note ?? "").slice(0, 500 - checkInMarker.length - 1)} ${checkInMarker}`.trim();
     await square(`/bookings/${encodeURIComponent(body.id)}`, "PUT", { booking: { version: booking.version, seller_note: note } });
     await saveCheckIn(booking.id, new Date(arrivalAt));
+    const guestName = [customer.customer.given_name, customer.customer.family_name].filter(Boolean).join(" ") || "Guest";
+    await notifyOwnerSms(`${guestName} (hẹn ${torontoTime(booking.start_at)}) đã check-in tại quầy`);
     return NextResponse.json({ success: true, arrivalAt }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return responseError(error); }
 }
@@ -129,6 +131,7 @@ export async function POST(request: Request) {
       ? serviceMatches.map(({ item, variation }) => ({ duration_minutes: selectedServiceDuration(item), service_variation_id: variation.id, service_variation_version: variation.version, team_member_id: teamId }))
       : [{ duration_minutes: 15, service_variation_id: fallbackVariation!.id, service_variation_version: fallbackVariation!.version, team_member_id: teamId }];
     const created = await square<{ booking: { id: string } }>("/bookings", "POST", { idempotency_key: crypto.randomUUID(), booking: { location_id: LOCATION_ID, start_at: bookingStartAt.toISOString(), customer_id: customer.id, seller_note: notes.slice(0, 500), appointment_segments: segments } });
+    await notifyOwnerSms(`Tui: new walk-in waiting - ${name}, ${phoneNumber}, ${guestCount} guest${guestCount > 1 ? "s" : ""}. Services: ${selected.length ? selected.map((item) => item.nameEn).join(", ") : "not chosen"}`);
     return NextResponse.json({ success: true, id: created.booking.id }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return responseError(error); }
 }

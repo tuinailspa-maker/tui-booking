@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { localTorontoStart, openSlotsToday } from "@/data/dayAvailability";
-import { recordCheckIn, square, telegram, torontoTime } from "@/data/lateCheckin";
+import { notifyOwnerSms, recordCheckIn, square, telegram, torontoTime } from "@/data/lateCheckin";
 import { buildGuestSegments, SegmentMappingError } from "@/data/squareSegments";
 import { getStaffRoster, verifyGuestAssignments } from "@/data/squareStaff";
 import { bumpSquareSyncVersion } from "@/data/squareSync";
@@ -89,6 +89,9 @@ export async function POST(request: Request) {
     await bumpSquareSyncVersion("booking.created.walkin").catch(() => undefined);
 
     const startIso = new Date(startMs).toISOString();
+    const ownerSms = notifyOwnerSms(
+      `Tui walk-in booked: ${name}, ${phoneE164}, ${torontoTime(startIso)}, ${guestCount} guest${guestCount > 1 ? "s" : ""}. Services: ${services.map((service) => service.displayNameEn).join(", ")}`,
+    );
     const ownerChatId = process.env.OWNER_CHAT_ID;
     if (ownerChatId) {
       const text = [
@@ -102,6 +105,7 @@ export async function POST(request: Request) {
       ].join("\n");
       await telegram("sendMessage", { chat_id: ownerChatId, text }).catch((error) => console.error("[v0] Walk-in Telegram notice failed:", error instanceof Error ? error.message : error));
     }
+    await ownerSms;
 
     return NextResponse.json({ success: true, bookingIds: created.map((booking) => booking.id), startAt: startIso, technicians }, { headers: NO_STORE });
   } catch (error) {
