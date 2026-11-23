@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { localTorontoStart, openSlotsToday } from "@/data/dayAvailability";
-import { notifyOwnerSms, recordCheckIn, square, telegram, torontoTime } from "@/data/lateCheckin";
+import { notifyOwnerSms, recordCheckIn, square, telegram } from "@/data/lateCheckin";
 import { buildGuestSegments, SegmentMappingError } from "@/data/squareSegments";
 import { getStaffRoster, verifyGuestAssignments } from "@/data/squareStaff";
 import { bumpSquareSyncVersion } from "@/data/squareSync";
 import { getServiceVariationLinks } from "@/data/squareVariations";
 import { getTorontoToday } from "@/data/staffSchedule";
-import { parseGuestCount, parseWalkinServices, walkinDurationMinutes, walkinServiceSummary } from "@/data/walkin";
+import { ownerDateTimeLabel, parseGuestCount, parseWalkinDate, parseWalkinServices, walkinDurationMinutes, walkinServiceSummary } from "@/data/walkin";
 
 const REQUEST_ID_PATTERN = /^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$/;
 const NO_STORE = { "Cache-Control": "no-store" };
@@ -42,20 +42,23 @@ export async function POST(request: Request) {
   const guestCount = parseGuestCount(body?.guestCount);
   const requestId = typeof body?.requestId === "string" && REQUEST_ID_PATTERN.test(body.requestId) ? body.requestId : null;
   const time = typeof body?.time === "string" && /^\d{2}:\d{2}$/.test(body.time) ? body.time : null;
-  if (!name || digits.length !== 10 || !services || !guestCount || !requestId || !time) return fail("Invalid walk-in booking.", 400);
+  const today = getTorontoToday();
+  const date = parseWalkinDate(body?.date, today);
+  if (!name || digits.length !== 10 || !services || !guestCount || !requestId || !time || !date) return fail("Invalid walk-in booking.", 400);
 
   const locationId = process.env.SQUARE_LOCATION_ID;
   if (!process.env.SQUARE_ACCESS_TOKEN || !locationId) return fail("Square is not configured.", 500);
 
-  const today = getTorontoToday();
-  const startMs = localTorontoStart(today, time);
+  // Only same-day bookings count as an arrival; future bookings check in normally on the day.
+  const isToday = date === today;
+  const startMs = localTorontoStart(date, time);
   const durationMinutes = walkinDurationMinutes(services);
   const serviceIds = services.map((service) => service.id);
 
   try {
     // Re-derive the free technicians for this exact slot on the server; the client only picks a time.
     const roster = await getStaffRoster(locationId);
-    const open = await openSlotsToday(roster, locationId, today, guestCount, durationMinutes);
+    const open = await openSlotsToday(roster, locationId, date, guestCount, durationMinutes);
     const technicians = open[time]?.slice(0, guestCount);
     if (!technicians || technicians.length < guestCount) return fail(SLOT_TAKEN, 409);
     const guests = technicians.map((technician) => ({ technician, durationMinutes }));
@@ -72,7 +75,8 @@ export async function POST(request: Request) {
     const created: CreatedBooking[] = [];
     try {
       for (const [index, segments] of segmentsByGuest.entries()) {
-        const note = `[WALK-IN] [CHECKED_IN] [TUI_CHECKED_IN:${checkedInAt.toISOString()}] Guests: ${guestCount} (guest ${index + 1}/${guestCount}). Services: ${summary}. Client: ${name}, ${phoneE164}.`;
+        const tags = isToday ? `[WALK-IN] [CHECKED_IN] [TUI_CHECKED_IN:${checkedInAt.toISOString()}]` : "[KIOSK-BOOKED]";
+        const note = `${tags} Guests: ${guestCount} (guest ${index + 1}/${guestCount}). Services: ${summary}. Client: ${name}, ${phoneE164}.`;
         const { booking } = await square<{ booking: CreatedBooking }>("/bookings", "POST", {
           idempotency_key: `${requestId}-${index + 1}`,
           booking: { location_id: locationId, start_at: new Date(startMs).toISOString(), customer_id: customer.id, seller_note: note.slice(0, 500), appointment_segments: segments },
@@ -85,20 +89,23 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    await Promise.all(created.map((booking) => recordCheckIn(booking.id, checkedInAt).catch((error) => console.error("[v0] Saving walk-in check-in failed:", booking.id, error))));
+    if (isToday) {
+      await Promise.all(created.map((booking) => recordCheckIn(booking.id, checkedInAt).catch((error) => console.error("[v0] Saving walk-in check-in failed:", booking.id, error))));
+    }
     await bumpSquareSyncVersion("booking.created.walkin").catch(() => undefined);
 
     const startIso = new Date(startMs).toISOString();
+    const when = ownerDateTimeLabel(startIso);
     const ownerSms = notifyOwnerSms(
-      `Tui walk-in booked: ${name}, ${phoneE164}, ${torontoTime(startIso)}, ${guestCount} guest${guestCount > 1 ? "s" : ""}. Services: ${services.map((service) => service.displayNameEn).join(", ")}`,
+      `Tui ${isToday ? "walk-in booked" : "kiosk booking"}: ${name}, ${phoneE164}, ${when}, ${guestCount} guest${guestCount > 1 ? "s" : ""}. Services: ${services.map((service) => service.displayNameEn).join(", ")}`,
     );
     const ownerChatId = process.env.OWNER_CHAT_ID;
     if (ownerChatId) {
       const text = [
-        "Walk-in booked and checked in",
+        isToday ? "Walk-in booked and checked in" : "Kiosk booking for a future date (not checked in)",
         `Name: ${name}`,
         `Phone: ${phoneE164}`,
-        `Time: ${torontoTime(startIso)}`,
+        `Date & time: ${when}`,
         `Guests: ${guestCount}`,
         `Services: ${services.map((service) => service.displayNameEn).join(", ")}`,
         `Technician: ${technicians.join(", ")}`,
@@ -107,7 +114,7 @@ export async function POST(request: Request) {
     }
     await ownerSms;
 
-    return NextResponse.json({ success: true, bookingIds: created.map((booking) => booking.id), startAt: startIso, technicians }, { headers: NO_STORE });
+    return NextResponse.json({ success: true, bookingIds: created.map((booking) => booking.id), startAt: startIso, isToday, technicians }, { headers: NO_STORE });
   } catch (error) {
     if (error instanceof SegmentMappingError) return fail("One of the selected services is not bookable in Square yet. Please ask a team member.", 400);
     console.error("[v0] Walk-in booking failed:", error instanceof Error ? error.message : error);
