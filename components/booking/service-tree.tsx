@@ -135,11 +135,10 @@ export function ServiceTree({ language, copy, selectedIds, selectedAddOns, onTog
           aria-expanded={open}
           onClick={() => toggleBranch(node.id, depth)}
         >
-          <span className={`branch-chevron${open ? " is-open" : ""}`} aria-hidden="true">⌄</span>
+          <span className={`branch-chevron${open ? " is-open" : ""}`} aria-hidden="true" />
           <span className="branch-name">{name}</span>
-          {depth === 0 && <span className="branch-total">{branchLeaves.length} {copy.servicesUnit}</span>}
           {note && node.id !== "enhancement-new-set" && node.id !== "enhancement-refill" && <span className="branch-note">{note}</span>}
-          {count > 0 && <span className="branch-count" aria-label={`${count} ${copy.selectedCount}`}>{count}</span>}
+          {depth > 0 && count > 0 && <span className="branch-count" aria-label={`${count} ${copy.selectedCount}`}>{count}</span>}
         </button>
         <div className={`tree-children${open ? " is-open" : ""}`} aria-hidden={!open} inert={!open}>
           <div className="tree-inner">
