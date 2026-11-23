@@ -168,14 +168,30 @@ export async function sendSms(to: string, body: string) {
 }
 
 // Owner alerts are best-effort: failures are logged and never surface to the guest-facing kiosk.
+export function ownerPhoneNumbers() {
+  const raw = [process.env.OWNER_PHONE_NUMBER, process.env.OWNER_PHONE_NUMBER_2].filter(Boolean).join(",");
+  return Array.from(new Set(raw.split(",").map((value) => value.trim()).filter(Boolean)));
+}
+
+function maskPhone(phone: string) {
+  return phone.length > 4 ? `***${phone.slice(-4)}` : "***";
+}
+
 export async function notifyOwnerSms(body: string) {
-  const to = process.env.OWNER_PHONE_NUMBER;
-  if (!to) {
-    console.warn("[v0] OWNER_PHONE_NUMBER is not set; owner SMS skipped.");
-    return;
-  }
   try {
-    await sendSms(to, body.slice(0, 600));
+    const recipients = ownerPhoneNumbers();
+    if (!recipients.length) {
+      console.warn("[v0] OWNER_PHONE_NUMBER is not set; owner SMS skipped.");
+      return;
+    }
+    const message = body.slice(0, 600);
+    const results = await Promise.allSettled(recipients.map((to) => sendSms(to, message)));
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        const reason = result.reason instanceof Error ? result.reason.message : result.reason;
+        console.error(`[v0] Owner SMS to ${maskPhone(recipients[index])} failed:`, reason);
+      }
+    });
   } catch (error) {
     console.error("[v0] Owner SMS failed:", error instanceof Error ? error.message : error);
   }
