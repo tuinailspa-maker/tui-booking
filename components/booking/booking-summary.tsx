@@ -14,6 +14,7 @@ type BookingSummaryProps = {
   onRemoveService?: (guestIndex: number, serviceId: string) => void;
   onClearAll?: () => void;
   onChangeServices?: () => void;
+  technicianLabel?: string;
 };
 
 export function getBookingTotals(selections: string[][], serviceAddOns: Record<string, ServiceAddOnKey>[] = []) {
@@ -55,7 +56,7 @@ export function formatDate(date: string, language: Language) {
   }).format(new Date(`${date}T12:00:00Z`));
 }
 
-export function BookingSummary({ language, copy, partySize, date, time, selections, serviceAddOns, onRemoveService, onClearAll, onChangeServices }: BookingSummaryProps) {
+export function BookingSummary({ language, copy, partySize, date, time, selections, serviceAddOns, onRemoveService, onClearAll, onChangeServices, technicianLabel }: BookingSummaryProps) {
   const totals = getBookingTotals(selections, serviceAddOns);
   return (
     <div className="summary-content">
@@ -68,6 +69,7 @@ export function BookingSummary({ language, copy, partySize, date, time, selectio
         <div><span>{copy.summaryGuests}</span><strong>{partySize} {partySize === 1 ? copy.guest : copy.guests}</strong></div>
         {date && <div><span>{copy.summaryDate}</span><strong>{formatDate(date, language)}</strong></div>}
         {time && <div><span>{copy.summaryTime}</span><strong>{formatSlotTime(time, language)}</strong></div>}
+        {technicianLabel && <div><span>{copy.summaryTechnician}</span><strong>{technicianLabel}</strong></div>}
       </div>
       <div className="summary-services">
         <div className="summary-section-title"><span>{copy.summarySelected}</span><span>{totals.serviceCount}</span></div>

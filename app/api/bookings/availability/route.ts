@@ -12,7 +12,7 @@ function addDays(date: string, days: number): string {
 }
 
 /** First later date where Square has enough distinct technicians free for the whole group. */
-async function findNextOpenDate(requestedDate: string, roster: StaffMember[], locationId: string, partySize: number, durationMinutes: number): Promise<string | null> {
+async function findNextOpenDate(requestedDate: string, roster: StaffMember[], locationId: string, partySize: number, durationMinutes: number, preferred: StaffMember | null): Promise<string | null> {
   const firstDate = addDays(requestedDate, 1);
   const rangeStart = Math.max(Date.now(), localTorontoStart(firstDate, "00:00"));
   const rangeEnd = localTorontoStart(addDays(firstDate, NEXT_DATE_SEARCH_DAYS), "00:00");
@@ -20,15 +20,21 @@ async function findNextOpenDate(requestedDate: string, roster: StaffMember[], lo
   if (staffData.length < partySize) return null;
   for (let offset = 0; offset < NEXT_DATE_SEARCH_DAYS; offset += 1) {
     const candidate = addDays(firstDate, offset);
-    if (Object.keys(openSlotsForDate(candidate, staffData, partySize, durationMinutes)).length > 0) return candidate;
+    if (Object.keys(withPreferred(openSlotsForDate(candidate, staffData, partySize, durationMinutes), preferred)).length > 0) return candidate;
   }
   return null;
+}
+
+/** Keeps only slots where the chosen technician is one of the free team members. */
+function withPreferred(slots: Record<string, string[]>, preferred: StaffMember | null): Record<string, string[]> {
+  if (!preferred) return slots;
+  return Object.fromEntries(Object.entries(slots).filter(([, names]) => names.includes(preferred.name)));
 }
 
 export async function POST(request: Request) {
   const input: unknown = await request.json().catch(() => null);
   if (!input || typeof input !== "object") return NextResponse.json({ error: "Invalid availability request." }, { status: 400 });
-  const body = input as { date?: unknown; partySize?: unknown; durationMinutes?: unknown; startAt?: unknown; guests?: unknown };
+  const body = input as { date?: unknown; partySize?: unknown; durationMinutes?: unknown; startAt?: unknown; guests?: unknown; teamMemberId?: unknown };
   const token = process.env.SQUARE_ACCESS_TOKEN;
   const locationId = process.env.SQUARE_LOCATION_ID;
   if (!token || !locationId) return NextResponse.json({ error: "Square is not configured." }, { status: 500 });
@@ -42,7 +48,13 @@ export async function POST(request: Request) {
     }
     const slots = getSlotsForDate(requestedDate, 1).filter((slot) => isWithinBusinessHours(new Date(localTorontoStart(requestedDate, slot.time)), durationMinutes));
     try {
-      const roster = await getStaffRoster(locationId);
+      const fullRoster = await getStaffRoster(locationId);
+      const requestedMemberId = typeof body.teamMemberId === "string" && body.teamMemberId ? body.teamMemberId : null;
+      const preferred = requestedMemberId ? fullRoster.find((member) => member.teamMemberId === requestedMemberId) ?? null : null;
+      if (requestedMemberId && !preferred) return NextResponse.json({ slots: {}, nextDate: null });
+      // A solo guest with a chosen technician only needs that one column searched (team_member_id_filter);
+      // a group still needs the rest of the team for the other guests.
+      const roster = preferred && partySize === 1 ? [preferred] : fullRoster;
       if (slots.length === 0 || roster.length < partySize) return NextResponse.json({ slots: {} });
       const dayStart = localTorontoStart(requestedDate, "00:00");
       const dayEnd = dayStart + 24 * 60 * 60_000;
@@ -51,9 +63,9 @@ export async function POST(request: Request) {
       // Working hours, days off and blocked time come from Square availability; existing bookings are re-checked per segment.
       const staffData = await loadStaffAvailability(roster, locationId, rangeStart, Math.max(dayEnd, rangeStart + 24 * 60 * 60_000));
       if (staffData.length === 0) throw new Error("Square availability failed for every team member.");
-      const available = openSlotsForDate(requestedDate, staffData, partySize, durationMinutes);
+      const available = withPreferred(openSlotsForDate(requestedDate, staffData, partySize, durationMinutes), preferred);
       const nextDate = Object.keys(available).length === 0
-        ? await findNextOpenDate(requestedDate, roster, locationId, partySize, durationMinutes).catch(() => null)
+        ? await findNextOpenDate(requestedDate, roster, locationId, partySize, durationMinutes, preferred).catch(() => null)
         : null;
       return NextResponse.json({ slots: available, nextDate, staff: roster.map(({ name, kind }) => ({ name, kind })) });
     } catch (error) {
