@@ -88,6 +88,14 @@
 .kiosk-reset-track { height: 3px; margin-top: 35px; background: #eee6e1; }
 .kiosk-reset-track span { width: 100%; height: 100%; display: block; transform-origin: left; background: #b57f80; animation: kiosk-reset 6s linear forwards; }
 @keyframes kiosk-reset { to { transform: scaleX(0); } }
+.kiosk-date-bar { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 24px; }
+.kiosk-date-bar > button, .kiosk-date-field { min-height: 60px; display: flex; align-items: center; gap: 12px; padding: 0 22px; border: 1px solid var(--kiosk-line); background: var(--kiosk-paper); color: var(--kiosk-ink); font-size: 16px; cursor: pointer; }
+.kiosk-date-bar > button[aria-pressed="true"], .kiosk-date-field[data-active="true"] { border-color: #bd8588; background: #fbf2ef; }
+.kiosk-date-field { position: relative; flex: 1 1 240px; justify-content: space-between; }
+.kiosk-date-field:focus-within { outline: 2px solid #bd8588; outline-offset: 2px; }
+.kiosk-date-hint { color: var(--kiosk-muted); font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.kiosk-date-value { font: 22px Georgia, serif; }
+.kiosk-date-field input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .kiosk-slots { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 .kiosk-slots button { min-height: 84px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border: 1px solid var(--kiosk-line); background: var(--kiosk-paper); color: var(--kiosk-ink); cursor: pointer; }
 .kiosk-slots button[aria-pressed="true"] { border-color: #bd8588; background: #fbf2ef; }
