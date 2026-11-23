@@ -16,6 +16,33 @@ export function parseGuestCount(value: unknown): number | null {
   return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 3 ? Number(value) : null;
 }
 
+export const MAX_WALKIN_GUESTS = 3;
+export type WalkinGuest = { name: string; services: ServiceLeaf[] };
+
+function guestName(value: unknown, index: number) {
+  const name = typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, 60) : "";
+  return name || `Guest ${index + 1}`;
+}
+
+/**
+ * Each guest with their own services. Accepts `guests: [{ name, serviceIds }]`, or the older
+ * `serviceIds` + `guestCount` shape (everyone gets the same services). Null when any guest is invalid.
+ */
+export function parseWalkinGuests(body: unknown): WalkinGuest[] | null {
+  const input = (body ?? {}) as { guests?: unknown; serviceIds?: unknown; guestCount?: unknown };
+  if (Array.isArray(input.guests)) {
+    if (input.guests.length === 0 || input.guests.length > MAX_WALKIN_GUESTS) return null;
+    const guests = input.guests.map((guest, index) => {
+      const services = parseWalkinServices((guest as { serviceIds?: unknown })?.serviceIds);
+      return services ? { name: guestName((guest as { name?: unknown })?.name, index), services } : null;
+    });
+    return guests.every(Boolean) ? (guests as WalkinGuest[]) : null;
+  }
+  const services = parseWalkinServices(input.serviceIds);
+  const count = parseGuestCount(input.guestCount);
+  return services && count ? Array.from({ length: count }, (_, index) => ({ name: `Guest ${index + 1}`, services })) : null;
+}
+
 export const MAX_WALKIN_DAYS_AHEAD = 60;
 
 function addDays(date: string, days: number) {

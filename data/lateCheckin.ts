@@ -25,6 +25,7 @@ type SquareCustomer = { id: string; given_name?: string; family_name?: string; p
 const globalForCheckin = globalThis as typeof globalThis & { checkinPool?: Pool; checkinTableReady?: Promise<void> };
 const pool = globalForCheckin.checkinPool ?? new Pool({ connectionString: process.env.DATABASE_URL, max: 3 });
 if (process.env.NODE_ENV !== "production") globalForCheckin.checkinPool = pool;
+export { pool as checkinPool };
 
 function ensureTable() {
   globalForCheckin.checkinTableReady ??= pool.query(`
