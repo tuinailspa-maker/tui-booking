@@ -40,7 +40,7 @@ function fullDateLabel(iso: string, language: Language) {
   }).format(new Date(`${iso}T12:00:00Z`));
 }
 
-export function StepOne({ language, copy, partySize, onPartySizeChange, date, onDateChange, time, onTimeChange, availabilitySlots, isAvailabilityLoading, nextAvailableDate, technicians, technicianId, isTechniciansLoading, onTechnicianChange }: StepOneProps) {
+export function StepOne({ language, copy, partySize, onPartySizeChange, date, onDateChange, time, onTimeChange, availabilitySlots, isAvailabilityLoading, nextAvailableDate, technicians = [], technicianId = "", isTechniciansLoading, onTechnicianChange }: StepOneProps) {
   const [dates, setDates] = useState<DateOption[]>([]);
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setDates(getUpcomingDates(language)));
