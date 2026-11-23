@@ -166,6 +166,20 @@ export async function sendSms(to: string, body: string) {
   }
 }
 
+// Owner alerts are best-effort: failures are logged and never surface to the guest-facing kiosk.
+export async function notifyOwnerSms(body: string) {
+  const to = process.env.OWNER_PHONE_NUMBER;
+  if (!to) {
+    console.warn("[v0] OWNER_PHONE_NUMBER is not set; owner SMS skipped.");
+    return;
+  }
+  try {
+    await sendSms(to, body.slice(0, 600));
+  } catch (error) {
+    console.error("[v0] Owner SMS failed:", error instanceof Error ? error.message : error);
+  }
+}
+
 export async function telegram<T = unknown>(method: string, payload: Record<string, unknown>): Promise<T> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) throw new Error("Telegram is not configured.");
