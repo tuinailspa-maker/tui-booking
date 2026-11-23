@@ -28,9 +28,17 @@ function visibleNodes(nodes: ServiceNode[], query: string, language: Language): 
   });
 }
 
-function allBranchIds(nodes: ServiceNode[]): string[] {
-  return nodes.flatMap((node) => node.type === "branch" ? [node.id, ...allBranchIds(node.children)] : []);
+const ROOT_CATEGORY_ORDER = ["hands", "feet", "variable-add-ons", "waxing"];
+
+function rootRank(id: string) {
+  const index = ROOT_CATEGORY_ORDER.indexOf(id);
+  return index === -1 ? ROOT_CATEGORY_ORDER.length : index;
 }
+
+const orderedServiceTree = serviceTree
+  .map((node, index) => ({ node, index }))
+  .sort((a, b) => rootRank(a.node.id) - rootRank(b.node.id) || a.index - b.index)
+  .map(({ node }) => node);
 
 function leaves(node: ServiceNode): ServiceLeaf[] {
   return node.type === "service" ? [node] : node.children.flatMap(leaves);
@@ -58,17 +66,15 @@ function formatPrice(price: number, language: Language) {
 export function ServiceTree({ language, copy, selectedIds, selectedAddOns, onToggleService, onToggleAddOn, disabled = false }: ServiceTreeProps) {
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<string[]>([]);
-  const tree = useMemo(() => visibleNodes(
-    // Keep the canonical category order from the source data.
-    serviceTree,
-    query,
-    language,
-  ), [query, language]);
-  const allIds = useMemo(() => allBranchIds(serviceTree), []);
+  const tree = useMemo(() => visibleNodes(orderedServiceTree, query, language), [query, language]);
   const selected = new Set(selectedIds);
 
-  function toggleBranch(id: string) {
-    setExpanded((current) => current.includes(id) ? current.filter((openId) => openId !== id) : [...current, id]);
+  function toggleBranch(id: string, depth: number) {
+    setExpanded((current) => {
+      if (current.includes(id)) return current.filter((openId) => openId !== id);
+      // Opening a main category closes the previously open one (and its sub-branches).
+      return depth === 0 ? [id] : [...current, id];
+    });
   }
 
   function renderNode(node: ServiceNode, depth: number): ReactNode {
@@ -116,7 +122,8 @@ export function ServiceTree({ language, copy, selectedIds, selectedAddOns, onTog
 
     const open = query.length > 0 || expanded.includes(node.id);
     const canonicalBranch = findBranch(serviceTree, node.id);
-    const count = (canonicalBranch ? leaves(canonicalBranch) : []).filter((item) => selected.has(item.id)).length;
+    const branchLeaves = canonicalBranch ? leaves(canonicalBranch) : [];
+    const count = branchLeaves.filter((item) => selected.has(item.id)).length;
     const name = language === "en" ? node.nameEn : node.nameFr;
     const note = language === "en" ? node.noteEn : node.noteFr;
     return (
@@ -126,12 +133,13 @@ export function ServiceTree({ language, copy, selectedIds, selectedAddOns, onTog
           type="button"
           style={{ "--depth": depth } as CSSProperties}
           aria-expanded={open}
-          onClick={() => toggleBranch(node.id)}
+          onClick={() => toggleBranch(node.id, depth)}
         >
           <span className={`branch-chevron${open ? " is-open" : ""}`} aria-hidden="true">⌄</span>
           <span className="branch-name">{name}</span>
+          {depth === 0 && <span className="branch-total">{branchLeaves.length} {copy.servicesUnit}</span>}
           {note && node.id !== "enhancement-new-set" && node.id !== "enhancement-refill" && <span className="branch-note">{note}</span>}
-          {count > 0 && <span className="branch-count">{count}</span>}
+          {count > 0 && <span className="branch-count" aria-label={`${count} ${copy.selectedCount}`}>{count}</span>}
         </button>
         <div className={`tree-children${open ? " is-open" : ""}`} aria-hidden={!open} inert={!open}>
           <div className="tree-inner">
@@ -152,8 +160,6 @@ export function ServiceTree({ language, copy, selectedIds, selectedAddOns, onTog
           {query && <button type="button" className="clear-search" onClick={() => setQuery("")} aria-label={copy.clearSearch}>×</button>}
         </label>
         <div className="tree-controls">
-          <button type="button" onClick={() => setExpanded(allIds)}>{copy.expandAll}</button>
-          <span aria-hidden="true">·</span>
           <button type="button" onClick={() => setExpanded([])}>{copy.collapseAll}</button>
         </div>
       </div>

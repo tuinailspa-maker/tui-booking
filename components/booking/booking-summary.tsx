@@ -12,6 +12,8 @@ type BookingSummaryProps = {
   selections: string[][];
   serviceAddOns: Record<string, ServiceAddOnKey>[];
   onRemoveService?: (guestIndex: number, serviceId: string) => void;
+  onClearAll?: () => void;
+  onChangeServices?: () => void;
 };
 
 export function getBookingTotals(selections: string[][], serviceAddOns: Record<string, ServiceAddOnKey>[] = []) {
@@ -53,7 +55,7 @@ export function formatDate(date: string, language: Language) {
   }).format(new Date(`${date}T12:00:00Z`));
 }
 
-export function BookingSummary({ language, copy, partySize, date, time, selections, serviceAddOns, onRemoveService }: BookingSummaryProps) {
+export function BookingSummary({ language, copy, partySize, date, time, selections, serviceAddOns, onRemoveService, onClearAll, onChangeServices }: BookingSummaryProps) {
   const totals = getBookingTotals(selections, serviceAddOns);
   return (
     <div className="summary-content">
@@ -102,6 +104,12 @@ export function BookingSummary({ language, copy, partySize, date, time, selectio
             ) : <p className="summary-empty">{copy.noServices}</p>}
           </div>
         ))}
+        {(onChangeServices || (onClearAll && totals.serviceCount > 0)) && (
+          <div className="summary-service-actions">
+            {onChangeServices && <button type="button" className="summary-action-link" onClick={onChangeServices}>{copy.changeServices}</button>}
+            {onClearAll && totals.serviceCount > 0 && <button type="button" className="summary-action-link is-danger" onClick={onClearAll}>{copy.clearAll}</button>}
+          </div>
+        )}
       </div>
       <div className="summary-totals">
         <div><span>{copy.totalDuration}</span><strong>{totals.duration} min</strong></div>

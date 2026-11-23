@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { selectedServiceDuration, serviceById, serviceDisplayNameWithAddOn } from "@/data/serviceTree";
 import { BUSINESS_TIME_ZONE } from "@/data/staffSchedule";
 import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
+import { recordCheckIn } from "@/data/lateCheckin";
 
 const API = process.env.SQUARE_ENVIRONMENT === "sandbox" ? "https://connect.squareupsandbox.com/v2" : "https://connect.squareup.com/v2";
 const LOCATION_ID = process.env.SQUARE_LOCATION_ID || "R73A64VPAR34X";
@@ -34,6 +35,10 @@ function dayStart(date: string) {
   const guess = Date.UTC(year, month - 1, day);
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: BUSINESS_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).formatToParts(new Date(guess)).map((part) => [part.type, part.value]));
   return new Date(guess - (Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second)) - guess));
+}
+// The Square seller-note marker stays the source of truth for the kiosk; the DB row only feeds the late-guest cron.
+async function saveCheckIn(bookingId: string, at: Date) {
+  try { await recordCheckIn(bookingId, at); } catch (error) { console.error("Saving check-in status failed:", error); }
 }
 function normalizePhone(value: string) { return value.replace(/\D/g, "").slice(-10); }
 function technicianName(id?: string) { return Object.entries(SQUARE_TEAM_MEMBER_IDS).find(([, teamMemberId]) => teamMemberId === id)?.[0] ?? "Unassigned"; }
@@ -78,11 +83,15 @@ export async function PATCH(request: Request) {
     if (!booking.customer_id || !booking.start_at || !todaysBookings.some((item) => item.id === booking.id)) return NextResponse.json({ error: "This appointment is not available for check-in today." }, { status: 404 });
     const customer = await square<{ customer?: SquareCustomer }>(`/customers/${encodeURIComponent(booking.customer_id)}`);
     if (!customer.customer?.phone_number || normalizePhone(customer.customer.phone_number) !== normalizePhone(body.phone)) return NextResponse.json({ error: "The phone number does not match this appointment." }, { status: 403 });
-    if (booking.seller_note?.includes(CHECKED_IN)) return NextResponse.json({ success: true, alreadyCheckedIn: true }, { headers: { "Cache-Control": "no-store" } });
+    if (booking.seller_note?.includes(CHECKED_IN)) {
+      await saveCheckIn(booking.id, new Date());
+      return NextResponse.json({ success: true, alreadyCheckedIn: true }, { headers: { "Cache-Control": "no-store" } });
+    }
     const arrivalAt = new Date().toISOString();
     const checkInMarker = `${CHECKED_IN}${arrivalAt}]`;
     const note = `${(booking.seller_note ?? "").slice(0, 500 - checkInMarker.length - 1)} ${checkInMarker}`.trim();
     await square(`/bookings/${encodeURIComponent(body.id)}`, "PUT", { booking: { version: booking.version, seller_note: note } });
+    await saveCheckIn(booking.id, new Date(arrivalAt));
     return NextResponse.json({ success: true, arrivalAt }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return responseError(error); }
 }
