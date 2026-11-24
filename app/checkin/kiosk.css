@@ -132,3 +132,14 @@
 .kiosk-guest-check { color: var(--kiosk-rose); font-size: 18px; }
 .kiosk-guest-name { margin-top: 14px; grid-template-columns: 1fr; }
 .kiosk-booked-guest span { color: var(--kiosk-rose); font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+
+/* Fixed kiosk frame: the page never scrolls, drifts sideways, or zooms; only the active screen's content scrolls. */
+html:has(.kiosk), body:has(.kiosk) { height: 100%; overflow: hidden; overscroll-behavior: none; background: #faf5f0; }
+.kiosk { height: 100dvh; min-height: 0; display: flex; flex-direction: column; overflow: hidden; overscroll-behavior: none; padding-bottom: 20px; touch-action: pan-y; -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; user-select: none; -webkit-user-select: none; }
+.kiosk input, .kiosk textarea { user-select: text; -webkit-user-select: text; }
+.kiosk button, .kiosk input, .kiosk label, .kiosk a { touch-action: manipulation; }
+.kiosk-header { flex: none; }
+.kiosk > section { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 4px; scrollbar-width: thin; scrollbar-color: #d9ccc6 transparent; }
+.kiosk-panel .kiosk-submit { position: sticky; bottom: 0; z-index: 3; box-shadow: 0 -22px 18px -6px #faf5f0; }
+.kiosk-services { overscroll-behavior: contain; }
+.kiosk-thanks-card { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
