@@ -23,6 +23,8 @@ export const serviceRevenueReports = pgTable("service_revenue_reports", {
   paymentMethod: text("payment_method").notNull(),
   squareOrderId: text("square_order_id"),
   squareTipAmount: numeric("square_tip_amount", { precision: 10, scale: 2 }),
+  discountAmount: numeric("discount_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  appointmentAt: timestamp("appointment_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
@@ -30,4 +32,16 @@ export const serviceRevenueReports = pgTable("service_revenue_reports", {
   index("service_revenue_reports_user_date_idx").on(table.userId, table.businessDate),
 ]);
 
-export const reportsDb = drizzle(pool, { schema: { serviceRevenueReports } });
+export const adminTeamAccess = pgTable("admin_team_access", {
+  id: text("id").primaryKey(),
+  userId: text("userId").notNull(),
+  name: text("name").notNull(),
+  role: text("role").notNull().$type<"owner" | "staff">(),
+  pinHash: text("pin_hash").notNull(),
+  pinSalt: text("pin_salt").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique("admin_team_access_user_name_key").on(table.userId, table.name),
+]);
+
+export const reportsDb = drizzle(pool, { schema: { serviceRevenueReports, adminTeamAccess } });

@@ -264,7 +264,9 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
           bookingId,
           squareOrderId,
           paymentMethod: checkout.paymentMethod,
+          appointmentAt: startAt,
           guest: {
+            discountAmount: (Math.round((discountByGuest.get(guestIndex) ?? 0) * 100) + discountShare) / 100,
             guestIndex,
             guestName: guestNames[guestIndex]?.trim() || (guestIndex === 0 ? name.trim() || customerName : `Guest ${guestIndex + 1}`),
             technician: technicians[guestIndex] || initialTechnicians[guestIndex] || (guestIndex === 0 ? technician : "Unassigned"),

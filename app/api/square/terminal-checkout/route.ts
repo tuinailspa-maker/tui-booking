@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
+import { isVerifiedOwner } from "@/data/teamAccess";
 import { NextResponse } from "next/server";
-import { isAdminRequestAuthorized } from "@/data/adminAuth";
 import { calculateBill, parseBillInput, type BillInput, type BillTotals } from "@/data/billing";
 import { SQUARE_API_VERSION } from "@/data/squareConfig";
 import { assertSquareOrderMatchesBill, buildSquareOrder, loadLiveVariations } from "@/data/squareOrder";
@@ -248,7 +248,7 @@ async function createPaymentLink(body: Record<string, unknown>, origin: string) 
 }
 
 export async function POST(request: Request) {
-  if (!isAdminRequestAuthorized(request)) return jsonError("Admin authentication required.", 401);
+  if (!await isVerifiedOwner(request)) return jsonError("Owner access required.", 401);
   if (!process.env.SQUARE_ACCESS_TOKEN || !process.env.SQUARE_LOCATION_ID) return jsonError("Square is not configured. Set SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID.", 503, { fallbackAvailable: false });
 
   const body: unknown = await request.json().catch(() => null);

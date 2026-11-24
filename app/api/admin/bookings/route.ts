@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isAdminRequestAuthorized } from "@/data/adminAuth";
+import { isVerifiedAdmin, verifyAdminSession } from "@/data/teamAccess";
 import { SQUARE_API_VERSION } from "@/data/squareConfig";
 import { getStaffRoster, isStaffFree } from "@/data/squareStaff";
 import { allServices, selectedServiceDuration, selectedServicePrice, serviceById, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
@@ -142,7 +142,7 @@ async function fetchCustomer(customerId: string): Promise<SquareCustomer | null>
 }
 
 export async function GET(request: Request) {
-  if (!isAdminRequestAuthorized(request)) {
+  if (!await isVerifiedAdmin(request)) {
     return NextResponse.json({ error: "Admin authentication required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
   }
   const url = new URL(request.url);
@@ -248,7 +248,11 @@ export async function GET(request: Request) {
       };
     }).sort((left, right) => left.startAt.localeCompare(right.startAt));
 
-    return NextResponse.json({ bookings, date, locationId: ADMIN_LOCATION_ID, staff: roster }, { headers: { "Cache-Control": "no-store, max-age=0" } });
+    const session = await verifyAdminSession(request);
+    const isStaff = session?.role === "staff";
+    const visibleBookings = isStaff ? bookings.filter((booking) => booking.technicians.includes(session.name)) : bookings;
+    const visibleStaff = isStaff ? roster.filter((member) => member.name === session.name) : roster;
+    return NextResponse.json({ bookings: visibleBookings, date, locationId: ADMIN_LOCATION_ID, staff: visibleStaff }, { headers: { "Cache-Control": "no-store, max-age=0" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load Square appointments.";
     return NextResponse.json({ error: message }, { status: 502, headers: { "Cache-Control": "no-store" } });
@@ -256,7 +260,7 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  if (!isAdminRequestAuthorized(request)) {
+  if (!await isVerifiedAdmin(request)) {
     return NextResponse.json({ error: "Admin authentication required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
   }
   if (!process.env.SQUARE_ACCESS_TOKEN) {
@@ -281,6 +285,11 @@ export async function PATCH(request: Request) {
     addOns[serviceId] = service.addOn.key;
   }
   const shouldUpdateServices = hasServiceSelection && Boolean(serviceIds);
+  const session = await verifyAdminSession(request);
+  const staffMember = session?.role === "staff" ? roster.find((member) => member.name === session.name) : undefined;
+  if (session?.role === "staff" && (teamMemberId || hasServiceSelection || status === "CHECKED_OUT" || !staffMember)) {
+    return NextResponse.json({ error: "Technicians can only update the status of their own appointments." }, { status: 403, headers: { "Cache-Control": "no-store" } });
+  }
   if (!bookingId || (!status && !shouldAssign && !shouldUpdateServices) || (teamMemberId && !shouldAssign) || (hasServiceSelection && !serviceIds)) {
     return NextResponse.json({ error: "Choose a valid appointment, technician, or status." }, { status: 400, headers: { "Cache-Control": "no-store" } });
   }
@@ -288,6 +297,9 @@ export async function PATCH(request: Request) {
     const current = await squareRequest<{ booking?: SquareBooking }>(`/bookings/${encodeURIComponent(bookingId)}`);
     if (!current.booking || typeof current.booking.version !== "number") {
       return NextResponse.json({ error: "Appointment could not be found." }, { status: 404, headers: { "Cache-Control": "no-store" } });
+    }
+    if (staffMember && !(current.booking.appointment_segments ?? []).some((segment) => segment.team_member_id === staffMember.teamMemberId)) {
+      return NextResponse.json({ error: "Technicians can only update their own appointments." }, { status: 403, headers: { "Cache-Control": "no-store" } });
     }
     if (shouldAssign && !current.booking.appointment_segments?.length) {
       return NextResponse.json({ error: "This appointment has no assignable service segments." }, { status: 400, headers: { "Cache-Control": "no-store" } });
