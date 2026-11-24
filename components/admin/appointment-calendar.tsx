@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { serviceById } from "@/data/serviceTree";
 import { getClosingTimeForDate } from "@/data/staffSchedule";
 import "./appointment-calendar.css";
@@ -27,13 +27,25 @@ type AppointmentCalendarProps = {
   staffNames?: string[];
   canManageColumns?: boolean;
   canCreateBookings?: boolean;
+  hiddenColumns?: Set<string>;
 };
 
 const DEFAULT_STAFF_NAMES = ["Jenny", "Melika", "Nana", "Option 1", "Option 2"];
 const START_MINUTE = 8 * 60;
 const HALF_HOUR_HEIGHT = 48;
-const TIME_AXIS_WIDTH = 68;
-const MIN_COLUMN_WIDTH = 140;
+const TIME_AXIS_WIDTH = 44;
+const MIN_COLUMN_WIDTH = 62;
+const COLUMN_LABELS: Record<string, string> = { Jenny: "JENNY P", Melika: "MELIKA N", Nana: "NANA N" };
+const NO_HIDDEN_COLUMNS = new Set<string>();
+
+function columnLabel(name: string) {
+  return COLUMN_LABELS[name] ?? name.toUpperCase();
+}
+
+function hourLabel(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  return `${hours % 12 || 12}${hours >= 12 ? "PM" : "AM"}`;
+}
 
 function localMinutes(iso: string) {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(iso));
@@ -94,16 +106,9 @@ function layoutLanes(items: { id: string; start: number; end: number }[]) {
   return placement;
 }
 
-export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSlot, onSelectBooking, staffNames = DEFAULT_STAFF_NAMES, canManageColumns = false, canCreateBookings = false }: AppointmentCalendarProps) {
+export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSlot, onSelectBooking, staffNames = DEFAULT_STAFF_NAMES, canManageColumns = false, canCreateBookings = false, hiddenColumns = NO_HIDDEN_COLUMNS }: AppointmentCalendarProps) {
   const ALL_COLUMNS = Array.from(new Set(staffNames.filter((name) => name && name !== "Walk-in")));
-  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => new Set());
   const STAFF = canManageColumns ? ALL_COLUMNS.filter((name) => !hiddenColumns.has(name)) : ALL_COLUMNS;
-  const toggleColumn = (name: string) => setHiddenColumns((current) => {
-    const next = new Set(current);
-    if (next.has(name)) next.delete(name);
-    else next.add(name);
-    return next;
-  });
   const gridMinWidth = `calc(${TIME_AXIS_WIDTH}px + ${Math.max(1, STAFF.length)} * var(--cal-col-min, ${MIN_COLUMN_WIDTH}px))`;
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const nowParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
@@ -131,28 +136,17 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
   }
 
   return <div className="admin-calendar-wrap">
-  {canManageColumns && <div className="admin-column-toggles" role="group" aria-label="Show or hide schedule columns">
-    <span className="admin-column-toggles-label">Columns</span>
-    {ALL_COLUMNS.map((name) => {
-      const visible = !hiddenColumns.has(name);
-      return <button type="button" key={name} className={`admin-column-toggle${visible ? " is-visible" : ""}`} aria-pressed={visible} onClick={() => toggleColumn(name)}>
-        {visible ? "Hide" : "Show"} <strong>{name}</strong>
-      </button>;
-    })}
-    {hiddenColumns.size > 0 && <button type="button" className="admin-column-toggle is-reset" onClick={() => setHiddenColumns(new Set())}>Show all</button>}
-  </div>}
-  {STAFF.length === 0 ? <p className="admin-calendar-empty" role="status">All columns are hidden. Use the toggles above to show a column.</p> :
+  {STAFF.length === 0 ? <p className="admin-calendar-empty" role="status">All columns are hidden. Open the ••• menu to show a column.</p> :
   <div className="admin-calendar-shell" aria-label="Appointments calendar">
     <div className="admin-cal-row admin-calendar-header" style={{ minWidth: gridMinWidth }}>
       <div className="admin-time-header" aria-hidden="true">{timeZoneLabel}</div>
-      {STAFF.map((name) => <div className="admin-cal-lane admin-staff-header" key={name}>
-        <span className={`admin-staff-avatar avatar-${ALL_COLUMNS.indexOf(name) % 6}`}>{name.charAt(0)}</span>
-        <span><strong>{name}</strong><small>{name.startsWith("Option ") ? "OPTION" : "TECHNICIAN"}</small></span>
+      {STAFF.map((name) => <div className="admin-cal-lane admin-staff-header" key={name} title={name}>
+        <strong>{columnLabel(name)}</strong>
       </div>)}
     </div>
     <div className="admin-cal-row admin-calendar-body" style={{ minWidth: gridMinWidth, height: `${columnHeight}px` }}>
       <div className="admin-time-axis" aria-hidden="true">
-        {ticks.filter((minute) => minute % 60 === 0).map((minute) => <span key={minute} style={{ top: `${((minute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT}px` }}>{timeLabel(minute)}</span>)}
+        {ticks.filter((minute) => minute % 60 === 0).map((minute) => <span key={minute} style={{ top: `${((minute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT}px` }}>{hourLabel(minute)}</span>)}
       </div>
       <div className="admin-cal-lanes">
       <div className="admin-grid-lines" aria-hidden="true">{ticks.map((minute) => <span className={minute % 60 === 0 ? "is-hour" : ""} key={minute} style={{ top: `${((minute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT}px` }} />)}</div>
@@ -192,7 +186,7 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
               aria-label={`Current time ${timeLabel(nowMinute)}`}
               style={{ position: "absolute", zIndex: 7, left: 0, right: 0, top: `${((nowMinute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT}px`, display: "flex", alignItems: "center", gap: 0, transform: "translateY(-50%)", pointerEvents: "none", color: "#d93025", fontSize: 9 }}
             >
-              <em style={{ flex: "0 0 68px", width: 68, boxSizing: "border-box", paddingRight: 6, background: "#fff", fontStyle: "normal", fontWeight: 600, textAlign: "right", whiteSpace: "nowrap" }}>{timeLabel(nowMinute)}</em>
+              <em style={{ flex: `0 0 ${TIME_AXIS_WIDTH}px`, width: TIME_AXIS_WIDTH, boxSizing: "border-box", paddingRight: 3, background: "#fff", fontStyle: "normal", fontWeight: 600, textAlign: "right", whiteSpace: "nowrap", letterSpacing: "-0.02em" }}>{timeLabel(nowMinute).replace(" ", "")}</em>
               <span style={{ position: "static", flex: "0 0 7px", width: 7, height: 7, marginLeft: -4, borderRadius: "50%", background: "#e5483b" }} />
               <i aria-hidden="true" style={{ flex: 1, height: 1, background: "#e5483b" }} />
             </div>

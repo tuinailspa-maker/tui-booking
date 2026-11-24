@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useSyncExternalStore } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import useSWR from "swr";
 import { useSquareSync } from "@/hooks/use-square-sync";
@@ -15,7 +14,7 @@ import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { ServiceEditor } from "./service-editor";
 import { ReportsDashboard } from "./reports-dashboard";
 import { SquareCatalogSync } from "./square-catalog-sync";
-import { formatSlotTime, getClosingTimeForDate } from "@/data/staffSchedule";
+import { ScheduleHeader } from "./schedule-header";
 
 type AdminBooking = {
   id: string;
@@ -135,6 +134,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
   const [date, setDate] = useState(initialDate);
   const [activeTab, setActiveTab] = useState<"schedule" | "queue" | "summary" | "eod" | "reports">("schedule");
   const [scheduleView, setScheduleView] = useState<"day" | "list">("day");
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => new Set());
   const [showCatalogSync, setShowCatalogSync] = useState(false);
   const checkedOutSnapshot = useSyncExternalStore(subscribeToCheckedOut, readCheckedOutSnapshot, () => "{}");
   const checkedOut = useMemo<Record<string, boolean>>(() => JSON.parse(checkedOutSnapshot), [checkedOutSnapshot]);
@@ -238,12 +238,6 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
       id, squareBookingIds: [], status: "WALK_IN", startAt, customerName: "", phone: "", technicians: [technician], serviceIds: [[]], addOns: [{}], guestNames: ["Guest 1"], guestPhones: [""], durationMinutes: 0,
     };
     setEditor({ booking, walkIn: true });
-  }
-
-  function moveDate(days: number) {
-    const selected = new Date(`${date}T12:00:00Z`);
-    selected.setUTCDate(selected.getUTCDate() + days);
-    setDate(selected.toISOString().slice(0, 10));
   }
 
   async function updateBookingStatus(booking: AdminBooking, status: AppointmentStatus) {
@@ -361,15 +355,31 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
     </aside>
 
     <div className="admin-workspace">
-      <header className="admin-app-header">
-        <div className="admin-app-heading"><Image className="admin-header-logo" src="/tui-logo.png" alt="" width={44} height={44} priority /><div><p className="admin-eyebrow">TUI NAIL SPA</p><h1>Tui Dashboard</h1></div></div>
-        <div className="admin-topbar-actions"><span className={`admin-live-indicator${bookings.error ? " is-error" : bookings.isLoading ? " is-syncing" : ""}`}><i /> {bookings.error ? "Square unavailable" : bookings.isLoading ? "Syncing Square" : "Square connected"}</span><span className="admin-viewer-badge" title={isOwner ? "Full access" : "Technician access"}>{isOwner ? (viewerName && viewerName !== "Owner" ? `${viewerName} · Owner` : "Owner") : `${viewerName || "Staff"} · Technician`}</span><button type="button" className="admin-lock-text" onClick={logOut}>Lock / Switch Staff</button></div>
-      </header>
-
-      <section className="admin-calendar-toolbar" aria-label="Calendar controls">
-        <div className="admin-date-controls"><div className="admin-date-nav"><button type="button" aria-label="Previous day" onClick={() => moveDate(-1)}>‹</button><button type="button" onClick={() => setDate(initialDate)}>Today</button><button type="button" aria-label="Next day" onClick={() => moveDate(1)}>›</button></div><label className="admin-date-picker"><span>{dateLabel}</span><input aria-label="Choose calendar date" type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label></div>
-        <div className="admin-calendar-actions">{activeTab === "schedule" && <div className="admin-view-toggle" role="group" aria-label="Calendar view"><button type="button" aria-pressed={scheduleView === "day"} onClick={() => setScheduleView("day")}>By Technician</button><button type="button" aria-pressed={scheduleView === "list"} onClick={() => setScheduleView("list")}>Timeline List</button></div>}<button className="admin-secondary-button admin-refresh-button" type="button" onClick={() => bookings.mutate()} disabled={bookings.isValidating} aria-label="Refresh appointments">{bookings.isValidating ? "Refreshing…" : "Refresh"}<span aria-hidden="true">↻</span></button>{isOwner && <button className="admin-primary-button admin-new-button" type="button" onClick={() => openWalkInEditor()}>+ New / Walk-in</button>}</div>
-      </section>
+      <h1 className="sr-only">Tui Nail Spa dashboard</h1>
+      <ScheduleHeader
+        date={date}
+        todayDate={initialDate}
+        onDateChange={setDate}
+        showWeekStrip={activeTab === "schedule" || activeTab === "queue" || activeTab === "summary"}
+        isOwner={isOwner}
+        viewerLabel={isOwner ? (viewerName && viewerName !== "Owner" ? `${viewerName} · Owner` : "Owner") : `${viewerName || "Staff"} · Technician`}
+        syncState={bookings.error ? "error" : bookings.isLoading ? "syncing" : "ok"}
+        isRefreshing={bookings.isValidating}
+        onRefresh={() => void bookings.mutate()}
+        onLock={logOut}
+        onNewBooking={() => openWalkInEditor()}
+        scheduleView={activeTab === "schedule" ? scheduleView : undefined}
+        onScheduleViewChange={setScheduleView}
+        columns={activeTab === "schedule" && scheduleView === "day" ? staffNames.filter((name) => name && name !== "Walk-in") : []}
+        hiddenColumns={hiddenColumns}
+        onToggleColumn={(name) => setHiddenColumns((current) => {
+          const next = new Set(current);
+          if (next.has(name)) next.delete(name);
+          else next.add(name);
+          return next;
+        })}
+        onShowAllColumns={() => setHiddenColumns(new Set())}
+      />
 
       <div className="admin-page-content">
         {bookings.error && <div className="admin-alert" role="alert"><strong>Couldn&apos;t sync Square appointments.</strong><span>{bookings.error.message}</span><button type="button" onClick={() => bookings.mutate()}>Try again</button></div>}
@@ -389,10 +399,10 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
           </section>}
           {isOwner && showCatalogSync && <div id="square-catalog-sync-panel"><SquareCatalogSync /></div>}
         </> : activeTab === "eod" ? <EndOfDayReport key={viewerName} initialDate={initialDate} role={viewerRole} viewerName={viewerName} technicians={staffNames} /> : activeTab === "reports" && isOwner ? <ReportsDashboard /> : <>
-          <div className="admin-schedule-heading"><div><h2>{activeTab === "queue" ? "Arrival queue" : "Daily schedule"}</h2><p>{displayBookings.length} {displayBookings.length === 1 ? "appointment" : "appointments"} · 8:00 AM–{formatSlotTime(getClosingTimeForDate(date), "en")}</p></div><span className="admin-sync-note">Auto-refreshes every 60 seconds</span></div>
+          {activeTab === "queue" && <div className="admin-schedule-heading"><div><h2>Arrival queue</h2><p>{displayBookings.length} {displayBookings.length === 1 ? "guest" : "guests"} · {dateLabel}</p></div><span className="admin-sync-note">Auto-refreshes every 60 seconds</span></div>}
           {bookings.isLoading && <div className="admin-loading" role="status"><span className="admin-spinner" />Loading Square appointments…</div>}
           {!bookings.isLoading && !bookings.error && displayBookings.length === 0 && <div className="admin-empty"><span aria-hidden="true">—</span><h3>{activeTab === "queue" ? "The arrival queue is clear" : "No appointments for this day"}</h3><p>{activeTab === "queue" ? "Checked-in guests and waiting walk-ins will appear here." : isOwner ? "Square has no active bookings for the selected date. Add a walk-in ticket when a guest arrives." : "You have no appointments assigned for this day."}</p>{isOwner && <button className="admin-primary-button" type="button" onClick={() => openWalkInEditor()}>+ New / Walk-in</button>}</div>}
-          {(displayBookings.length > 0 || (activeTab !== "queue" && scheduleView === "day")) && <AppointmentCalendar staffNames={staffNames} date={date} bookings={displayBookings} view={activeTab === "queue" ? "list" : scheduleView} checkedOut={checkedOut} onOpenSlot={isOwner ? openWalkInEditor : () => undefined} canManageColumns={isOwner} canCreateBookings={isOwner} onSelectBooking={(booking) => openAppointmentEditor(booking as AdminBooking)} />}
+          {(displayBookings.length > 0 || (activeTab !== "queue" && scheduleView === "day")) && <AppointmentCalendar staffNames={staffNames} date={date} bookings={displayBookings} view={activeTab === "queue" ? "list" : scheduleView} checkedOut={checkedOut} onOpenSlot={isOwner ? openWalkInEditor : () => undefined} canManageColumns={isOwner} canCreateBookings={isOwner} hiddenColumns={hiddenColumns} onSelectBooking={(booking) => openAppointmentEditor(booking as AdminBooking)} />}
           <footer className="admin-footer"><span>Live data from Square Appointments · refreshes every minute</span><span>Location R73A64VPAR34X</span></footer>
         </>}
       </div>

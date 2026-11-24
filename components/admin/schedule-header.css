@@ -1,0 +1,194 @@
+.sq-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: #fff;
+  border-bottom: 1px solid var(--admin-line, #e3e5e8);
+}
+
+.sq-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 52px;
+  padding: 0 12px;
+}
+
+.sq-icon-button,
+.sq-icon-spacer {
+  position: relative;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+}
+
+.sq-icon-button {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #1a1a1a;
+  cursor: pointer;
+}
+
+.sq-icon-button:hover { background: #f2f3f5; }
+.sq-icon-button:focus-visible,
+.sq-month-button:focus-visible,
+.sq-day:focus-visible,
+.sq-week-shift:focus-visible { outline: 2px solid #1a1a1a; outline-offset: 2px; }
+
+.sq-icon-button svg { width: 22px; height: 22px; fill: currentColor; stroke: currentColor; stroke-width: 0; }
+.sq-add-button svg { fill: none; stroke-width: 2; stroke-linecap: round; }
+.sq-add-button { background: #1a1a1a; color: #fff; width: 36px; height: 36px; flex-basis: 36px; margin: 2px; }
+.sq-add-button:hover { background: #333; }
+
+.sq-sync-dot {
+  position: absolute;
+  top: 8px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid #fff;
+  border-radius: 50%;
+  background: #16a34a;
+}
+.sq-sync-dot.is-syncing { background: #d97706; }
+.sq-sync-dot.is-error { background: #dc2626; }
+
+.sq-month { position: relative; display: flex; justify-content: center; min-width: 0; flex: 1 1 auto; }
+
+.sq-month-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #1a1a1a;
+  font: 600 16px/1.2 Arial, Helvetica, sans-serif;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sq-month-button:hover { background: #f2f3f5; }
+.sq-month-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.sq-month-input {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sq-menu { position: relative; }
+
+.sq-menu-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  width: min(280px, calc(100vw - 24px));
+  max-height: calc(100dvh - 140px);
+  overflow-y: auto;
+  padding: 6px 0;
+  border: 1px solid #e3e5e8;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(17, 24, 39, 0.14);
+}
+
+.sq-menu-identity { display: grid; gap: 4px; padding: 10px 16px 12px; border-bottom: 1px solid #f0f1f3; }
+.sq-menu-identity strong { color: #1a1a1a; font-size: 14px; font-weight: 600; }
+.sq-menu-sync { display: inline-flex; align-items: center; gap: 6px; color: #6b7280; font-size: 12px; }
+.sq-menu-sync i { width: 7px; height: 7px; border-radius: 50%; background: #16a34a; }
+.sq-menu-sync.is-syncing i { background: #d97706; }
+.sq-menu-sync.is-error i { background: #dc2626; }
+
+.sq-menu-section { padding: 10px 16px; border-bottom: 1px solid #f0f1f3; }
+.sq-menu-section:last-child { border-bottom: 0; }
+.sq-menu-label { margin: 0 0 8px; color: #6b7280; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+
+.sq-segmented { display: flex; padding: 3px; border-radius: 9px; background: #f2f3f5; }
+.sq-segmented button { flex: 1; min-height: 34px; border: 0; border-radius: 7px; background: transparent; color: #4b5563; font-size: 13px; font-weight: 500; cursor: pointer; }
+.sq-segmented button[aria-pressed="true"] { background: #fff; color: #1a1a1a; font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+
+.sq-column-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.sq-column-list label { display: flex; align-items: center; gap: 10px; min-height: 40px; color: #1a1a1a; font-size: 14px; cursor: pointer; }
+.sq-column-list input { width: 18px; height: 18px; margin: 0; accent-color: #1a1a1a; }
+
+.sq-menu-link { margin-top: 6px; padding: 6px 0; border: 0; background: none; color: #1d4ed8; font-size: 13px; font-weight: 500; cursor: pointer; }
+
+.sq-menu-actions { display: grid; gap: 0; padding: 4px 0; }
+.sq-menu-actions button { min-height: 44px; padding: 0 16px; border: 0; background: none; color: #1a1a1a; font-size: 14px; text-align: left; cursor: pointer; }
+.sq-menu-actions button:hover { background: #f7f8f9; }
+.sq-menu-actions button:disabled { color: #9ca3af; cursor: default; }
+.sq-menu-actions .is-lock { color: #b91c1c; }
+
+.sq-week {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 8px;
+}
+
+.sq-week-shift {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+}
+.sq-week-shift:hover { background: #f2f3f5; color: #1a1a1a; }
+.sq-week-shift svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.sq-week-days { display: flex; flex: 1 1 auto; margin: 0; padding: 0; list-style: none; }
+.sq-week-days li { flex: 1 1 0; display: flex; justify-content: center; }
+
+.sq-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 40px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sq-day-letter { color: #6b7280; font-size: 11px; font-weight: 500; line-height: 1; }
+
+.sq-day-number {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: #1a1a1a;
+  font-size: 15px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.sq-day:hover .sq-day-number { background: #f2f3f5; }
+.sq-day.is-today .sq-day-number { color: #1d4ed8; font-weight: 700; }
+.sq-day.is-selected .sq-day-number { background: #1a1a1a; color: #fff; font-weight: 600; }
+
+@media (min-width: 768px) {
+  .sq-header-row { height: 58px; padding: 0 20px; }
+  .sq-month-button { font-size: 18px; }
+  .sq-week { max-width: 640px; margin: 0 auto; padding-bottom: 10px; }
+}
