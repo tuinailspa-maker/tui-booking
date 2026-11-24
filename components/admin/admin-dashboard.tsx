@@ -15,6 +15,7 @@ import { ServiceEditor } from "./service-editor";
 import { ReportsDashboard } from "./reports-dashboard";
 import { SquareCatalogSync } from "./square-catalog-sync";
 import { ScheduleHeader } from "./schedule-header";
+import { MyDailyReport } from "./my-daily-report";
 
 type AdminBooking = {
   id: string;
@@ -160,6 +161,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
     .sort((left, right) => left.startAt.localeCompare(right.startAt));
   const queueBookings = appointments.filter((booking) => !checkedOut[booking.id] && booking.status !== "CHECKED_OUT" && (booking.status === "CHECKED_IN" || booking.status === "IN_SERVICE" || booking.status.startsWith("WALK_IN")));
   const displayBookings = activeTab === "queue" ? queueBookings : appointments;
+  const bookingDurations = Object.fromEntries(appointments.filter((item) => item.durationMinutes > 0).map((item) => [item.id, item.durationMinutes]));
   const totalSales = appointments.filter((item) => checkedOut[item.id] || item.status === "CHECKED_OUT").reduce((sum, item) => {
     const override = serviceOverrides[item.id];
     return sum + totalFor(override ? { ...item, ...override } : item);
@@ -410,6 +412,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
           {bookings.isLoading && <div className="admin-loading" role="status"><span className="admin-spinner" />Loading Square appointments…</div>}
           {!bookings.isLoading && !bookings.error && displayBookings.length === 0 && <div className="admin-empty"><span aria-hidden="true">—</span><h3>{activeTab === "queue" ? "The arrival queue is clear" : "No appointments for this day"}</h3><p>{activeTab === "queue" ? "Checked-in guests and waiting walk-ins will appear here." : isOwner ? "Square has no active bookings for the selected date. Add a walk-in ticket when a guest arrives." : "You have no appointments assigned for this day."}</p>{isOwner && <button className="admin-primary-button" type="button" onClick={() => openWalkInEditor()}>+ New / Walk-in</button>}</div>}
           {(displayBookings.length > 0 || (activeTab !== "queue" && scheduleView === "day")) && <AppointmentCalendar staffNames={staffNames} date={date} bookings={displayBookings} view={activeTab === "queue" ? "list" : scheduleView} checkedOut={checkedOut} onOpenSlot={isOwner ? openWalkInEditor : () => undefined} canManageColumns={isOwner} canCreateBookings={isOwner} hiddenColumns={hiddenColumns} onSelectBooking={(booking) => openAppointmentEditor(booking as AdminBooking)} />}
+          {activeTab === "schedule" && !isOwner && viewerName && <MyDailyReport key={viewerName} date={date} viewerName={viewerName} bookingDurations={bookingDurations} />}
           <footer className="admin-footer"><span>Live data from Square Appointments · refreshes every minute</span><span>Location R73A64VPAR34X</span></footer>
         </>}
       </div>

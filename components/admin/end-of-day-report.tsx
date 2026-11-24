@@ -4,8 +4,10 @@ import { useMemo, useState } from "react";
 import useSWR from "swr";
 import "./end-of-day-report.css";
 
-type ReportRecord = {
+export type ReportRecord = {
   id: string;
+  bookingId?: string;
+  paymentMethod?: string;
   guestName: string;
   technician: string;
   services: Array<{ name: string; amount: number }>;
@@ -17,13 +19,13 @@ type ReportRecord = {
   transactedAt: string;
 };
 
-type ReportPayload = { records: ReportRecord[]; role: "owner" | "staff"; viewer: string };
+export type ReportPayload = { records: ReportRecord[]; role: "owner" | "staff"; viewer: string };
 
-type ReportRow = { id: string; client: string; time: string; service: string; price: number; discount: number; tax: number; tips: number; total: number };
+export type ReportRow = { id: string; client: string; time: string; service: string; price: number; discount: number; tax: number; tips: number; total: number };
 type Totals = { count: number; price: number; discount: number; tax: number; tips: number; total: number };
 type TechnicianSection = { technician: string; rows: ReportRow[]; totals: Totals };
 
-const SPA = {
+export const SPA = {
   name: "Tui Nail Spa",
   address: "1570 Rue Saint-Timothée, Montréal, QC H2L 3N9",
   phone: "438-777-7043",
@@ -31,24 +33,24 @@ const SPA = {
   qst: "4019625996TQ0001",
 };
 
-const cents = (value: number) => Math.round(value * 100) / 100;
-const money = (value: number) => `$${value.toFixed(2)}`;
-const discountMoney = (value: number) => (value > 0 ? `-${money(value)}` : money(0));
+export const cents = (value: number) => Math.round(value * 100) / 100;
+export const money = (value: number) => `$${value.toFixed(2)}`;
+export const discountMoney = (value: number) => (value > 0 ? `-${money(value)}` : money(0));
 
 export const REPORTS_CACHE_PREFIX = "/api/admin/reports";
 
-async function fetcher([url]: readonly [string, string, string]): Promise<ReportPayload> {
+export async function fetcher([url]: readonly [string, string, string]): Promise<ReportPayload> {
   const response = await fetch(url, { cache: "no-store" });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || "End of day report could not be loaded.");
   return body as ReportPayload;
 }
 
-function torontoTime(iso: string) {
+export function torontoTime(iso: string) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", hour: "numeric", minute: "2-digit" }).format(new Date(iso));
 }
 
-function toRow(record: ReportRecord): ReportRow {
+export function toRow(record: ReportRecord): ReportRow {
   const subtotal = Number(record.serviceSubtotal) || 0;
   const discount = Number(record.discountAmount ?? 0) || 0;
   const tax = cents(cents(subtotal * 0.05) + cents(subtotal * 0.09975));
@@ -78,11 +80,11 @@ function sumRows(rows: ReportRow[]): Totals {
   }), { count: 0, price: 0, discount: 0, tax: 0, tips: 0, total: 0 });
 }
 
-function escapeHtml(value: string) {
+export function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
 }
 
-function printDocument(html: string) {
+export function printDocument(html: string) {
   const frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
   frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
