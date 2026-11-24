@@ -25,6 +25,8 @@ type AppointmentCalendarProps = {
   onOpenSlot: (technician: string, time: string) => void;
   onSelectBooking: (booking: CalendarBooking) => void;
   staffNames?: string[];
+  canManageColumns?: boolean;
+  canCreateBookings?: boolean;
 };
 
 const DEFAULT_STAFF_NAMES = ["Jenny", "Melika", "Nana", "Option 1", "Option 2"];
@@ -92,10 +94,10 @@ function layoutLanes(items: { id: string; start: number; end: number }[]) {
   return placement;
 }
 
-export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSlot, onSelectBooking, staffNames = DEFAULT_STAFF_NAMES }: AppointmentCalendarProps) {
+export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSlot, onSelectBooking, staffNames = DEFAULT_STAFF_NAMES, canManageColumns = false, canCreateBookings = false }: AppointmentCalendarProps) {
   const ALL_COLUMNS = Array.from(new Set(staffNames.filter((name) => name && name !== "Walk-in")));
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => new Set());
-  const STAFF = ALL_COLUMNS.filter((name) => !hiddenColumns.has(name));
+  const STAFF = canManageColumns ? ALL_COLUMNS.filter((name) => !hiddenColumns.has(name)) : ALL_COLUMNS;
   const toggleColumn = (name: string) => setHiddenColumns((current) => {
     const next = new Set(current);
     if (next.has(name)) next.delete(name);
@@ -129,7 +131,7 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
   }
 
   return <div className="admin-calendar-wrap">
-  <div className="admin-column-toggles" role="group" aria-label="Show or hide schedule columns">
+  {canManageColumns && <div className="admin-column-toggles" role="group" aria-label="Show or hide schedule columns">
     <span className="admin-column-toggles-label">Columns</span>
     {ALL_COLUMNS.map((name) => {
       const visible = !hiddenColumns.has(name);
@@ -138,7 +140,7 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
       </button>;
     })}
     {hiddenColumns.size > 0 && <button type="button" className="admin-column-toggle is-reset" onClick={() => setHiddenColumns(new Set())}>Show all</button>}
-  </div>
+  </div>}
   {STAFF.length === 0 ? <p className="admin-calendar-empty" role="status">All columns are hidden. Use the toggles above to show a column.</p> :
   <div className="admin-calendar-shell" aria-label="Appointments calendar">
     <div className="admin-cal-row admin-calendar-header" style={{ minWidth: gridMinWidth }}>
@@ -165,7 +167,7 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
           return { id: booking.id, start, end: start + Math.max(15, booking.durationMinutes || 30) };
         }));
         return <div className="admin-cal-lane admin-staff-column" key={staff}>
-          {ticks.slice(0, -1).map((minute) => <button className="admin-calendar-slot" type="button" key={minute} aria-label={`New ${staff} appointment at ${timeLabel(minute)}`} style={{ top: `${((minute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT}px`, height: `${HALF_HOUR_HEIGHT}px` }} onClick={() => onOpenSlot(staff, `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`)} />)}
+          {canCreateBookings && ticks.slice(0, -1).map((minute) => <button className="admin-calendar-slot" type="button" key={minute} aria-label={`New ${staff} appointment at ${timeLabel(minute)}`} style={{ top: `${((minute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT}px`, height: `${HALF_HOUR_HEIGHT}px` }} onClick={() => onOpenSlot(staff, `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`)} />)}
           {assigned.map((booking) => {
             const start = localMinutes(booking.startAt);
             const duration = Math.max(15, booking.durationMinutes || 30);

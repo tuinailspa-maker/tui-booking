@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { and, asc, eq, gte, lte } from "drizzle-orm";
-import { isAdminRequestAuthorized } from "@/data/adminAuth";
+import { isVerifiedOwner, verifyAdminSession } from "@/data/teamAccess";
 import { REPORT_USER_ID, reportsDb, serviceRevenueReports } from "@/data/reports-db";
 
 function isDate(value: unknown): value is string {
@@ -15,7 +15,8 @@ function getMontrealDate(date: Date) {
 }
 
 export async function GET(request: Request) {
-  if (!isAdminRequestAuthorized(request)) return NextResponse.json({ error: "Admin authentication required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+  const session = await verifyAdminSession(request);
+  if (!session) return NextResponse.json({ error: "Admin authentication required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
   const url = new URL(request.url);
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
@@ -25,15 +26,16 @@ export async function GET(request: Request) {
       eq(serviceRevenueReports.userId, REPORT_USER_ID),
       gte(serviceRevenueReports.businessDate, from),
       lte(serviceRevenueReports.businessDate, to),
+      session.role === "staff" ? eq(serviceRevenueReports.technician, session.name) : undefined,
     )).orderBy(asc(serviceRevenueReports.transactedAt), asc(serviceRevenueReports.guestIndex));
-    return NextResponse.json({ records, webhookConfigured: Boolean(process.env.GOOGLE_SHEETS_REPORTS_WEBHOOK_URL) }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ records, role: session.role, viewer: session.name, webhookConfigured: Boolean(process.env.GOOGLE_SHEETS_REPORTS_WEBHOOK_URL) }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json({ error: "Reports storage is temporarily unavailable." }, { status: 503 });
   }
 }
 
 export async function POST(request: Request) {
-  if (!isAdminRequestAuthorized(request)) return NextResponse.json({ error: "Admin authentication required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+  if (!await isVerifiedOwner(request)) return NextResponse.json({ error: "Only the owner can record checkouts." }, { status: 403, headers: { "Cache-Control": "no-store" } });
   let body: unknown;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 }); }
   if (!body || typeof body !== "object") return NextResponse.json({ error: "Invalid checkout report." }, { status: 400 });
@@ -54,6 +56,12 @@ export async function POST(request: Request) {
   if (!Number.isInteger(guestIndex) || (guestIndex as number) < 0 || !guestName || !technician || typeof serviceSubtotal !== "number" || !Number.isFinite(serviceSubtotal) || serviceSubtotal < 0 || typeof tipAmount !== "number" || !Number.isFinite(tipAmount) || tipAmount < 0 || tipAmount > 10000 || !Array.isArray(services) || services.length > 50 || services.some((service) => !service || typeof service.name !== "string" || typeof service.amount !== "number" || !Number.isFinite(service.amount) || service.amount < 0)) {
     return NextResponse.json({ error: "Invalid guest transaction values." }, { status: 400 });
   }
+  const discountAmount = entry.discountAmount ?? 0;
+  if (typeof discountAmount !== "number" || !Number.isFinite(discountAmount) || discountAmount < 0 || discountAmount > 100000) {
+    return NextResponse.json({ error: "Invalid discount amount." }, { status: 400 });
+  }
+  const appointmentAtInput = typeof payload.appointmentAt === "string" ? new Date(payload.appointmentAt) : null;
+  const appointmentAt = appointmentAtInput && !Number.isNaN(appointmentAtInput.getTime()) ? appointmentAtInput : null;
   const transactionDate = new Date();
   const record = {
     id: createHash("sha256").update(`${bookingId}:${guestIndex}`).digest("hex"),
@@ -69,6 +77,8 @@ export async function POST(request: Request) {
     tipAmount: tipAmount.toFixed(2),
     paymentMethod,
     squareOrderId,
+    discountAmount: discountAmount.toFixed(2),
+    appointmentAt,
     updatedAt: transactionDate,
   };
   try {
@@ -85,6 +95,8 @@ export async function POST(request: Request) {
         paymentMethod: record.paymentMethod,
         squareOrderId: record.squareOrderId,
         squareTipAmount: null,
+        discountAmount: record.discountAmount,
+        appointmentAt: record.appointmentAt,
         updatedAt: record.updatedAt,
       },
     }).returning();

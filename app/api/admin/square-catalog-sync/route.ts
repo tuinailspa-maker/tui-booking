@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { isAdminRequestAuthorized } from "@/data/adminAuth";
+import { isVerifiedOwner } from "@/data/teamAccess";
 import { applyCatalogSync, previewCatalogSync, SquareCatalogSyncError } from "@/data/squareCatalogSync";
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
 function unauthorized() {
-  return NextResponse.json({ error: "Admin authentication required." }, { status: 401, headers: NO_STORE });
+  return NextResponse.json({ error: "Owner access required." }, { status: 401, headers: NO_STORE });
 }
 
 function failure(error: unknown) {
@@ -18,7 +18,7 @@ function failure(error: unknown) {
 
 /** Read-only: per-service comparison (`comparison`) and the sync plan, without changing anything on Square. */
 export async function GET(request: Request) {
-  if (!isAdminRequestAuthorized(request)) return unauthorized();
+  if (!await isVerifiedOwner(request)) return unauthorized();
   try {
     return NextResponse.json(await previewCatalogSync(), { headers: NO_STORE });
   } catch (error) {
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
 
 /** Makes Square match the internal price list: updates, splits shared variations, creates missing ones, fixes item taxes. */
 export async function POST(request: Request) {
-  if (!isAdminRequestAuthorized(request)) return unauthorized();
+  if (!await isVerifiedOwner(request)) return unauthorized();
   const body = await request.json().catch(() => null);
   if (body?.confirm !== true) {
     return NextResponse.json({ error: "Confirm the sync by sending { \"confirm\": true }." }, { status: 400, headers: NO_STORE });

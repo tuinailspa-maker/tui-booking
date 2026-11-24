@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
+import { isVerifiedOwner } from "@/data/teamAccess";
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
-import { isAdminRequestAuthorized } from "@/data/adminAuth";
 import { REPORT_USER_ID, reportsDb, serviceRevenueReports } from "@/data/reports-db";
 import { SQUARE_API_VERSION } from "@/data/squareConfig";
 
 type SquarePayment = { order_id?: string; tip_money?: { amount?: number; currency?: string } };
 
 export async function POST(request: Request) {
-  if (!isAdminRequestAuthorized(request)) return NextResponse.json({ error: "Admin authentication required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+  if (!await isVerifiedOwner(request)) return NextResponse.json({ error: "Owner access required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
   if (!process.env.SQUARE_ACCESS_TOKEN || !process.env.SQUARE_LOCATION_ID) return NextResponse.json({ error: "Square payment sync is not configured." }, { status: 503 });
   let body: { from?: string; to?: string };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid date range." }, { status: 400 }); }

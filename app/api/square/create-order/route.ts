@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
+import { isVerifiedOwner } from "@/data/teamAccess";
 import { NextResponse } from "next/server";
-import { isAdminRequestAuthorized } from "@/data/adminAuth";
 import { SQUARE_API_VERSION } from "@/data/squareConfig";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { serviceById, selectedServicePrice, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
@@ -15,8 +15,8 @@ function squareBaseUrl() {
 }
 
 export async function POST(request: Request) {
-  if (!isAdminRequestAuthorized(request)) {
-    return NextResponse.json({ error: "Admin authentication required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+  if (!await isVerifiedOwner(request)) {
+    return NextResponse.json({ error: "Owner access required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
   }
   if (!process.env.SQUARE_ACCESS_TOKEN || !process.env.SQUARE_LOCATION_ID) {
     return NextResponse.json({ error: "Square is not configured. Set SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID." }, { status: 503, headers: { "Cache-Control": "no-store" } });
