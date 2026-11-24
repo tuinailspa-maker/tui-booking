@@ -2,11 +2,11 @@
 
 import { useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import { useSquareSync } from "@/hooks/use-square-sync";
 import { AppointmentCalendar } from "./appointment-calendar";
 import { AppointmentDrawer, type AppointmentStatus } from "./appointment-drawer";
-import { EndOfDayReport } from "./end-of-day-report";
+import { EndOfDayReport, REPORTS_CACHE_PREFIX } from "./end-of-day-report";
 import { TeamAccessSettings } from "./team-access-settings";
 import { PinLockScreen } from "./pin-lock-screen";
 import { allServices, selectedServiceDuration, selectedServicePrice, serviceById, type ServiceAddOnKey } from "@/data/serviceTree";
@@ -128,6 +128,7 @@ function totalFor(booking: AdminBooking) {
 
 export function AdminDashboard({ initialDate }: { initialDate: string }) {
   const sessionHint = useSyncExternalStore(subscribeToSessionHint, readSessionHint, () => false);
+  const { mutate: mutateCache } = useSWRConfig();
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState("");
   const [pinBusy, setPinBusy] = useState(false);
@@ -177,6 +178,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Unable to unlock the admin dashboard.");
+      await clearReportCache();
       saveSessionHint(true);
       setPin("");
       await session.mutate();
@@ -187,8 +189,13 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
     }
   }
 
+  function clearReportCache() {
+    return mutateCache((key) => Array.isArray(key) && typeof key[0] === "string" && key[0].startsWith(REPORTS_CACHE_PREFIX), undefined, { revalidate: false });
+  }
+
   async function logOut() {
     await fetch("/api/admin/session", { method: "DELETE" });
+    await clearReportCache();
     setEditor(null);
     setWalkIns([]);
     setServiceOverrides({});
@@ -398,7 +405,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
             <button className="admin-secondary-button" type="button" aria-expanded={showCatalogSync} aria-controls="square-catalog-sync-panel" onClick={() => setShowCatalogSync((open) => !open)}>{showCatalogSync ? "Hide Square sync tools" : "Show Square sync tools"}</button>
           </section>}
           {isOwner && showCatalogSync && <div id="square-catalog-sync-panel"><SquareCatalogSync /></div>}
-        </> : activeTab === "eod" ? <EndOfDayReport key={viewerName} initialDate={initialDate} role={viewerRole} viewerName={viewerName} technicians={staffNames} /> : activeTab === "reports" && isOwner ? <ReportsDashboard /> : <>
+        </> : activeTab === "eod" ? <EndOfDayReport key={`${viewerRole}:${viewerName}`} initialDate={initialDate} role={viewerRole} viewerName={viewerName} technicians={staffNames} /> : activeTab === "reports" && isOwner ? <ReportsDashboard /> : <>
           {activeTab === "queue" && <div className="admin-schedule-heading"><div><h2>Arrival queue</h2><p>{displayBookings.length} {displayBookings.length === 1 ? "guest" : "guests"} · {dateLabel}</p></div><span className="admin-sync-note">Auto-refreshes every 60 seconds</span></div>}
           {bookings.isLoading && <div className="admin-loading" role="status"><span className="admin-spinner" />Loading Square appointments…</div>}
           {!bookings.isLoading && !bookings.error && displayBookings.length === 0 && <div className="admin-empty"><span aria-hidden="true">—</span><h3>{activeTab === "queue" ? "The arrival queue is clear" : "No appointments for this day"}</h3><p>{activeTab === "queue" ? "Checked-in guests and waiting walk-ins will appear here." : isOwner ? "Square has no active bookings for the selected date. Add a walk-in ticket when a guest arrives." : "You have no appointments assigned for this day."}</p>{isOwner && <button className="admin-primary-button" type="button" onClick={() => openWalkInEditor()}>+ New / Walk-in</button>}</div>}

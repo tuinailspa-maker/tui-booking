@@ -35,7 +35,9 @@ const cents = (value: number) => Math.round(value * 100) / 100;
 const money = (value: number) => `$${value.toFixed(2)}`;
 const discountMoney = (value: number) => (value > 0 ? `-${money(value)}` : money(0));
 
-async function fetcher(url: string): Promise<ReportPayload> {
+export const REPORTS_CACHE_PREFIX = "/api/admin/reports";
+
+async function fetcher([url]: readonly [string, string, string]): Promise<ReportPayload> {
   const response = await fetch(url, { cache: "no-store" });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || "End of day report could not be loaded.");
@@ -155,11 +157,16 @@ function fullReportHtml(dateLabel: string, sections: TechnicianSection[], grand:
 export function EndOfDayReport({ initialDate, role, viewerName, technicians }: { initialDate: string; role: "owner" | "staff"; viewerName: string; technicians: string[] }) {
   const [date, setDate] = useState(initialDate);
   const [technicianFilter, setTechnicianFilter] = useState("all");
-  const report = useSWR(`/api/admin/reports?from=${date}&to=${date}`, fetcher, { revalidateOnFocus: true, refreshInterval: 60000 });
+  const report = useSWR([`${REPORTS_CACHE_PREFIX}?from=${date}&to=${date}`, role, viewerName] as const, fetcher, { revalidateOnFocus: true, refreshInterval: 60000 });
+  const visibleRecords = useMemo(() => {
+    const records = report.data?.records ?? [];
+    if (role === "staff") return report.data?.role === "staff" ? records.filter((record) => record.technician === viewerName) : [];
+    return records;
+  }, [report.data, role, viewerName]);
 
   const sections = useMemo<TechnicianSection[]>(() => {
     const grouped = new Map<string, ReportRow[]>();
-    for (const record of report.data?.records ?? []) {
+    for (const record of visibleRecords) {
       if (role === "owner" && technicianFilter !== "all" && record.technician !== technicianFilter) continue;
       const rows = grouped.get(record.technician) ?? [];
       rows.push(toRow(record));
@@ -170,15 +177,17 @@ export function EndOfDayReport({ initialDate, role, viewerName, technicians }: {
       const rows = grouped.get(name)!;
       return { technician: name, rows, totals: sumRows(rows) };
     });
-  }, [report.data, role, technicianFilter, technicians]);
+  }, [visibleRecords, role, technicianFilter, technicians]);
 
   const showGrandTotal = role === "owner" && technicianFilter === "all";
   const grand = showGrandTotal ? sumRows(sections.flatMap((section) => section.rows)) : null;
   const dateLabel = new Intl.DateTimeFormat("en-CA", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
   const filterOptions = useMemo(() => {
-    const recorded = (report.data?.records ?? []).map((record) => record.technician);
+    if (role !== "owner") return [];
+    const recorded = visibleRecords.map((record) => record.technician);
     return [...new Set([...technicians, ...recorded])];
-  }, [report.data, technicians]);
+  }, [visibleRecords, role, technicians]);
+  const printScope = role === "staff" ? "My" : technicianFilter === "all" ? "All Staff" : technicianFilter;
 
   return <section className="eod-report" aria-labelledby="eod-title">
     <div className="eod-heading">
@@ -188,8 +197,8 @@ export function EndOfDayReport({ initialDate, role, viewerName, technicians }: {
         <p>{role === "staff" ? `${viewerName} · your checkouts only` : "Every checkout recorded in the dashboard, grouped by technician"}</p>
       </div>
       <div className="eod-print-actions">
-        <button type="button" className="admin-secondary-button" disabled={sections.length === 0} onClick={() => printDocument(thermalHtml(dateLabel, sections, grand))}>Print Thermal Slip (80mm / Star mPOP)</button>
-        <button type="button" className="admin-primary-button" disabled={sections.length === 0} onClick={() => printDocument(fullReportHtml(dateLabel, sections, grand))}>Print Full Report (A4 / PDF)</button>
+        <button type="button" className="admin-secondary-button" disabled={sections.length === 0} onClick={() => printDocument(thermalHtml(dateLabel, sections, grand))}>Print {printScope} Slip (80mm / Star mPOP)</button>
+        <button type="button" className="admin-primary-button" disabled={sections.length === 0} onClick={() => printDocument(fullReportHtml(dateLabel, sections, grand))}>{role === "owner" && technicianFilter === "all" ? "Print All Staff Summary (A4 / PDF)" : `Print ${printScope} Report (A4 / PDF)`}</button>
       </div>
     </div>
 
