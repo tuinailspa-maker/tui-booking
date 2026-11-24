@@ -1,0 +1,31 @@
+/* Square-style touch calendar: 2D scroll container with sticky staff row, time column and corner. */
+.admin-calendar-wrap .admin-calendar-shell {
+  --cal-col-min: 140px;
+  max-height: max(360px, calc(100dvh - 220px));
+  overflow: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 768px) {
+  .admin-calendar-wrap .admin-calendar-shell { --cal-col-min: 180px; }
+}
+
+.admin-calendar-wrap .admin-calendar-header { position: sticky; top: 0; z-index: 20; background: #fff; }
+.admin-calendar-wrap .admin-cal-row > .admin-time-axis { position: sticky; left: 0; z-index: 10; background: #fff; }
+.admin-calendar-wrap .admin-cal-row > .admin-time-header { position: sticky; top: 0; left: 0; z-index: 30; background: #fff; }
+
+.admin-calendar-wrap .admin-cal-lane,
+.admin-calendar-wrap .admin-staff-header,
+.admin-calendar-wrap .admin-staff-column { min-width: var(--cal-col-min); }
+
+.admin-calendar-wrap .admin-calendar-header,
+.admin-calendar-wrap .admin-calendar-body,
+.admin-calendar-wrap .admin-calendar-slot,
+.admin-calendar-wrap .admin-calendar-card {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}

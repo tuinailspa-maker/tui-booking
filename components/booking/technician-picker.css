@@ -1,0 +1,18 @@
+.technician-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.technician-option { min-height: 64px; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); background: var(--paper); color: #625e56; cursor: pointer; text-align: left; transition: border-color .2s, background .2s, color .2s; }
+.technician-option:hover { border-color: #c9b18e; }
+.technician-option:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.technician-option.is-selected { border-color: var(--ink); background: var(--ink); color: #fffdfa; }
+.technician-option-any { grid-column: 1 / -1; }
+.technician-avatar { width: 36px; height: 36px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #e0d3bf; border-radius: 50%; background: #f6f0e6; color: var(--gold); font: 14px/1 Georgia, serif; object-fit: cover; }
+.technician-option.is-selected .technician-avatar { border-color: #6b5b45; background: #3a3631; }
+.technician-text { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.technician-name { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.technician-hint { color: var(--gold); font-size: 12px; }
+.technician-option.is-selected .technician-hint { color: #d8c2a3; }
+.technician-loading { margin: 10px 0 0; }
+
+@media (max-width: 560px) {
+  .technician-options { grid-template-columns: repeat(2, 1fr); }
+  .technician-option { min-height: 58px; gap: 9px; padding: 10px; }
+}

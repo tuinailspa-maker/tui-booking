@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import Image from "next/image";
 import { useSquareSync } from "@/hooks/use-square-sync";
-import { BUSINESS_TIME_ZONE, getSlotsForDate, isOnlineOnlyTime, type PublicTechnician, type Technician } from "@/data/staffSchedule";
+import { BUSINESS_TIME_ZONE, getSlotsForDate, isOnlineOnlyTime, type Technician } from "@/data/staffSchedule";
+import type { TechnicianOption } from "./technician-picker";
 import { serviceById, type ServiceAddOnKey } from "@/data/serviceTree";
 import { BookingSummary, formatCad, getBookingTotals } from "./booking-summary";
 import { ClientDetails, type ClientDetailsValue } from "./client-details";
@@ -57,7 +58,8 @@ export function BookingApp() {
   const [time, setTime] = useState("");
   const [selections, setSelections] = useState<string[][]>([[]]);
   const [serviceAddOns, setServiceAddOns] = useState<Record<string, ServiceAddOnKey>[]>([{}]);
-  const [technicianPreferences, setTechnicianPreferences] = useState<(PublicTechnician | "")[]>([""]);
+  const [technicianPreferences, setTechnicianPreferences] = useState<string[]>([""]);
+  const [preferredTechnicianId, setPreferredTechnicianId] = useState("");
   const [activeGuest, setActiveGuest] = useState(0);
   const [client, setClient] = useState<ClientDetailsValue>(initialClient);
   const [reference, setReference] = useState("");
@@ -70,15 +72,24 @@ export function BookingApp() {
   const copy = translations[language];
   const totals = useMemo(() => getBookingTotals(selections, serviceAddOns), [selections, serviceAddOns]);
   const requestedSlotDuration = Math.max(30, ...totals.guestDurations);
-  const availabilityKey = date ? ["/api/bookings/availability", date, partySize, requestedSlotDuration] as const : null;
+  const { data: technicianData, isLoading: isTechniciansLoading } = useSWR("/api/bookings/technicians", async (url: string) => {
+    const response = await fetch(url, { cache: "no-store" });
+    const result = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(result?.error || "Could not load technicians.");
+    return result as { technicians: TechnicianOption[] };
+  }, { revalidateOnFocus: false });
+  const technicians = technicianData?.technicians ?? [];
+  const preferredTechnician = technicians.find((technician) => technician.id === preferredTechnicianId) ?? null;
+  const technicianLabel = preferredTechnician?.name ?? copy.anyTechnicianOption;
+  const availabilityKey = date ? ["/api/bookings/availability", date, partySize, requestedSlotDuration, preferredTechnician?.id ?? ""] as const : null;
   const { data: slotAvailability, isLoading: isAvailabilityLoading, mutate: refreshAvailability } = useSWR(
     availabilityKey,
-    async ([url, requestedDate, requestedPartySize, durationMinutes]) => {
+    async ([url, requestedDate, requestedPartySize, durationMinutes, teamMemberId]) => {
       const response = await fetch(url, {
         method: "POST",
         cache: "no-store",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: requestedDate, partySize: requestedPartySize, durationMinutes }),
+        body: JSON.stringify({ date: requestedDate, partySize: requestedPartySize, durationMinutes, ...(teamMemberId ? { teamMemberId } : {}) }),
       });
       const result = await response.json().catch(() => null);
       if (!response.ok) throw new Error(result?.error || "Could not load live availability.");
@@ -116,7 +127,15 @@ export function BookingApp() {
   function changeTime(nextTime: string) {
     setTime(nextTime);
     setAvailabilityError(false);
-    setTechnicianPreferences(Array.from({ length: partySize }, () => ""));
+    setTechnicianPreferences(Array.from({ length: partySize }, (_, index) => index === 0 ? preferredTechnician?.name ?? "" : ""));
+  }
+
+  function changePreferredTechnician(id: string) {
+    const name = technicians.find((technician) => technician.id === id)?.name ?? "";
+    setPreferredTechnicianId(id);
+    setTime("");
+    setAvailabilityError(false);
+    setTechnicianPreferences((current) => current.map((preference, index) => index === 0 ? name : preference));
   }
 
   function toggleService(serviceId: string) {
@@ -179,7 +198,7 @@ export function BookingApp() {
     setDurationError(false);
   }
 
-  function changeTechnician(index: number, value: PublicTechnician | "") {
+  function changeTechnician(index: number, value: string) {
     setTechnicianPreferences((current) => current.map((preference, guestIndex) => guestIndex === index ? value : preference));
   }
 
@@ -305,6 +324,7 @@ export function BookingApp() {
     setSelections([[]]);
     setServiceAddOns([{}]);
     setTechnicianPreferences([""]);
+    setPreferredTechnicianId("");
     setActiveGuest(0);
     setClient(initialClient);
     setReference("");
@@ -371,6 +391,7 @@ export function BookingApp() {
           serviceAddOns={serviceAddOns}
           hasOnlineOnlyTime={isOnlineOnlyTime(time)}
           assignedNames={selectedPublicNames}
+          technicianChoice={technicianLabel}
           onAddToCalendar={addToCalendar}
           onStartAgain={startAgain}
         />
@@ -390,6 +411,10 @@ export function BookingApp() {
                 availabilitySlots={availabilitySlots}
                 isAvailabilityLoading={isAvailabilityLoading}
                 nextAvailableDate={slotAvailability?.nextDate ?? null}
+                technicians={technicians}
+                technicianId={preferredTechnician?.id ?? ""}
+                isTechniciansLoading={isTechniciansLoading}
+                onTechnicianChange={changePreferredTechnician}
               />
             )}
 
@@ -420,10 +445,10 @@ export function BookingApp() {
                   </div>
                 )}
                 <div className="guest-panel" id={`guest-panel-${activeGuest}`} role="tabpanel" aria-labelledby={partySize > 1 ? `guest-tab-${activeGuest}` : undefined}>
-                  {selectedSlot && (
+                  {selectedSlot && !(activeGuest === 0 && preferredTechnician) && (
                     <label className="technician-select">
                       <span>{copy.technician}{partySize > 1 ? ` · ${copy.guest} ${activeGuest + 1}` : ""}</span>
-                      <select value={technicianPreferences[activeGuest] ?? ""} onChange={(event) => changeTechnician(activeGuest, event.target.value as PublicTechnician | "")}>
+                      <select value={technicianPreferences[activeGuest] ?? ""} onChange={(event) => changeTechnician(activeGuest, event.target.value)}>
                         <option value="">{copy.anyTechnician}</option>
                         {(availabilitySlots[time] ?? []).map((technician) => <option key={technician} value={technician}>{technician}</option>)}
                       </select>
@@ -467,7 +492,7 @@ export function BookingApp() {
           </div>
 
           <aside className="desktop-summary" aria-label={copy.summary}>
-            <BookingSummary language={language} copy={copy} partySize={partySize} date={date} time={time} selections={selections} serviceAddOns={serviceAddOns} onRemoveService={step === 2 || step === 3 ? removeService : undefined} onClearAll={step === 2 || step === 3 ? clearAllServices : undefined} onChangeServices={step === 3 ? changeServices : undefined} />
+            <BookingSummary language={language} copy={copy} technicianLabel={technicianLabel} partySize={partySize} date={date} time={time} selections={selections} serviceAddOns={serviceAddOns} onRemoveService={step === 2 || step === 3 ? removeService : undefined} onClearAll={step === 2 || step === 3 ? clearAllServices : undefined} onChangeServices={step === 3 ? changeServices : undefined} />
           </aside>
         </div>
       )}
@@ -475,7 +500,7 @@ export function BookingApp() {
       {step !== 4 && (
         <div className="mobile-summary-wrap">
           <div className="mobile-summary-details" id="mobile-summary-details" hidden={!showMobileSummary}>
-            <BookingSummary language={language} copy={copy} partySize={partySize} date={date} time={time} selections={selections} serviceAddOns={serviceAddOns} onRemoveService={step === 2 || step === 3 ? removeService : undefined} onClearAll={step === 2 || step === 3 ? clearAllServices : undefined} onChangeServices={step === 3 ? changeServices : undefined} />
+            <BookingSummary language={language} copy={copy} technicianLabel={technicianLabel} partySize={partySize} date={date} time={time} selections={selections} serviceAddOns={serviceAddOns} onRemoveService={step === 2 || step === 3 ? removeService : undefined} onClearAll={step === 2 || step === 3 ? clearAllServices : undefined} onChangeServices={step === 3 ? changeServices : undefined} />
           </div>
           <button className="mobile-summary-bar" type="button" aria-expanded={showMobileSummary} aria-controls="mobile-summary-details" onClick={() => setShowMobileSummary((open) => !open)}>
             <span className="mobile-summary-label"><span>{copy.summary}</span><small>{totals.serviceCount} {copy.summarySelected.toLowerCase()} · {totals.duration} min</small></span>

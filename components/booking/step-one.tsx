@@ -11,6 +11,7 @@ import {
 } from "@/data/staffSchedule";
 import type { Technician } from "@/data/staffSchedule";
 import type { Language, BookingCopy } from "./copy";
+import { TechnicianPicker, type TechnicianOption } from "./technician-picker";
 
 type StepOneProps = {
   language: Language;
@@ -24,6 +25,10 @@ type StepOneProps = {
   availabilitySlots: Record<string, Technician[]>;
   isAvailabilityLoading: boolean;
   nextAvailableDate: string | null;
+  technicians: TechnicianOption[];
+  technicianId: string;
+  isTechniciansLoading: boolean;
+  onTechnicianChange: (id: string) => void;
 };
 
 function fullDateLabel(iso: string, language: Language) {
@@ -35,7 +40,7 @@ function fullDateLabel(iso: string, language: Language) {
   }).format(new Date(`${iso}T12:00:00Z`));
 }
 
-export function StepOne({ language, copy, partySize, onPartySizeChange, date, onDateChange, time, onTimeChange, availabilitySlots, isAvailabilityLoading, nextAvailableDate }: StepOneProps) {
+export function StepOne({ language, copy, partySize, onPartySizeChange, date, onDateChange, time, onTimeChange, availabilitySlots, isAvailabilityLoading, nextAvailableDate, technicians = [], technicianId = "", isTechniciansLoading, onTechnicianChange }: StepOneProps) {
   const [dates, setDates] = useState<DateOption[]>([]);
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setDates(getUpcomingDates(language)));
@@ -76,6 +81,8 @@ export function StepOne({ language, copy, partySize, onPartySizeChange, date, on
         {partySize === 2 && <p className="capacity-note">{copy.groupTwo}</p>}
         {partySize === 3 && <p className="capacity-note">{copy.groupThree}</p>}
       </div>
+
+      <TechnicianPicker copy={copy} technicians={technicians} selectedId={technicianId} isLoading={isTechniciansLoading} onChange={onTechnicianChange} />
 
       <div className="form-section">
         <div className="section-label-row">

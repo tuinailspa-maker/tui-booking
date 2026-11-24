@@ -42,6 +42,38 @@ async function fetchBookableTeamMemberIds(): Promise<Set<string> | null> {
   }
 }
 
+export type PublicTechnicianProfile = { teamMemberId: string; name: string; imageUrl: string | null };
+
+/**
+ * Technicians customers can pick by name: Square team members whose booking profile is bookable
+ * at this location. Owner/manager accounts with Bookable turned off and the virtual Option
+ * capacity columns are left out; they still count toward "Any available".
+ */
+export async function getBookableTechnicians(locationId: string): Promise<PublicTechnicianProfile[]> {
+  const roster = (await getStaffRoster(locationId)).filter((member) => member.kind === "real");
+  const profiles = new Map<string, { imageUrl: string | null }>();
+  try {
+    let cursor: string | undefined;
+    do {
+      const params = new URLSearchParams({ limit: "100", bookable_only: "true", location_id: locationId });
+      if (cursor) params.set("cursor", cursor);
+      const response = await fetch(`${squareBaseUrl()}/bookings/team-member-booking-profiles?${params}`, { cache: "no-store", headers: authHeaders() });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.errors?.map((error: { detail?: string }) => error.detail).filter(Boolean).join("; ") || "Square booking profile list failed.");
+      for (const profile of (data.team_member_booking_profiles ?? []) as { team_member_id?: string; is_bookable?: boolean; profile_image_url?: string }[]) {
+        if (profile.team_member_id && profile.is_bookable === true) profiles.set(profile.team_member_id, { imageUrl: profile.profile_image_url || null });
+      }
+      cursor = data.cursor;
+    } while (cursor);
+  } catch (error) {
+    console.error("[v0] Square booking profiles lookup failed, showing roster technicians:", error instanceof Error ? error.message : error);
+    return roster.map((member) => ({ teamMemberId: member.teamMemberId, name: member.name, imageUrl: null }));
+  }
+  return roster
+    .filter((member) => profiles.has(member.teamMemberId))
+    .map((member) => ({ teamMemberId: member.teamMemberId, name: member.name, imageUrl: profiles.get(member.teamMemberId)?.imageUrl ?? null }));
+}
+
 // Only used when Square is unreachable; every successful lookup is fetched live so columns
 // opened or closed in Square Appointments take effect on the very next request.
 let lastGoodRoster: { locationId: string; roster: StaffMember[] } | null = null;

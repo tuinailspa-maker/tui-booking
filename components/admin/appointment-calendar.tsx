@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { serviceById } from "@/data/serviceTree";
 import { getClosingTimeForDate } from "@/data/staffSchedule";
+import "./appointment-calendar.css";
 
 export type CalendarBooking = {
   id: string;
@@ -30,7 +31,7 @@ const DEFAULT_STAFF_NAMES = ["Jenny", "Melika", "Nana", "Option 1", "Option 2"];
 const START_MINUTE = 8 * 60;
 const HALF_HOUR_HEIGHT = 48;
 const TIME_AXIS_WIDTH = 68;
-const MIN_COLUMN_WIDTH = 160;
+const MIN_COLUMN_WIDTH = 140;
 
 function localMinutes(iso: string) {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(iso));
@@ -101,7 +102,7 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
     else next.add(name);
     return next;
   });
-  const gridMinWidth = `${TIME_AXIS_WIDTH + Math.max(1, STAFF.length) * MIN_COLUMN_WIDTH}px`;
+  const gridMinWidth = `calc(${TIME_AXIS_WIDTH}px + ${Math.max(1, STAFF.length)} * var(--cal-col-min, ${MIN_COLUMN_WIDTH}px))`;
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const nowParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
   const nowValues = Object.fromEntries(nowParts.map((part) => [part.type, part.value]));

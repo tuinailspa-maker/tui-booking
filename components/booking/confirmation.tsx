@@ -15,11 +15,12 @@ type ConfirmationProps = {
   serviceAddOns: Record<string, ServiceAddOnKey>[];
   hasOnlineOnlyTime: boolean;
   assignedNames: string[];
+  technicianChoice: string;
   onAddToCalendar: () => void;
   onStartAgain: () => void;
 };
 
-export function Confirmation({ language, copy, reference, date, time, partySize, selections, serviceAddOns, hasOnlineOnlyTime, assignedNames, onAddToCalendar, onStartAgain }: ConfirmationProps) {
+export function Confirmation({ language, copy, reference, date, time, partySize, selections, serviceAddOns, hasOnlineOnlyTime, assignedNames, technicianChoice, onAddToCalendar, onStartAgain }: ConfirmationProps) {
   const totals = getBookingTotals(selections, serviceAddOns);
   const comboDiscount = getComboDiscountDetails(selections, serviceAddOns);
   return (
@@ -44,6 +45,7 @@ export function Confirmation({ language, copy, reference, date, time, partySize,
               return `${serviceDisplayNameWithAddOn(service, language, addOnKey)} — ${formatCad(selectedServicePrice(service, addOnKey), language)}`;
             }).filter(Boolean).join("; ")}</span>
           ))}</dd></div>
+          <div><dt>{copy.summaryTechnician}</dt><dd>{technicianChoice}</dd></div>
           <div><dt>{copy.assignedTeam}</dt><dd>{assignedNames.length ? Array.from(new Set(assignedNames)).join(", ") : copy.anyTechnician}</dd></div>
           {comboDiscount.amount > 0 && <div><dt>{language === "en" ? `Combo discount${comboDiscount.qualifyingGuests.length > 1 ? ` (${comboDiscount.qualifyingGuests.length}x)` : ""}` : `Rabais combo${comboDiscount.qualifyingGuests.length > 1 ? ` (${comboDiscount.qualifyingGuests.length}x)` : ""}`}</dt><dd>-{new Intl.NumberFormat(language === "en" ? "en-CA" : "fr-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }).format(comboDiscount.amount)}</dd></div>}
           <div><dt>{copy.subtotal}</dt><dd>{formatCad(totals.subtotal - comboDiscount.amount, language)}</dd></div>
