@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { serviceById } from "@/data/serviceTree";
 import { getClosingTimeForDate } from "@/data/staffSchedule";
 import "./appointment-calendar.css";
@@ -31,7 +31,9 @@ type AppointmentCalendarProps = {
 };
 
 const DEFAULT_STAFF_NAMES = ["Jenny", "Melika", "Nana", "Option 1", "Option 2"];
-const START_MINUTE = 8 * 60;
+const HOURS_START_MINUTE = 8 * 60;
+const HOURS_END_MINUTE = 21 * 60;
+const DAY_END_MINUTE = 24 * 60;
 const HALF_HOUR_HEIGHT = 48;
 const TIME_AXIS_WIDTH = 44;
 const MIN_COLUMN_WIDTH = 62;
@@ -116,11 +118,26 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
   const nowMinute = Number(nowValues.hour) * 60 + Number(nowValues.minute);
   const closingTime = getClosingTimeForDate(date);
   const [closingHour, closingMinute] = closingTime.split(":").map(Number);
-  const endMinute = closingHour * 60 + closingMinute;
+  const closingAt = closingHour * 60 + closingMinute;
+  const columnBookings = bookings.filter((booking) => booking.technicians.some((name) => STAFF.includes(name)));
+  const bookingSpans = columnBookings.map((booking) => {
+    const start = localMinutes(booking.startAt);
+    return { start, end: start + Math.max(15, booking.durationMinutes || 30) };
+  });
+  const outsideHoursCount = bookingSpans.filter(({ start, end }) => start < HOURS_START_MINUTE || end > HOURS_END_MINUTE).length;
+  const START_MINUTE = Math.max(0, Math.min(HOURS_START_MINUTE, ...bookingSpans.map(({ start }) => Math.floor(start / 60) * 60)));
+  const endMinute = Math.min(DAY_END_MINUTE, Math.max(HOURS_END_MINUTE, ...bookingSpans.map(({ end }) => Math.ceil(end / 60) * 60)));
   const columnHeight = ((endMinute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT;
+  const closedFrom = Math.max(START_MINUTE, Math.min(closingAt, HOURS_END_MINUTE));
   const timeZoneLabel = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", timeZoneName: "short" }).formatToParts(new Date(`${date}T12:00:00Z`)).find((part) => part.type === "timeZoneName")?.value ?? "ET";
   const showNow = date === today && nowMinute >= START_MINUTE && nowMinute <= endMinute;
-  const ticks = useMemo(() => Array.from({ length: (endMinute - START_MINUTE) / 30 + 1 }, (_, index) => START_MINUTE + index * 30), [endMinute]);
+  const ticks = useMemo(() => Array.from({ length: (endMinute - START_MINUTE) / 30 + 1 }, (_, index) => START_MINUTE + index * 30), [START_MINUTE, endMinute]);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const hoursOffset = ((HOURS_START_MINUTE - START_MINUTE) / 30) * HALF_HOUR_HEIGHT;
+
+  useEffect(() => {
+    if (shellRef.current) shellRef.current.scrollTop = hoursOffset;
+  }, [date, hoursOffset, view]);
 
   if (view === "list") {
     return <div className="admin-appointment-list">
@@ -136,8 +153,14 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
   }
 
   return <div className="admin-calendar-wrap">
+  <p className="admin-hours-line">
+    <strong>8AM – 9PM</strong>
+    <span>Operating hours · {timeZoneLabel}</span>
+    {closingAt < HOURS_END_MINUTE && <span>Closes {timeLabel(closingAt)} this day</span>}
+    {outsideHoursCount > 0 && <span className="is-outside">{outsideHoursCount} {outsideHoursCount === 1 ? "appointment" : "appointments"} outside hours shown</span>}
+  </p>
   {STAFF.length === 0 ? <p className="admin-calendar-empty" role="status">All columns are hidden. Open the ••• menu to show a column.</p> :
-  <div className="admin-calendar-shell" aria-label="Appointments calendar">
+  <div className="admin-calendar-shell" ref={shellRef} aria-label="Appointments calendar">
     <div className="admin-cal-row admin-calendar-header" style={{ minWidth: gridMinWidth }}>
       <div className="admin-time-header" aria-hidden="true">{timeZoneLabel}</div>
       {STAFF.map((name) => <div className="admin-cal-lane admin-staff-header" key={name} title={name}>
@@ -149,6 +172,8 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
         {ticks.filter((minute) => minute % 60 === 0).map((minute) => <span key={minute} style={{ top: `${((minute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT}px` }}>{hourLabel(minute)}</span>)}
       </div>
       <div className="admin-cal-lanes">
+      {START_MINUTE < HOURS_START_MINUTE && <div className="admin-off-hours" aria-hidden="true" style={{ top: 0, height: `${hoursOffset}px` }} />}
+      {closedFrom < endMinute && <div className="admin-off-hours" aria-hidden="true" style={{ top: `${((closedFrom - START_MINUTE) / 30) * HALF_HOUR_HEIGHT}px`, bottom: 0 }} />}
       <div className="admin-grid-lines" aria-hidden="true">{ticks.map((minute) => <span className={minute % 60 === 0 ? "is-hour" : ""} key={minute} style={{ top: `${((minute - START_MINUTE) / 30) * HALF_HOUR_HEIGHT}px` }} />)}</div>
       {STAFF.map((staff) => {
         const assigned = bookings.filter((booking) => {

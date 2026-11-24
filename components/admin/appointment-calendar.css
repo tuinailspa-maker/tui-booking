@@ -1,4 +1,45 @@
 /* Square-style touch calendar: 2D scroll container with sticky staff row, time column and corner. */
+.admin-calendar-wrap .admin-hours-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #6b7280;
+  background: #fff;
+  border-bottom: 1px solid #ececec;
+}
+
+.admin-calendar-wrap .admin-hours-line strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-calendar-wrap .admin-hours-line span + span::before {
+  content: "·";
+  margin-right: 10px;
+  color: #c4c7cc;
+}
+
+.admin-calendar-wrap .admin-hours-line .is-outside {
+  font-weight: 600;
+  color: #b45309;
+}
+
+.admin-calendar-wrap .admin-off-hours {
+  position: absolute;
+  z-index: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(135deg, rgba(17, 24, 39, 0.035) 0 6px, transparent 6px 12px);
+}
+
 .admin-calendar-wrap .admin-calendar-shell {
   --cal-col-min: 62px;
   --cal-gutter: 44px;

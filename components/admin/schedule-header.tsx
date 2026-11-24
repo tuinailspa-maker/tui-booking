@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { MonthYearPicker } from "./month-year-picker";
 import "./schedule-header.css";
 
 type ScheduleHeaderProps = {
@@ -48,7 +49,8 @@ function weekOf(value: string) {
 export function ScheduleHeader({ date, todayDate, onDateChange, showWeekStrip, isOwner, viewerLabel, syncState, isRefreshing, onRefresh, onLock, onNewBooking, scheduleView, onScheduleViewChange, columns = [], hiddenColumns, onToggleColumn, onShowAllColumns }: ScheduleHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const dateInputRef = useRef<HTMLInputElement>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
   const monthLabel = new Intl.DateTimeFormat("en-CA", { month: "long", year: "numeric", timeZone: "UTC" }).format(parseDate(date));
   const week = weekOf(date);
 
@@ -68,15 +70,27 @@ export function ScheduleHeader({ date, todayDate, onDateChange, showWeekStrip, i
     };
   }, [menuOpen]);
 
-  function openDatePicker() {
-    const input = dateInputRef.current;
-    if (!input) return;
-    try {
-      input.showPicker();
-    } catch {
-      input.focus();
-      input.click();
-    }
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const closeOnOutside = (event: PointerEvent) => {
+      if (!pickerRef.current?.contains(event.target as Node)) setPickerOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setPickerOpen(false);
+      pickerRef.current?.querySelector<HTMLButtonElement>(".sq-month-button")?.focus();
+    };
+    document.addEventListener("pointerdown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [pickerOpen]);
+
+  function closePicker() {
+    setPickerOpen(false);
+    pickerRef.current?.querySelector<HTMLButtonElement>(".sq-month-button")?.focus();
   }
 
   function shiftWeek(days: number) {
@@ -129,12 +143,12 @@ export function ScheduleHeader({ date, todayDate, onDateChange, showWeekStrip, i
         </div>}
       </div>
 
-      <div className="sq-month">
-        <button type="button" className="sq-month-button" onClick={openDatePicker} aria-label={`${monthLabel}. Choose a date`}>
+      <div className="sq-month" ref={pickerRef}>
+        <button type="button" className="sq-month-button" onClick={() => setPickerOpen((open) => !open)} aria-label={`${monthLabel}. Choose a date`} aria-haspopup="dialog" aria-expanded={pickerOpen} aria-controls="sq-date-picker">
           <span>{monthLabel}</span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5" /></svg>
         </button>
-        <input ref={dateInputRef} className="sq-month-input" type="date" tabIndex={-1} aria-hidden="true" value={date} onChange={(event) => event.target.value && onDateChange(event.target.value)} />
+        {pickerOpen && <MonthYearPicker id="sq-date-picker" date={date} todayDate={todayDate} onSelect={onDateChange} onClose={closePicker} />}
       </div>
 
       {isOwner ? <button type="button" className="sq-icon-button sq-add-button" aria-label="New booking or walk-in" onClick={onNewBooking}>
