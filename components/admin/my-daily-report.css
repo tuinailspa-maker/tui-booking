@@ -1,0 +1,46 @@
+.mdr { display: flex; flex-direction: column; gap: 16px; margin-top: 24px; padding: 20px; border: 1px solid #e4e4e7; border-radius: 14px; background: #fff; }
+.mdr-heading { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.mdr-heading h2 { margin: 2px 0 4px; font-size: 1.35rem; font-weight: 600; color: #111827; }
+.mdr-heading p:not(.admin-eyebrow) { margin: 0; color: #6b7280; font-size: .9rem; }
+.mdr-print { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.mdr-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.mdr-summary > div { display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 10px; background: #f4f4f5; }
+.mdr-summary dt { font-size: .7rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #6b7280; }
+.mdr-summary dd { margin: 0; font-size: 1.2rem; font-weight: 700; color: #111827; font-variant-numeric: tabular-nums; }
+.mdr-summary .mdr-time { background: #111827; }
+.mdr-summary .mdr-time dt, .mdr-summary .mdr-time small { color: #d1d5db; }
+.mdr-summary .mdr-time dd { color: #fff; }
+.mdr-summary small { font-size: .75rem; }
+
+.mdr-status { margin: 0; padding: 14px; border-radius: 10px; background: #fafafa; color: #6b7280; text-align: center; font-size: .9rem; }
+.mdr-status.is-error { color: #b91c1c; background: #fef2f2; }
+
+.mdr-bills { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.mdr-bill { padding: 14px; border: 1px solid #e4e4e7; border-radius: 12px; }
+.mdr-bill-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.mdr-bill-top > div { display: flex; flex-direction: column; min-width: 0; }
+.mdr-bill-top strong { color: #111827; overflow-wrap: anywhere; }
+.mdr-bill-top > div span { color: #6b7280; font-size: .8rem; }
+.mdr-paid { flex-shrink: 0; padding: 3px 9px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: .75rem; font-weight: 600; }
+.mdr-services { margin: 6px 0 10px; color: #374151; font-size: .85rem; }
+.mdr-bill-lines { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; margin: 0; }
+.mdr-bill-lines > div { display: flex; justify-content: space-between; gap: 8px; font-size: .85rem; }
+.mdr-bill-lines dt { color: #6b7280; }
+.mdr-bill-lines dd { margin: 0; color: #111827; font-variant-numeric: tabular-nums; }
+.mdr-bill-lines small { color: #6b7280; }
+.mdr-bill-total { grid-column: 1 / -1; padding-top: 6px; border-top: 1px dashed #e4e4e7; font-weight: 700; }
+
+.mdr-note { display: flex; flex-direction: column; gap: 8px; }
+.mdr-note label { font-weight: 600; color: #111827; }
+.mdr-note textarea { width: 100%; padding: 10px 12px; border: 1px solid #d4d4d8; border-radius: 10px; font: inherit; font-size: 16px; resize: vertical; }
+.mdr-note textarea:focus-visible { outline: 2px solid #111827; outline-offset: 1px; }
+.mdr-note-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #6b7280; font-size: .8rem; }
+
+@media (max-width: 640px) {
+  .mdr { margin-top: 16px; padding: 14px; }
+  .mdr-print { width: 100%; }
+  .mdr-print button { flex: 1 1 0; }
+  .mdr-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mdr-bill-lines { grid-template-columns: 1fr; }
+}
