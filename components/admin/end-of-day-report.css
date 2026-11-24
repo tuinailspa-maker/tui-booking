@@ -51,4 +51,12 @@
   .eod-print-actions { width: 100%; }
   .eod-print-actions button { flex: 1 1 100%; }
   .admin-viewer-badge { display: none; }
+  .eod-table { min-width: 0; }
+  .eod-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .eod-table, .eod-table tbody, .eod-table tr { display: block; }
+  .eod-table tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
+  .eod-table tbody th { grid-column: 1 / -1; padding: 0; border: 0; }
+  .eod-table tbody td { display: flex; justify-content: space-between; gap: 8px; padding: 0; border: 0; }
+  .eod-table tbody td::before { content: attr(data-label); color: #6b7280; font-size: 12px; }
+  .eod-table tbody td.eod-total-cell { grid-column: 1 / -1; padding-top: 6px; border-top: 1px dashed #e5e7eb; font-size: 14px; }
 }

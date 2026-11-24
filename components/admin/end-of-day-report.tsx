@@ -33,6 +33,7 @@ const SPA = {
 
 const cents = (value: number) => Math.round(value * 100) / 100;
 const money = (value: number) => `$${value.toFixed(2)}`;
+const discountMoney = (value: number) => (value > 0 ? `-${money(value)}` : money(0));
 
 async function fetcher(url: string): Promise<ReportPayload> {
   const response = await fetch(url, { cache: "no-store" });
@@ -101,11 +102,11 @@ function thermalHtml(dateLabel: string, sections: TechnicianSection[], grand: To
     <div class="sec"><div class="tech">${escapeHtml(section.technician)}</div>
     ${section.rows.map((row) => `<div class="item"><div class="ln b"><span>${escapeHtml(row.time)} ${escapeHtml(row.client)}</span><span>${money(row.total)}</span></div>
       <div class="svc">${escapeHtml(row.service)}</div>
-      <div class="sm">Px ${money(row.price)} · Disc -${money(row.discount)} · Tax ${money(row.tax)} · Tip ${money(row.tips)}</div></div>`).join("")}
+      <div class="sm">Px ${money(row.price)} · Disc ${discountMoney(row.discount)} · Tax ${money(row.tax)} · Tip ${money(row.tips)}</div></div>`).join("")}
     <div class="rule"></div>
-    ${line("Clients", String(section.totals.count))}${line("Service price", money(section.totals.price))}${line("Discount", `-${money(section.totals.discount)}`)}${line("Tax (GST+QST)", money(section.totals.tax))}${line("Tips", money(section.totals.tips))}
+    ${line("Clients", String(section.totals.count))}${line("Service price", money(section.totals.price))}${line("Discount", discountMoney(section.totals.discount))}${line("Tax (GST+QST)", money(section.totals.tax))}${line("Tips", money(section.totals.tips))}
     <div class="ln b big"><span>TECH TOTAL</span><span>${money(section.totals.total)}</span></div></div>`).join("");
-  const grandBlock = grand ? `<div class="rule dbl"></div><div class="tech">ALL STAFF</div>${line("Clients", String(grand.count))}${line("Service price", money(grand.price))}${line("Discount", `-${money(grand.discount)}`)}${line("Tax (GST+QST)", money(grand.tax))}${line("Tips", money(grand.tips))}<div class="ln b big"><span>GRAND TOTAL</span><span>${money(grand.total)}</span></div>` : "";
+  const grandBlock = grand ? `<div class="rule dbl"></div><div class="tech">ALL STAFF</div>${line("Clients", String(grand.count))}${line("Service price", money(grand.price))}${line("Discount", discountMoney(grand.discount))}${line("Tax (GST+QST)", money(grand.tax))}${line("Tips", money(grand.tips))}<div class="ln b big"><span>GRAND TOTAL</span><span>${money(grand.total)}</span></div>` : "";
   return `<!doctype html><html><head><meta charset="utf-8"><title>End of Day ${escapeHtml(dateLabel)}</title><style>
     @page { size: 80mm auto; margin: 3mm; }
     * { box-sizing: border-box; }
@@ -126,9 +127,9 @@ function thermalHtml(dateLabel: string, sections: TechnicianSection[], grand: To
 }
 
 function fullReportHtml(dateLabel: string, sections: TechnicianSection[], grand: Totals | null) {
-  const totalsCells = (totals: Totals) => `<td>${money(totals.price)}</td><td>-${money(totals.discount)}</td><td>${money(totals.tax)}</td><td>${money(totals.tips)}</td><td>${money(totals.total)}</td>`;
+  const totalsCells = (totals: Totals) => `<td>${money(totals.price)}</td><td>${discountMoney(totals.discount)}</td><td>${money(totals.tax)}</td><td>${money(totals.tips)}</td><td>${money(totals.total)}</td>`;
   const tables = sections.map((section) => `<section><h2>${escapeHtml(section.technician)}</h2><table><thead><tr><th>Client</th><th>Service Price</th><th>Discount</th><th>Tax</th><th>Tips</th><th>Total</th></tr></thead><tbody>
-    ${section.rows.map((row) => `<tr><td><strong>${escapeHtml(row.client)}</strong><br><small>${escapeHtml(row.time)} · ${escapeHtml(row.service)}</small></td><td>${money(row.price)}</td><td>-${money(row.discount)}</td><td>${money(row.tax)}</td><td>${money(row.tips)}</td><td>${money(row.total)}</td></tr>`).join("")}
+    ${section.rows.map((row) => `<tr><td><strong>${escapeHtml(row.client)}</strong><br><small>${escapeHtml(row.time)} · ${escapeHtml(row.service)}</small></td><td>${money(row.price)}</td><td>${discountMoney(row.discount)}</td><td>${money(row.tax)}</td><td>${money(row.tips)}</td><td>${money(row.total)}</td></tr>`).join("")}
     </tbody><tfoot><tr><td>${escapeHtml(section.technician)} daily summary · ${section.totals.count} ${section.totals.count === 1 ? "client" : "clients"}</td>${totalsCells(section.totals)}</tr></tfoot></table></section>`).join("");
   const grandTable = grand ? `<section><h2>All Staff Grand Total</h2><table><thead><tr><th>Clients</th><th>Service Price</th><th>Discount</th><th>Tax</th><th>Tips</th><th>Total</th></tr></thead><tbody><tr class="grand"><td>${grand.count}</td>${totalsCells(grand)}</tr></tbody></table></section>` : "";
   return `<!doctype html><html><head><meta charset="utf-8"><title>End of Day Report ${escapeHtml(dateLabel)}</title><style>
@@ -212,14 +213,14 @@ export function EndOfDayReport({ initialDate, role, viewerName, technicians }: {
           <thead><tr><th scope="col">Client</th><th scope="col">Service Price</th><th scope="col">Discount</th><th scope="col">Tax</th><th scope="col">Tips</th><th scope="col">Total</th></tr></thead>
           <tbody>{section.rows.map((row) => <tr key={row.id}>
             <th scope="row"><strong>{row.client}</strong><small>{row.time} · {row.service}</small></th>
-            <td>{money(row.price)}</td><td>{row.discount > 0 ? `-${money(row.discount)}` : money(0)}</td><td>{money(row.tax)}</td><td>{money(row.tips)}</td><td className="eod-total-cell">{money(row.total)}</td>
+            <td data-label="Service Price">{money(row.price)}</td><td data-label="Discount">{discountMoney(row.discount)}</td><td data-label="Tax">{money(row.tax)}</td><td data-label="Tips">{money(row.tips)}</td><td data-label="Total" className="eod-total-cell">{money(row.total)}</td>
           </tr>)}</tbody>
         </table>
       </div>
       <dl className="eod-summary" aria-label={`${section.technician} daily summary`}>
         <div><dt>Clients</dt><dd>{section.totals.count}</dd></div>
         <div><dt>Service price</dt><dd>{money(section.totals.price)}</dd></div>
-        <div><dt>Discount</dt><dd>-{money(section.totals.discount)}</dd></div>
+        <div><dt>Discount</dt><dd>{discountMoney(section.totals.discount)}</dd></div>
         <div><dt>Tax (GST + QST)</dt><dd>{money(section.totals.tax)}</dd></div>
         <div><dt>Tips</dt><dd>{money(section.totals.tips)}</dd></div>
         <div className="eod-summary-total"><dt>Technician total</dt><dd>{money(section.totals.total)}</dd></div>
@@ -231,7 +232,7 @@ export function EndOfDayReport({ initialDate, role, viewerName, technicians }: {
       <dl className="eod-summary">
         <div><dt>Clients</dt><dd>{grand.count}</dd></div>
         <div><dt>Service price</dt><dd>{money(grand.price)}</dd></div>
-        <div><dt>Discount</dt><dd>-{money(grand.discount)}</dd></div>
+        <div><dt>Discount</dt><dd>{discountMoney(grand.discount)}</dd></div>
         <div><dt>Tax (GST + QST)</dt><dd>{money(grand.tax)}</dd></div>
         <div><dt>Tips</dt><dd>{money(grand.tips)}</dd></div>
         <div className="eod-summary-total"><dt>Grand total</dt><dd>{money(grand.total)}</dd></div>
