@@ -1,24 +1,75 @@
 /* Square-style touch calendar: 2D scroll container with sticky staff row, time column and corner. */
 .admin-calendar-wrap .admin-calendar-shell {
-  --cal-col-min: 140px;
-  max-height: max(360px, calc(100dvh - 220px));
+  --cal-col-min: 62px;
+  --cal-gutter: 44px;
+  max-height: max(360px, calc(100dvh - 200px));
   overflow: auto;
   overscroll-behavior: contain;
   touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
 }
 
-@media (min-width: 768px) {
-  .admin-calendar-wrap .admin-calendar-shell { --cal-col-min: 180px; }
+@media (max-width: 760px) {
+  /* Edge-to-edge on phones so five columns fit beside the gutter. */
+  .admin-calendar-wrap { margin-inline: -14px; }
+  .admin-calendar-wrap .admin-calendar-shell { border-inline: 0; max-height: max(360px, calc(100dvh - 190px)); }
 }
 
-.admin-calendar-wrap .admin-calendar-header { position: sticky; top: 0; z-index: 20; background: #fff; }
-.admin-calendar-wrap .admin-cal-row > .admin-time-axis { position: sticky; left: 0; z-index: 10; background: #fff; }
-.admin-calendar-wrap .admin-cal-row > .admin-time-header { position: sticky; top: 0; left: 0; z-index: 30; background: #fff; }
+@media (min-width: 768px) {
+  .admin-calendar-wrap .admin-calendar-shell { --cal-col-min: 110px; }
+}
+
+@media (min-width: 1200px) {
+  .admin-calendar-wrap .admin-calendar-shell { --cal-col-min: 150px; }
+}
+
+.admin-calendar-wrap .admin-calendar-header { position: sticky; top: 0; z-index: 30; min-height: 36px; background: #fff; }
+.admin-calendar-wrap .admin-cal-row > .admin-time-axis { position: sticky; left: 0; z-index: 20; background: #fff; }
+.admin-calendar-wrap .admin-cal-row > .admin-time-header { position: sticky; top: 0; left: 0; z-index: 40; background: #fff; }
+
+.admin-calendar-wrap .admin-cal-row > .admin-time-header,
+.admin-calendar-wrap .admin-cal-row > .admin-time-axis { flex: 0 0 var(--cal-gutter); width: var(--cal-gutter); }
+
+.admin-calendar-wrap .admin-time-header { align-items: center; padding: 0; font-size: 8px; letter-spacing: 0.02em; }
+.admin-calendar-wrap .admin-time-axis span { right: 4px; padding: 0 1px; font-size: 9px; font-weight: 500; letter-spacing: -0.01em; }
+
+.admin-calendar-wrap .admin-staff-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0 4px;
+  text-align: center;
+}
+
+.admin-calendar-wrap .admin-staff-header strong {
+  overflow: hidden;
+  color: #1a1a1a;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 768px) {
+  .admin-calendar-wrap .admin-calendar-header { min-height: 42px; }
+  .admin-calendar-wrap .admin-staff-header strong { font-size: 12px; }
+}
 
 .admin-calendar-wrap .admin-cal-lane,
 .admin-calendar-wrap .admin-staff-header,
 .admin-calendar-wrap .admin-staff-column { min-width: var(--cal-col-min); }
+
+@media (max-width: 767px) {
+  .admin-calendar-wrap .admin-calendar-card { padding: 4px 4px 4px 6px; }
+  .admin-calendar-wrap .admin-calendar-card strong,
+  .admin-calendar-wrap .admin-calendar-card small,
+  .admin-calendar-wrap .admin-calendar-card span { font-size: 8px; }
+  .admin-calendar-wrap .admin-calendar-card b { font-size: 10px; }
+  .admin-calendar-wrap .admin-calendar-card > span { display: none; }
+}
 
 .admin-calendar-wrap .admin-calendar-header,
 .admin-calendar-wrap .admin-calendar-body,
