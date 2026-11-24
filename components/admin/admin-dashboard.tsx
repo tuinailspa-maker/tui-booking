@@ -230,6 +230,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
   }
 
   function openWalkInEditor(technician = "Walk-in", slotTime?: string) {
+    if (!isOwner) return;
     const now = new Date();
     const startAt = slotTime ? torontoDateTimeToIso(date, slotTime) : now.toISOString();
     const id = `walkin-${crypto.randomUUID()}`;
@@ -390,8 +391,8 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
         </> : activeTab === "eod" ? <EndOfDayReport key={viewerName} initialDate={initialDate} role={viewerRole} viewerName={viewerName} technicians={staffNames} /> : activeTab === "reports" && isOwner ? <ReportsDashboard /> : <>
           <div className="admin-schedule-heading"><div><h2>{activeTab === "queue" ? "Arrival queue" : "Daily schedule"}</h2><p>{displayBookings.length} {displayBookings.length === 1 ? "appointment" : "appointments"} · 8:00 AM–{formatSlotTime(getClosingTimeForDate(date), "en")}</p></div><span className="admin-sync-note">Auto-refreshes every 60 seconds</span></div>
           {bookings.isLoading && <div className="admin-loading" role="status"><span className="admin-spinner" />Loading Square appointments…</div>}
-          {!bookings.isLoading && !bookings.error && displayBookings.length === 0 && <div className="admin-empty"><span aria-hidden="true">—</span><h3>{activeTab === "queue" ? "The arrival queue is clear" : "No appointments for this day"}</h3><p>{activeTab === "queue" ? "Checked-in guests and waiting walk-ins will appear here." : "Square has no active bookings for the selected date. Add a walk-in ticket when a guest arrives."}</p><button className="admin-primary-button" type="button" onClick={() => openWalkInEditor()}>+ New / Walk-in</button></div>}
-          {(displayBookings.length > 0 || (activeTab !== "queue" && scheduleView === "day")) && <AppointmentCalendar staffNames={staffNames} date={date} bookings={displayBookings} view={activeTab === "queue" ? "list" : scheduleView} checkedOut={checkedOut} onOpenSlot={isOwner ? openWalkInEditor : () => undefined} onSelectBooking={(booking) => openAppointmentEditor(booking as AdminBooking)} />}
+          {!bookings.isLoading && !bookings.error && displayBookings.length === 0 && <div className="admin-empty"><span aria-hidden="true">—</span><h3>{activeTab === "queue" ? "The arrival queue is clear" : "No appointments for this day"}</h3><p>{activeTab === "queue" ? "Checked-in guests and waiting walk-ins will appear here." : isOwner ? "Square has no active bookings for the selected date. Add a walk-in ticket when a guest arrives." : "You have no appointments assigned for this day."}</p>{isOwner && <button className="admin-primary-button" type="button" onClick={() => openWalkInEditor()}>+ New / Walk-in</button>}</div>}
+          {(displayBookings.length > 0 || (activeTab !== "queue" && scheduleView === "day")) && <AppointmentCalendar staffNames={staffNames} date={date} bookings={displayBookings} view={activeTab === "queue" ? "list" : scheduleView} checkedOut={checkedOut} onOpenSlot={isOwner ? openWalkInEditor : () => undefined} canManageColumns={isOwner} canCreateBookings={isOwner} onSelectBooking={(booking) => openAppointmentEditor(booking as AdminBooking)} />}
           <footer className="admin-footer"><span>Live data from Square Appointments · refreshes every minute</span><span>Location R73A64VPAR34X</span></footer>
         </>}
       </div>
