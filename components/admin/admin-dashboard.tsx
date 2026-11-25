@@ -16,6 +16,7 @@ import { ReportsDashboard } from "./reports-dashboard";
 import { SquareCatalogSync } from "./square-catalog-sync";
 import { ScheduleHeader } from "./schedule-header";
 import { MyDailyReport } from "./my-daily-report";
+import type { SquarePaymentSummary } from "@/data/squarePayment";
 
 type AdminBooking = {
   id: string;
@@ -32,6 +33,7 @@ type AdminBooking = {
   guestNames: string[];
   guestPhones: string[];
   durationMinutes: number;
+  squarePayment?: SquarePaymentSummary | null;
 };
 
 type StaffColumn = { name: string; teamMemberId: string; kind: "real" | "virtual" };
@@ -250,6 +252,17 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
     setEditor({ booking, walkIn: true });
   }
 
+  async function syncBookingFromSquare(booking: AdminBooking) {
+    const response = await fetch("/api/admin/bookings/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date, bookingId: booking.id }),
+    });
+    const result = await response.json().catch(() => null) as { error?: string } | null;
+    if (!response.ok) throw new Error(result?.error ?? "Could not sync from Square.");
+    await bookings.mutate();
+  }
+
   async function updateBookingStatus(booking: AdminBooking, status: AppointmentStatus) {
     if (booking.squareBookingIds.length === 0) {
       setWalkIns((current) => current.map((item) => item.id === booking.id ? { ...item, status } : item));
@@ -425,6 +438,6 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
         <p className="admin-access-note">Pricing, discounts and checkout are handled by the owner.</p>
       </div>
     </AppointmentDrawer>}
-    {drawerBooking && isOwner && <ServiceEditor staffNames={staffNames} key={drawerBooking.id} initialServiceIds={currentEditorDraft?.serviceIds ?? drawerBooking.serviceIds} initialAddOns={currentEditorDraft?.addOns ?? drawerBooking.addOns} bookingId={drawerBooking.id} guestNames={drawerBooking.guestNames} customerName={drawerBooking.customerName} customerPhone={drawerBooking.phone} startAt={drawerBooking.startAt} technician={drawerTechnician} initialTechnicians={drawerBooking.technicians} status={drawerStatus} busy={assignmentBusy === drawerBooking.id} checkedOut={drawerStatus === "CHECKED_OUT"} onMarkCheckedOut={async () => { await updateBookingStatus(drawerBooking, "CHECKED_OUT"); }} onBillSelectionChange={(serviceIds, addOns) => saveBillingSelection(drawerBooking, serviceIds, addOns)} walkIn={Boolean(editor?.walkIn)} onCancel={() => setEditor(null)} onTechnicianChange={(technician) => void updateBookingTechnician(drawerBooking, technician)} onStatusChange={(status) => void updateBookingStatus(drawerBooking, status)} onSave={saveServices} onBookingCreated={async () => { setEditor(null); await bookings.mutate(); }} />}
+    {drawerBooking && isOwner && <ServiceEditor staffNames={staffNames} key={drawerBooking.id} initialServiceIds={currentEditorDraft?.serviceIds ?? drawerBooking.serviceIds} initialAddOns={currentEditorDraft?.addOns ?? drawerBooking.addOns} bookingId={drawerBooking.id} guestNames={drawerBooking.guestNames} customerName={drawerBooking.customerName} customerPhone={drawerBooking.phone} startAt={drawerBooking.startAt} technician={drawerTechnician} initialTechnicians={drawerBooking.technicians} status={drawerStatus} busy={assignmentBusy === drawerBooking.id} checkedOut={drawerStatus === "CHECKED_OUT"} squarePayment={drawerBooking.squarePayment} onSyncFromSquare={() => syncBookingFromSquare(drawerBooking)} onMarkCheckedOut={async () => { await updateBookingStatus(drawerBooking, "CHECKED_OUT"); }} onBillSelectionChange={(serviceIds, addOns) => saveBillingSelection(drawerBooking, serviceIds, addOns)} walkIn={Boolean(editor?.walkIn)} onCancel={() => setEditor(null)} onTechnicianChange={(technician) => void updateBookingTechnician(drawerBooking, technician)} onStatusChange={(status) => void updateBookingStatus(drawerBooking, status)} onSave={saveServices} onBookingCreated={async () => { setEditor(null); await bookings.mutate(); }} />}
   </main>;
 }

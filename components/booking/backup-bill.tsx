@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { billRequestPayload, calculateBill, centsToDollars, TIP_CHOICES, type BillInput, type TipChoice } from "@/data/billing";
 import { allServices, selectedServiceDuration, selectedServicePrice, serviceById, serviceDisplayName, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
+import type { SquarePaymentSummary } from "@/data/squarePayment";
 import type { Language } from "./copy";
 
 type BackupBillProps = {
@@ -23,7 +24,13 @@ type BackupBillProps = {
   manualDiscountAmount?: number;
   onMarkCheckedOut?: (checkout: { tipAmount: number; paymentMethod: "Card" | "Cash" }) => void | Promise<void>;
   onBillSelectionChange?: (selections: string[][], addOns: Record<string, ServiceAddOnKey>[]) => void;
+  squarePayment?: SquarePaymentSummary | null;
+  onSyncFromSquare?: () => Promise<void>;
 };
+
+function formatCents(cents: number) {
+  return `$${centsToDollars(cents).toFixed(2)}`;
+}
 
 const labels = {
   en: {
@@ -156,8 +163,10 @@ export function buildLegacyStarMpopReceiptHtml(receiptData: StarReceiptData, lan
   return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tui Nail Spa receipt</title><style>@page{size:58mm auto;margin:0}*{box-sizing:border-box}html,body{width:58mm;margin:0;padding:0;background:#fff;color:#000}body{font:10px/1.35 Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}.receipt{width:58mm;padding:2.5mm 3mm}.brand{display:grid;grid-template-columns:1fr 2fr;align-items:center;gap:2mm;padding-bottom:2mm;border-bottom:1px solid #000}.logo{width:100%;height:auto}.store strong{display:block;font-size:13px;line-height:1.1}.store address,.store a{font:normal 8px/1.3 Arial,sans-serif;color:#000;text-decoration:none}.hours{padding:2mm 0;border-bottom:1px dashed #000;font-size:8px}.receipt-meta{padding:2mm 0}.row,.item{display:flex;justify-content:space-between;gap:2mm;margin:1.2mm 0}.row span,.item span{min-width:0;overflow-wrap:anywhere}.item{align-items:flex-start}.item strong,.row strong{white-space:nowrap}.guest{padding:1.5mm 0;border-top:1px dashed #000}.guest-title{font-weight:700}.meta,small{font-size:8px}.totals{padding-top:2mm;border-top:1px solid #000}.grand{margin-top:2mm;padding-top:2mm;border-top:1px solid #000;font-size:12px;font-weight:700}.tax-id{padding-top:2mm;border-top:1px dashed #000;font-size:8px}.thank{text-align:center;padding-top:2mm;font-weight:700}@media print{html,body{width:58mm}body{margin:0}}</style></head><body><main id="star-mpop-receipt" class="receipt"><div class="topline"><strong>${money(receiptData.grandTotal)}</strong><span>#${escapeHtml(receiptData.orderCode)}<br>${escapeHtml(receiptData.dateTime)}</span></div><header class="brand"><svg class="logo" viewBox="0 0 100 100" role="img" aria-label="Tui Nail Spa"><circle cx="50" cy="50" r="46" fill="none" stroke="#000" stroke-width="3"/><text x="50" y="59" text-anchor="middle" font-family="Georgia,serif" font-size="42" font-weight="bold" fill="#000">Tui</text></svg><div class="store"><strong>Tui Nail Spa</strong><address>1570 Rue Saint-Timothée, Ste 100<br>Montréal, QC H2L 3N9<br><a href="tel:4387777043">438-777-7043</a></address></div></header><div class="hours">${escapeHtml(copy.hours)}</div><div class="receipt-meta">${receiptData.dateTime ? `<div class="row"><span>${copy.dateTime}</span><strong>${escapeHtml(receiptData.dateTime)}</strong></div>` : ""}${receiptData.customerName || receiptData.customerPhone ? `<div>${escapeHtml([receiptData.customerName, receiptData.customerPhone].filter(Boolean).join(" · "))}</div>` : ""}</div>${guestsHtml}<section class="totals"><div class="row"><span>${copy.subtotal}</span><strong>${money(receiptData.subtotal)}</strong></div><div class="row"><span>${copy.tps}</span><strong>${money(receiptData.tps)}</strong></div><div class="row"><span>${copy.tvq}</span><strong>${money(receiptData.tvq)}</strong></div><div class="row"><span>${copy.tip}</span><strong>${money(receiptData.tip)}</strong></div><div class="row grand"><span>${copy.total}</span><strong>${money(receiptData.grandTotal)}</strong></div></section><div class="tax-id">GST/HST: 770848539RT0001<br>QST: 4019625996TQ0001<br>${escapeHtml(receiptData.paymentInfo)}</div><footer class="thank">${copy.thanks}</footer></main></body></html>`;
 }
 
-export function BackupBill({ language, date, time, selections, serviceAddOns, technicians = [], customerName, customerPhone, squareServiceReference = [], triggerLabel, markCheckedOutLabel, bookingId, terminalEnabled = false, manualDiscountAmount = 0, onMarkCheckedOut, onBillSelectionChange }: BackupBillProps) {
+export function BackupBill({ language, date, time, selections, serviceAddOns, technicians = [], customerName, customerPhone, squareServiceReference = [], triggerLabel, markCheckedOutLabel, bookingId, terminalEnabled = false, manualDiscountAmount = 0, onMarkCheckedOut, onBillSelectionChange, squarePayment, onSyncFromSquare }: BackupBillProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const [squareSyncBusy, setSquareSyncBusy] = useState(false);
+  const [squareSyncMessage, setSquareSyncMessage] = useState("");
   const titleId = useId();
   const catalogSearchId = useId();
   const [receiptLanguage, setReceiptLanguage] = useState<Language>(language);
@@ -251,6 +260,20 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
       return next;
     });
     updateBillSelections(billSelections, nextAddOns);
+  }
+
+  async function syncFromSquare() {
+    if (!onSyncFromSquare) return;
+    setSquareSyncBusy(true);
+    setSquareSyncMessage("");
+    try {
+      await onSyncFromSquare();
+      setSquareSyncMessage("Synced with Square.");
+    } catch (error) {
+      setSquareSyncMessage(error instanceof Error ? error.message : "Could not sync from Square.");
+    } finally {
+      setSquareSyncBusy(false);
+    }
   }
 
   function openBill() {
@@ -515,9 +538,26 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
               <button className="button button-primary" type="button" onClick={print58mm}>{text.printStar}</button>
               <button className="button button-back" type="button" onClick={printInBrowser}>{text.print}</button>
               <button className="button button-primary" type="button" onClick={() => void (terminalEnabled ? sendToSquareTerminal() : sendToSquareCheckout())} disabled={checkoutBusy || (terminalEnabled && paymentMethod === "Cash") || terminalStatus === "COMPLETED"}>{checkoutBusy ? terminalStatus === "CONNECTING" ? "Connecting to Square Terminal…" : terminalStatus ? "Waiting on Square Terminal…" : "Working…" : terminalStatus === "COMPLETED" ? "Payment completed on Terminal" : terminalEnabled ? "Send Order to Square Terminal" : "Send Order to Square Checkout"}</button>
+              {onSyncFromSquare && <button className="button button-back" type="button" onClick={() => void syncFromSquare()} disabled={squareSyncBusy}>{squareSyncBusy ? "Syncing…" : "Sync from Square"}</button>}
               <button className="bill-close" type="button" onClick={closeBill} aria-label={text.close}>×</button>
             </div>
           </header>
+          {squareSyncMessage && <p className="bill-square-sync-status" role="status">{squareSyncMessage}</p>}
+
+          {squarePayment && <section className="bill-square-paid" aria-label="Paid on Square">
+            <div className="bill-square-paid-head">
+              <strong>Paid on Square</strong>
+              <span>{squarePayment.paymentMethod} · {new Intl.DateTimeFormat("en-CA", { dateStyle: "short", timeStyle: "short", timeZone: "America/Toronto" }).format(new Date(squarePayment.paidAt))}</span>
+            </div>
+            <dl>
+              <div><dt>Subtotal</dt><dd>{formatCents(squarePayment.subtotalCents)}</dd></div>
+              {squarePayment.discountCents > 0 && <div><dt>Discount</dt><dd>-{formatCents(squarePayment.discountCents)}</dd></div>}
+              <div><dt>TPS 5%</dt><dd>{formatCents(squarePayment.tpsCents)}</dd></div>
+              <div><dt>TVQ 9.975%</dt><dd>{formatCents(squarePayment.tvqCents)}</dd></div>
+              {squarePayment.tipCents > 0 && <div><dt>Tip</dt><dd>{formatCents(squarePayment.tipCents)}</dd></div>}
+              <div className="bill-square-paid-total"><dt>Total paid</dt><dd>{formatCents(squarePayment.totalCents)}</dd></div>
+            </dl>
+          </section>}
 
           {squareServiceReference.length > 0 && <aside className="bill-square-reference" aria-label={text.squareReference}>
             <strong>{text.squareReference}</strong>

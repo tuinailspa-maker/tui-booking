@@ -6,6 +6,7 @@ import { allServices, selectedServiceDuration, selectedServicePrice, serviceById
 import { BUSINESS_TIME_ZONE } from "@/data/staffSchedule";
 import { getServiceVariationLinks } from "@/data/squareVariations";
 import { buildGuestSegments, SegmentMappingError } from "@/data/squareSegments";
+import { groupSquareBookings, loadVariationIndex, reconcileSquareCheckouts, resolveBookingSelection, type ReconciledCheckout } from "@/data/squareCheckoutSync";
 
 const SQUARE_PRODUCTION_URL = "https://connect.squareup.com/v2";
 const SQUARE_SANDBOX_URL = "https://connect.squareupsandbox.com/v2";
@@ -167,9 +168,11 @@ export async function GET(request: Request) {
     }
     const customerById = new Map(customers);
 
+    const variationIndex = await loadVariationIndex();
+    const resolvedSelections = new Map(squareBookings.map((booking) => [booking.id, resolveBookingSelection(booking, variationIndex)]));
     const variationNames = new Map<string, string>();
     const hasUnparsedCatalogServices = squareBookings.some((booking) =>
-      !booking.seller_note?.includes(NO_SERVICE_MARKER) && parseSellerNote(booking.seller_note).serviceIds.length === 0 && booking.appointment_segments?.some((segment) => segment.service_variation_id),
+      !booking.seller_note?.includes(NO_SERVICE_MARKER) && (resolvedSelections.get(booking.id)?.serviceIds.length ?? 0) === 0 && booking.appointment_segments?.some((segment) => segment.service_variation_id),
     );
     if (hasUnparsedCatalogServices) {
       try {
@@ -194,7 +197,7 @@ export async function GET(request: Request) {
       const segments = booking.appointment_segments ?? [];
       const technicians = Array.from(new Set(segments.map((segment) => segment.team_member_id ? staffNameById.get(segment.team_member_id) : undefined)
         .filter((name): name is string => Boolean(name))));
-      const parsed = parseSellerNote(booking.seller_note);
+      const parsed = resolvedSelections.get(booking.id) ?? { serviceIds: [], addOns: {} };
       const segmentSelections = booking.seller_note?.includes(NO_SERVICE_MARKER) ? [] : segments.flatMap((segment) => segment.service_variation_id
         ? [parseCatalogVariation(variationNames.get(segment.service_variation_id) ?? "")]
         : []);
@@ -230,20 +233,34 @@ export async function GET(request: Request) {
     for (const booking of individualBookings) {
       groupedBookings.set(booking.groupKey, [...(groupedBookings.get(booking.groupKey) ?? []), booking]);
     }
+    let squareCheckouts = new Map<string, ReconciledCheckout>();
+    try {
+      squareCheckouts = await reconcileSquareCheckouts(
+        groupSquareBookings(squareBookings),
+        variationIndex,
+        staffNameById,
+        new Date(startAt.getTime() - 3 * 60 * 60 * 1000),
+        new Date(endAt.getTime() + 12 * 60 * 60 * 1000),
+      );
+    } catch (error) {
+      console.error("[v0] Square checkout reconciliation failed:", error instanceof Error ? error.message : error);
+    }
     const bookings = Array.from(groupedBookings.values()).map((group) => {
       const guests = group.sort((left, right) => left.guestIndex - right.guestIndex);
+      const squareCheckout = squareCheckouts.get(guests[0].id);
       return {
         id: guests[0].id,
         squareBookingIds: guests.map((guest) => guest.id),
-        status: guests.every((guest) => guest.status === guests[0].status) ? guests[0].status : "MIXED",
+        squarePayment: squareCheckout?.payment ?? null,
+        status: squareCheckout ? "CHECKED_OUT" : guests.every((guest) => guest.status === guests[0].status) ? guests[0].status : "MIXED",
         arrivalAt: guests.map((guest) => guest.arrivalAt).find((value) => value) ?? null,
         startAt: guests[0].startAt,
         otherDateFrom: guests.map((guest) => guest.otherDateFrom).find((value) => value) ?? null,
         customerName: guests[0].customerName,
         phone: guests[0].phone,
         technicians: Array.from(new Set(guests.flatMap((guest) => guest.technician.split(", ")))),
-        serviceIds: guests.map((guest) => guest.serviceIds),
-        addOns: guests.map((guest) => guest.addOns),
+        serviceIds: squareCheckout?.serviceIds ?? guests.map((guest) => guest.serviceIds),
+        addOns: squareCheckout?.addOns ?? guests.map((guest) => guest.addOns),
         guestNames: guests.map((guest) => guest.customerName),
         guestPhones: guests.map((guest) => guest.phone),
         durationMinutes: guests.reduce((sum, guest) => sum + guest.durationMinutes, 0),
