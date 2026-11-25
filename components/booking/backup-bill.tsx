@@ -92,6 +92,8 @@ const labels = {
   },
 };
 
+const RECEIPT_GST = "GST/HST : 770848539RT0001";
+const RECEIPT_QST = "PST/RST/QST : 4019625996TQ0001";
 const RECEIPT_HEADER_TITLE = "Tui Nail Spa";
 const RECEIPT_HEADER_LINES = [
   "100-1570 Saint timothée, Montréal, QC, H2L 3N9",
