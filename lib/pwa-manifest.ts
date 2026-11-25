@@ -1,17 +1,19 @@
 import type { MetadataRoute } from "next";
 
-const ICONS: MetadataRoute.Manifest["icons"] = [
-  { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-  { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-  { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
-];
+function appIcons(prefix: "admin" | "checkin"): MetadataRoute.Manifest["icons"] {
+  return [
+    { src: `/icons/${prefix}-192.png`, sizes: "192x192", type: "image/png", purpose: "any" },
+    { src: `/icons/${prefix}-512.png`, sizes: "512x512", type: "image/png", purpose: "any" },
+    { src: `/icons/${prefix}-512.png`, sizes: "512x512", type: "image/png", purpose: "maskable" },
+  ];
+}
 
 // Each installable app gets its own id and scope so installing one never
 // reuses the other's start_url (Safari keys Home Screen apps by manifest).
 export const checkinManifest: MetadataRoute.Manifest = {
   id: "/checkin",
-  name: "Tui Nail Spa Check-in",
-  short_name: "Tui Check-in",
+  name: "Tui Check-In",
+  short_name: "Tui Check-In",
   description: "Self check-in kiosk for Tui Nail Spa Montréal: check in for an appointment or join today’s walk-in queue.",
   start_url: "/checkin",
   scope: "/checkin",
@@ -22,12 +24,12 @@ export const checkinManifest: MetadataRoute.Manifest = {
   lang: "en-CA",
   dir: "ltr",
   categories: ["business", "lifestyle"],
-  icons: ICONS,
+  icons: appIcons("checkin"),
 };
 
 export const adminManifest: MetadataRoute.Manifest = {
   id: "/admin",
-  name: "Tui Nail Spa Admin",
+  name: "Tui Admin",
   short_name: "Tui Admin",
   description: "Private staff dashboard for Tui Nail Spa appointments and checkout.",
   start_url: "/admin",
@@ -38,7 +40,7 @@ export const adminManifest: MetadataRoute.Manifest = {
   lang: "en-CA",
   dir: "ltr",
   categories: ["business"],
-  icons: ICONS,
+  icons: appIcons("admin"),
 };
 
 export function manifestResponse(manifest: MetadataRoute.Manifest) {
