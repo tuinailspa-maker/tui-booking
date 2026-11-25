@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useSyncExternalStore } from "react";
+import { clearPrintReturnHash, isPrintReturn } from "@/lib/print-return";
 import Link from "next/link";
 import useSWR, { useSWRConfig } from "swr";
 import { useSquareSync } from "@/hooks/use-square-sync";
@@ -54,12 +55,23 @@ const SESSION_EVENT = "tui-admin-session-change";
 const CHECKOUT_EVENT = "tui-admin-checkout-change";
 
 function readSessionHint() {
-  return typeof window !== "undefined" && window.sessionStorage.getItem(SESSION_STORAGE_KEY) === "1";
+  if (typeof window === "undefined") return false;
+  // Star PassPRNT returns to /admin#tui-printed, sometimes in a fresh tab without sessionStorage.
+  // The server cookie stays authoritative: /api/admin/session re-locks on 401.
+  if (isPrintReturn()) {
+    window.sessionStorage.setItem(SESSION_STORAGE_KEY, "1");
+    clearPrintReturnHash();
+  }
+  return window.sessionStorage.getItem(SESSION_STORAGE_KEY) === "1";
 }
 
 function subscribeToSessionHint(callback: () => void) {
   window.addEventListener(SESSION_EVENT, callback);
-  return () => window.removeEventListener(SESSION_EVENT, callback);
+  window.addEventListener("hashchange", callback);
+  return () => {
+    window.removeEventListener(SESSION_EVENT, callback);
+    window.removeEventListener("hashchange", callback);
+  };
 }
 
 function saveSessionHint(value: boolean) {
