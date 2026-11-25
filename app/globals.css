@@ -389,12 +389,12 @@ button { color: inherit; }
   .print-receipt-topline-id strong { font-size: 16px !important; font-weight: 900 !important; }
   .print-receipt-topline > span { font-size: 11px !important; }
   .print-receipt-guest { margin: 4px 0 !important; padding: 4px 0 !important; border-top: 2px solid #000 !important; border-bottom: 2px solid #000 !important; }
-  .print-receipt-guest > strong { color: #000 !important; font-size: 14px !important; font-weight: 700 !important; line-height: 1.2 !important; }
+  .print-receipt-guest > strong { color: #000 !important; font-size: 13px !important; font-weight: 700 !important; line-height: 1.2 !important; }
   .print-receipt-technician { font-size: 11px !important; font-weight: 700 !important; }
   .print-receipt-guest .print-receipt-row { margin: 4px 0 !important; }
-  .print-receipt-guest .print-receipt-row > span, .print-receipt-guest .print-receipt-row > strong { color: #000 !important; font-size: 18px !important; font-weight: 800 !important; line-height: 1.25 !important; font-variant-numeric: tabular-nums !important; }
+  .print-receipt-guest .print-receipt-row > span, .print-receipt-guest .print-receipt-row > strong { color: #000 !important; font-size: 20px !important; font-weight: 800 !important; line-height: 1.25 !important; font-variant-numeric: tabular-nums !important; }
   .print-receipt-guest .print-receipt-row > strong { white-space: nowrap !important; text-align: right !important; }
-  .print-receipt-guest .print-receipt-row small { display: block !important; font-size: 18px !important; font-weight: 800 !important; line-height: 1.25 !important; color: #000 !important; font-variant-numeric: tabular-nums !important; }
+  .print-receipt-guest .print-receipt-row small { display: block !important; font-size: 20px !important; font-weight: 800 !important; line-height: 1.25 !important; color: #000 !important; font-variant-numeric: tabular-nums !important; }
   .print-receipt-grand, .print-receipt-grand > span, .print-receipt-grand > strong { font-size: 15px !important; font-weight: 700 !important; }
   .print-receipt-row { margin: 2px 0 !important; display: flex !important; justify-content: space-between !important; gap: 2mm !important; }
   .print-receipt-row > span { flex: 1 1 auto !important; min-width: 0 !important; overflow-wrap: anywhere !important; }
