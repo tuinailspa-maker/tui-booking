@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { openAppUrl, printReturnUrl } from "@/lib/print-return";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { billRequestPayload, calculateBill, centsToDollars, TIP_CHOICES, type BillInput, type TipChoice } from "@/data/billing";
 import { allServices, selectedServiceDuration, selectedServicePrice, serviceById, serviceDisplayName, serviceDisplayNameWithAddOn, type ServiceAddOnKey } from "@/data/serviceTree";
@@ -466,15 +467,19 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
     grandTotal,
   };
 
-  function printInBrowser() {
+  function printInBrowser(event: React.MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
     window.print();
   }
 
-  function print58mm() {
+  function print58mm(event: React.MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
     const receiptHtml = buildStarMpopReceiptHtml(receiptData, receiptLanguage);
-    const back = encodeURIComponent(window.location.href);
+    const back = encodeURIComponent(printReturnUrl());
     const drawer = openDrawer ? "ahead" : "off";
-    window.location.href = `starpassprnt://v1/print/nopreview?size=2&drawer=${drawer}&html=${encodeURIComponent(receiptHtml)}&back=${back}`;
+    openAppUrl(`starpassprnt://v1/print/nopreview?size=2&drawer=${drawer}&html=${encodeURIComponent(receiptHtml)}&back=${back}`);
   }
 
   function closeOnBackdropClick(event: React.MouseEvent<HTMLDialogElement>) {

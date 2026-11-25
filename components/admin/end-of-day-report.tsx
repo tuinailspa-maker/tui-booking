@@ -199,8 +199,8 @@ export function EndOfDayReport({ initialDate, role, viewerName, technicians }: {
         <p>{role === "staff" ? `${viewerName} · your checkouts only` : "Every checkout recorded in the dashboard, grouped by technician"}</p>
       </div>
       <div className="eod-print-actions">
-        <button type="button" className="admin-secondary-button" disabled={sections.length === 0} onClick={() => printDocument(thermalHtml(dateLabel, sections, grand))}>Print {printScope} Slip (80mm / Star mPOP)</button>
-        <button type="button" className="admin-primary-button" disabled={sections.length === 0} onClick={() => printDocument(fullReportHtml(dateLabel, sections, grand))}>{role === "owner" && technicianFilter === "all" ? "Print All Staff Summary (A4 / PDF)" : `Print ${printScope} Report (A4 / PDF)`}</button>
+        <button type="button" className="admin-secondary-button" disabled={sections.length === 0} onClick={(event) => { event.preventDefault(); event.stopPropagation(); printDocument(thermalHtml(dateLabel, sections, grand)); }}>Print {printScope} Slip (80mm / Star mPOP)</button>
+        <button type="button" className="admin-primary-button" disabled={sections.length === 0} onClick={(event) => { event.preventDefault(); event.stopPropagation(); printDocument(fullReportHtml(dateLabel, sections, grand)); }}>{role === "owner" && technicianFilter === "all" ? "Print All Staff Summary (A4 / PDF)" : `Print ${printScope} Report (A4 / PDF)`}</button>
       </div>
     </div>
 
