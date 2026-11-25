@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "ca.tuinailspa.book",
+      "sha256_cert_fingerprints": [
+        "CD:01:ED:2F:6F:DC:95:9C:8C:CA:94:77:F7:A5:A5:DB:08:95:9C:DF:A1:DE:99:AE:0A:E7:EB:D1:D4:CC:02:30",
+        "3F:D1:6C:91:53:A3:65:66:D8:93:06:DA:68:5D:BA:D6:1A:AD:DD:61:09:42:74:5D:49:B8:25:46:EF:8C:12:E4"
+      ]
+    }
+  }
+]
