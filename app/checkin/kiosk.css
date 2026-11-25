@@ -151,8 +151,60 @@ html:has(.kiosk), body:has(.kiosk) { height: 100%; overflow: hidden; overscroll-
 .kiosk-panel .kiosk-submit-compact { position: static; min-height: 48px; margin: 12px 0 0; padding: 0 20px; box-shadow: none; font-size: 16px; }
 .kiosk-submit-compact span { font-size: 20px; }
 .kiosk-panel .kiosk-keypad-action { width: min(410px, 100%); margin: 9px auto 0; }
-.kiosk-panel .kiosk-counts-action { margin-top: 10px; }
 .kiosk-counts button { min-height: 64px; }
+
+/* Single-frame layout: every step fits a 10" landscape tablet without page scrolling. */
+.kiosk-header { min-height: 76px; }
+.kiosk-logo { width: 104px; }
+.kiosk-welcome { margin-top: clamp(20px, 6vh, 64px); }
+.kiosk-subtitle { margin: 10px 0 28px; }
+.kiosk-choice { min-height: 180px; }
+.kiosk-footnote { margin: 24px 0 8px; }
+.kiosk-panel { margin-top: 12px; padding-bottom: 8px; }
+.kiosk-back { min-height: 44px; margin-bottom: 4px; }
+.kiosk-panel:has(.kiosk-keypad) .kiosk-back { margin-bottom: 4px; }
+.kiosk-panel .kiosk-eyebrow { margin-bottom: 8px; }
+.kiosk-panel h1 { font-size: clamp(28px, 3.4vw, 36px); line-height: 1.12; }
+.kiosk-section { margin: 14px 0; }
+.kiosk-section h2 { margin-bottom: 8px; font-size: 20px; line-height: 1.2; }
+.kiosk-fields { gap: 12px; margin: 14px 0; }
+.kiosk-fields label { gap: 5px; font-size: 14px; }
+.kiosk-fields input { min-height: 50px; font-size: 18px; }
+.kiosk-counts { gap: 8px; }
+.kiosk-counts button { min-height: 52px; }
+.kiosk-counts strong { font-size: 24px; }
+.kiosk-accordion-trigger { min-height: 48px; padding: 8px 16px; }
+.kiosk-services button { min-height: 50px; padding: 8px 12px; }
+.kiosk-guest-tabs button { min-height: 48px; }
+.kiosk-next-guest { min-height: 48px; margin-top: 10px; }
+.kiosk-selected { margin-top: 10px; padding: 8px 12px; }
+.kiosk-party-summary { margin-top: 10px; padding: 10px 14px; }
+.kiosk-error { margin-top: 8px; font-size: 14px; line-height: 1.4; }
+
+/* Walk-in: the service list shrinks and scrolls inside itself so Check Availability stays directly below it. */
+.kiosk-walkin { display: flex; flex-direction: column; }
+.kiosk-walkin > * { flex: none; }
+.kiosk-walkin > .kiosk-walkin-pick { flex: 0 1 auto; min-height: 240px; display: flex; flex-direction: column; }
+.kiosk-walkin-pick > .kiosk-services-section { flex: 0 1 auto; min-height: 150px; display: flex; flex-direction: column; margin-bottom: 0; }
+.kiosk-walkin-pick > .kiosk-walkin-action { flex: none; }
+.kiosk-services-section > h2 { flex: none; }
+.kiosk-services-section .kiosk-service-categories { flex: 1 1 auto; min-height: 0; align-content: start; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #d9ccc6 transparent; }
+.kiosk-walkin .kiosk-accordion .kiosk-services { max-height: none; overflow: visible; }
+.kiosk-walkin-action { margin-top: 10px; }
+.kiosk-panel .kiosk-walkin-action .kiosk-submit-compact { margin: 0; }
+.kiosk-walkin .kiosk-selected ul { max-height: 76px; overflow-y: auto; overscroll-behavior: contain; }
+.kiosk-walkin .kiosk-party-summary ul { max-height: 68px; overflow-y: auto; overscroll-behavior: contain; }
+
+/* Landscape tablets: guest details on the left, services + Check Availability on the right, all in one frame. */
+@media (orientation: landscape) and (min-width: 900px) {
+  .kiosk-walkin { width: min(1120px, 100%); display: grid; grid-template-columns: minmax(340px, 420px) minmax(0, 1fr); grid-template-rows: auto auto auto minmax(0, 1fr); column-gap: 32px; }
+  .kiosk-walkin > .kiosk-back, .kiosk-walkin > .kiosk-eyebrow, .kiosk-walkin > h1 { grid-column: 1 / -1; justify-self: start; }
+  .kiosk-walkin-form { grid-column: 1; grid-row: 4; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; scrollbar-width: thin; scrollbar-color: #d9ccc6 transparent; }
+  .kiosk-walkin > .kiosk-walkin-pick { grid-column: 2; grid-row: 4; min-height: 0; }
+  .kiosk-walkin-pick > .kiosk-services-section { margin-top: 14px; min-height: 0; }
+  .kiosk-walkin .kiosk-counts button { flex-direction: column; gap: 0; min-height: 56px; }
+  .kiosk-walkin .kiosk-counts strong { line-height: 1.1; }
+}
 
 .kiosk-other-card { display: flex; flex-direction: column; gap: 6px; margin: 22px 0 14px; padding: 22px 24px; border: 1px solid var(--kiosk-line); border-left: 4px solid #bd8588; background: var(--kiosk-paper); }
 .kiosk-other-card span { color: #5e5256; font-size: 15px; }
