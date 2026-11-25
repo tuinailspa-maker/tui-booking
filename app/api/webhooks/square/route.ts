@@ -1,11 +1,13 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { orderBusinessDate, reconcileSquareDate, torontoDate } from "@/data/squareCheckoutSync";
 import { clearSquareVariationCache } from "@/data/squareVariations";
 import { bumpSquareSyncVersion } from "@/data/squareSync";
 
 const DEFAULT_NOTIFICATION_URL = "https://book.tuinailspa.ca/api/webhooks/square";
-const SYNC_EVENT_PREFIXES = ["booking.", "team_member.", "labor.", "location.", "catalog."];
+const CHECKOUT_EVENT_PREFIXES = ["booking.", "order.", "payment."];
+const SYNC_EVENT_PREFIXES = ["booking.", "team_member.", "labor.", "location.", "catalog.", "order.", "payment."];
 
 function isValidSignature(body: string, signature: string | null, signatureKey: string, notificationUrl: string): boolean {
   if (!signature) return false;
@@ -29,7 +31,7 @@ export async function POST(request: Request) {
 
   const event = (() => {
     try {
-      return JSON.parse(body) as { type?: unknown; merchant_id?: unknown };
+      return JSON.parse(body) as { type?: unknown; merchant_id?: unknown; data?: { object?: WebhookObject } };
     } catch {
       return null;
     }
@@ -49,5 +51,31 @@ export async function POST(request: Request) {
   }
   revalidatePath("/");
   revalidatePath("/admin");
+  if (CHECKOUT_EVENT_PREFIXES.some((prefix) => eventType.startsWith(prefix))) {
+    after(async () => {
+      try {
+        const date = await checkoutDateForEvent(eventType, event?.data?.object);
+        if (!date) return;
+        const reconciled = await reconcileSquareDate(date);
+        if (reconciled.size > 0) await bumpSquareSyncVersion("checkout.reconciled");
+      } catch (error) {
+        console.error("[v0] Square webhook checkout reconciliation failed:", error instanceof Error ? error.message : error);
+      }
+    });
+  }
   return NextResponse.json({ received: true, synced: true });
+}
+
+type WebhookObject = {
+  booking?: { start_at?: string };
+  order_created?: { order_id?: string };
+  order_updated?: { order_id?: string; state?: string };
+  payment?: { order_id?: string; status?: string };
+};
+
+async function checkoutDateForEvent(eventType: string, object: WebhookObject | undefined): Promise<string | null> {
+  if (eventType.startsWith("booking.")) return object?.booking?.start_at ? torontoDate(object.booking.start_at) : null;
+  if (eventType.startsWith("payment.") && object?.payment?.status !== "COMPLETED") return null;
+  const orderId = object?.payment?.order_id ?? object?.order_updated?.order_id ?? object?.order_created?.order_id;
+  return orderId ? orderBusinessDate(orderId) : null;
 }

@@ -241,6 +241,16 @@ button { color: inherit; }
 .receipt-language { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 8px; }
 .receipt-language button { padding: 5px 2px; border: 0; background: none; color: var(--muted); cursor: pointer; }
 .receipt-language button[aria-pressed="true"] { color: var(--ink); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.bill-square-sync-status { margin: 0; padding: 6px 12px; color: var(--muted); font-size: 11px; }
+.bill-square-paid { padding: 10px 12px; border: 1px solid #1f8a5b; background: #f1faf5; color: var(--ink); font-size: 12px; }
+.bill-square-paid-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.bill-square-paid-head strong { color: #1f6b47; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+.bill-square-paid-head span { color: var(--muted); font-size: 11px; }
+.bill-square-paid dl { display: grid; gap: 3px; margin: 0; }
+.bill-square-paid dl > div { display: flex; justify-content: space-between; gap: 8px; }
+.bill-square-paid dt, .bill-square-paid dd { margin: 0; }
+.bill-square-paid dd { font-variant-numeric: tabular-nums; }
+.bill-square-paid-total { margin-top: 4px; padding-top: 4px; border-top: 1px dashed #1f8a5b; font-weight: 700; }
 .bill-square-reference { padding: 10px 12px; border: 1px solid var(--line); background: var(--paper); color: var(--muted); font-size: 11px; line-height: 1.45; }
 .bill-square-reference strong { display: block; color: var(--ink); font-size: 11px; }
 .bill-square-reference ul { display: grid; gap: 3px; margin: 6px 0 0; padding-left: 18px; }
