@@ -6,7 +6,7 @@ import { allServices, selectedServiceDuration, selectedServicePrice, serviceById
 import { BUSINESS_TIME_ZONE } from "@/data/staffSchedule";
 import { getServiceVariationLinks } from "@/data/squareVariations";
 import { buildGuestSegments, SegmentMappingError } from "@/data/squareSegments";
-import { groupSquareBookings, loadVariationIndex, reconcileSquareCheckouts, resolveBookingSelection, type ReconciledCheckout } from "@/data/squareCheckoutSync";
+import { extendVariationIndex, groupSquareBookings, loadVariationIndex, segmentVariationIds, reconcileSquareCheckouts, resolveBookingSelection, type ReconciledCheckout } from "@/data/squareCheckoutSync";
 
 const SQUARE_PRODUCTION_URL = "https://connect.squareup.com/v2";
 const SQUARE_SANDBOX_URL = "https://connect.squareupsandbox.com/v2";
@@ -168,7 +168,7 @@ export async function GET(request: Request) {
     }
     const customerById = new Map(customers);
 
-    const variationIndex = await loadVariationIndex();
+    const variationIndex = await extendVariationIndex(await loadVariationIndex(), segmentVariationIds(squareBookings));
     const resolvedSelections = new Map(squareBookings.map((booking) => [booking.id, resolveBookingSelection(booking, variationIndex)]));
     const variationNames = new Map<string, string>();
     const hasUnparsedCatalogServices = squareBookings.some((booking) =>

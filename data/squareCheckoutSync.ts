@@ -36,7 +36,7 @@ type SquareOrder = {
   created_at?: string;
   updated_at?: string;
   metadata?: Record<string, string>;
-  line_items?: { catalog_object_id?: string; name?: string }[];
+  line_items?: { catalog_object_id?: string; name?: string; variation_name?: string; base_price_money?: SquareMoney }[];
   taxes?: { percentage?: string; applied_money?: SquareMoney }[];
   service_charges?: { name?: string; applied_money?: SquareMoney; total_money?: SquareMoney }[];
   tenders?: { type?: string; customer_id?: string }[];
@@ -125,6 +125,56 @@ export async function loadVariationIndex(): Promise<VariationIndex> {
   }
   return index;
 }
+
+type CatalogObject = { id: string; type?: string; item_data?: { name?: string }; item_variation_data?: { item_id?: string; name?: string; price_money?: SquareMoney } };
+
+const normalizeName = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+  .replace(/[^a-z0-9]+/g, " ").replace(/\b(\w{2,}?)s\b/g, "$1").trim();
+
+/** Matches a Square catalog label (item + variation name) to the serviceTree service with the longest name inside it, preferring an exact price. */
+function matchServiceByName(labels: string[], priceCents?: number): VariationRef | null {
+  const haystacks = labels.map(normalizeName).filter(Boolean).map((label) => ` ${label} `);
+  let best: { ref: VariationRef; score: number } | null = null;
+  for (const service of allServices) {
+    const keys: (ServiceAddOnKey | undefined)[] = service.addOn ? [undefined, service.addOn.key] : [undefined];
+    for (const addOnKey of keys) {
+      const names = [serviceDisplayNameWithAddOn(service, "en", addOnKey), serviceDisplayNameWithAddOn(service, "fr", addOnKey), ...(addOnKey ? [] : [service.nameEn, service.nameFr])]
+        .map(normalizeName).filter((name) => name.length >= 3);
+      const length = Math.max(0, ...names.filter((name) => haystacks.some((label) => label.includes(` ${name} `))).map((name) => name.length));
+      if (length === 0) continue;
+      const price = addOnKey ? service.addOn?.priceCad : service.price;
+      const score = length + (typeof priceCents === "number" && typeof price === "number" && Math.round(price * 100) === priceCents ? 1000 : 0);
+      if (!best || score > best.score) best = { ref: addOnKey ? { serviceId: service.id, addOnKey } : { serviceId: service.id }, score };
+    }
+  }
+  return best?.ref ?? null;
+}
+
+/** Adds Square variations missing from the catalog link table by matching their names and prices to serviceTree. */
+export async function extendVariationIndex(index: VariationIndex, variationIds: Iterable<string>) {
+  const unknown = Array.from(new Set(variationIds)).filter((id) => id && !index.byVariationId.has(id));
+  try {
+    for (let start = 0; start < unknown.length; start += 100) {
+      const result = await squareRequest<{ objects?: CatalogObject[]; related_objects?: CatalogObject[] }>("/catalog/batch-retrieve", {
+        object_ids: unknown.slice(start, start + 100),
+        include_related_objects: true,
+      });
+      const itemNames = new Map((result.related_objects ?? []).filter((object) => object.type === "ITEM").map((object) => [object.id, object.item_data?.name ?? ""]));
+      for (const object of result.objects ?? []) {
+        const variation = object.item_variation_data;
+        if (object.type !== "ITEM_VARIATION" || !variation) continue;
+        const ref = matchServiceByName([variation.name ?? "", itemNames.get(variation.item_id ?? "") ?? ""], variation.price_money?.amount);
+        if (ref) index.byVariationId.set(object.id, ref);
+      }
+    }
+  } catch (error) {
+    console.error("[v0] Square catalog lookup for unlinked variations failed:", error instanceof Error ? error.message : error);
+  }
+  return index;
+}
+
+export const segmentVariationIds = (bookings: SyncBooking[]) =>
+  bookings.flatMap((booking) => (booking.appointment_segments ?? []).flatMap((segment) => segment.service_variation_id ? [segment.service_variation_id] : []));
 
 /** Maps Square catalog variation ids back to internal services; null if any id is not an internal service. */
 function selectionFromVariationIds(variationIds: string[], index: VariationIndex): ServiceSelection | null {
@@ -304,6 +354,18 @@ export async function reconcileSquareCheckouts(
   if (groups.length === 0) return results;
   const matches = matchOrders(groups, await searchCompletedOrders(ordersFrom, new Date(Math.min(ordersTo.getTime(), Date.now() + 60_000))));
   if (matches.size === 0) return results;
+  await extendVariationIndex(index, [
+    ...segmentVariationIds(groups.flatMap((group) => group.bookings)),
+    ...Array.from(matches.values()).flatMap(({ order }) => (order.line_items ?? []).flatMap((item) => item.catalog_object_id ? [item.catalog_object_id] : [])),
+  ]);
+  // Deleted or older catalog versions are not retrievable, but the paid order still names each line.
+  for (const { order } of matches.values()) {
+    for (const item of order.line_items ?? []) {
+      if (!item.catalog_object_id || index.byVariationId.has(item.catalog_object_id)) continue;
+      const ref = matchServiceByName([item.variation_name ?? "", item.name ?? ""], item.base_price_money?.amount);
+      if (ref) index.byVariationId.set(item.catalog_object_id, ref);
+    }
+  }
 
   const existingRows = await reportsDb.select().from(serviceRevenueReports).where(and(
     eq(serviceRevenueReports.userId, REPORT_USER_ID),

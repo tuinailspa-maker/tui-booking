@@ -278,6 +278,7 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
 
   function openBill() {
     dialogRef.current?.showModal();
+    if (onSyncFromSquare && !squareSyncBusy) void syncFromSquare();
   }
 
   function closeBill() {
