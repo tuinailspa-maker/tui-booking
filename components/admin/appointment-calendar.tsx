@@ -16,6 +16,7 @@ export type CalendarBooking = {
   technicians: string[];
   durationMinutes: number;
   serviceIds: string[][];
+  squarePayment?: { totalCents: number } | null;
 };
 
 const OTHER_DATE_TITLE = "Different appointment date / Autre date de rendez-vous: checked in today for an appointment booked on another day.";
@@ -80,6 +81,7 @@ function serviceSummary(booking: CalendarBooking) {
 }
 
 function statusInfo(booking: CalendarBooking, checkedOut: boolean) {
+  if (booking.squarePayment) return { label: `Paid · Đã trả · $${(booking.squarePayment.totalCents / 100).toFixed(2)}`, className: "is-checked-out" };
   if (checkedOut || booking.status === "CHECKED_OUT") return { label: "Checked Out", className: "is-checked-out" };
   if (booking.status === "CHECKED_IN") return { label: "Checked In", className: "is-checked-in" };
   if (booking.status === "IN_SERVICE") return { label: "In Service", className: "is-in-service" };
