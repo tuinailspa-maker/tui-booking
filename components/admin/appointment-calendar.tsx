@@ -9,6 +9,7 @@ export type CalendarBooking = {
   id: string;
   status: string;
   startAt: string;
+  otherDateFrom?: string | null;
   customerName: string;
   phone?: string;
   estimatedSubtotal?: number;
@@ -16,6 +17,11 @@ export type CalendarBooking = {
   durationMinutes: number;
   serviceIds: string[][];
 };
+
+const OTHER_DATE_TITLE = "Different appointment date / Autre date de rendez-vous: checked in today for an appointment booked on another day.";
+function otherDateLabel(iso: string, withTime: boolean) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", month: "short", day: "numeric", ...(withTime ? { hour: "numeric", minute: "2-digit" } : {}) }).format(new Date(iso));
+}
 
 type AppointmentCalendarProps = {
   date: string;
@@ -145,7 +151,7 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
         const status = statusInfo(booking, checkedOut[booking.id] === true);
         return <button type="button" className={`admin-list-booking ${status.className}`} key={booking.id} onClick={() => onSelectBooking(booking)}>
           <strong>{timeLabel(localMinutes(booking.startAt))}</strong>
-          <span><b>{booking.customerName || "Walk-in guest"}</b><small>{booking.phone ? `${booking.phone} · ` : ""}{booking.technicians.filter((name) => name !== "Unassigned").join(", ") || "Unassigned"} · {serviceSummary(booking)}</small></span>
+          <span><b>{booking.customerName || "Walk-in guest"}</b>{booking.otherDateFrom && <i className="admin-flag-other-date" title={OTHER_DATE_TITLE}>Different appointment date · {otherDateLabel(booking.otherDateFrom, true)}</i>}<small>{booking.phone ? `${booking.phone} · ` : ""}{booking.technicians.filter((name) => name !== "Unassigned").join(", ") || "Unassigned"} · {serviceSummary(booking)}</small></span>
           <em>{status.label}{booking.estimatedSubtotal !== undefined ? ` · $${booking.estimatedSubtotal.toFixed(2)}` : ""}</em>
         </button>;
       })}
@@ -197,6 +203,7 @@ export function AppointmentCalendar({ date, bookings, view, checkedOut, onOpenSl
             return <button type="button" key={booking.id} className={`admin-calendar-card ${status.className}`} style={{ top: `${top}px`, height: `${height}px`, left: `calc(${(lane / laneCount) * 100}% + 4px)`, width: `calc(${100 / laneCount}% - 8px)` }} onClick={() => onSelectBooking(booking)}>
               <strong>{timeLabel(start)} – {timeLabel(start + duration)}</strong>
               <b>{booking.customerName || "Walk-in guest"}</b>
+              {booking.otherDateFrom && <i className="admin-flag-other-date" title={OTHER_DATE_TITLE}>Different date · {otherDateLabel(booking.otherDateFrom, false)}</i>}
               <small>{serviceSummary(booking)}</small>
               <small>{[booking.phone, booking.technicians.filter((name) => name !== "Unassigned").join(", ") || "Unassigned", booking.estimatedSubtotal !== undefined ? `$${booking.estimatedSubtotal.toFixed(2)}` : ""].filter(Boolean).join(" · ")}</small>
               <span>{status.label}</span>

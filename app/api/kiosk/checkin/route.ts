@@ -49,6 +49,62 @@ async function todayBookings() {
   do { const page = await square<{ bookings?: SquareBooking[]; cursor?: string }>(`/bookings?${query}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`); list.push(...(page.bookings ?? [])); cursor = page.cursor; } while (cursor);
   return list.filter((booking) => booking.start_at && Date.parse(booking.start_at) >= start.getTime() && Date.parse(booking.start_at) < end.getTime() && !["CANCELLED_BY_CUSTOMER", "CANCELLED_BY_SELLER", "DECLINED", "COMPLETED", "NO_SHOW"].includes(booking.status ?? ""));
 }
+const CLOSED_STATUSES = ["CANCELLED_BY_CUSTOMER", "CANCELLED_BY_SELLER", "DECLINED"];
+const OTHER_DATE = "[TUI_OTHER_DATE:";
+const OTHER_DATE_OF = "[TUI_OTHER_DATE_OF:";
+const DAY_MS = 86_400_000;
+// Square limits a booking search window to 31 days.
+const SEARCH_WINDOW_MS = 30 * DAY_MS;
+async function customerBookings(customerId: string, from: Date, to: Date) {
+  const query = new URLSearchParams({ location_id: LOCATION_ID, customer_id: customerId, start_at_min: from.toISOString(), start_at_max: to.toISOString(), limit: "100" });
+  const list: SquareBooking[] = []; let cursor: string | undefined;
+  do { const page = await square<{ bookings?: SquareBooking[]; cursor?: string }>(`/bookings?${query}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`); list.push(...(page.bookings ?? [])); cursor = page.cursor; } while (cursor);
+  return list.filter((booking) => booking.start_at && !CLOSED_STATUSES.includes(booking.status ?? ""));
+}
+async function nearestOtherDateBooking(customerId: string) {
+  const today = torontoDate(); const now = Date.now();
+  const [upcoming, past] = await Promise.all([
+    customerBookings(customerId, new Date(now), new Date(now + SEARCH_WINDOW_MS)),
+    customerBookings(customerId, new Date(now - SEARCH_WINDOW_MS), new Date(now)),
+  ]);
+  const notToday = (booking: SquareBooking) => torontoDate(new Date(booking.start_at!)) !== today && booking.status !== "COMPLETED";
+  const next = upcoming.filter((booking) => notToday(booking) && booking.status !== "NO_SHOW").sort((left, right) => Date.parse(left.start_at!) - Date.parse(right.start_at!))[0];
+  const latest = past.filter(notToday).sort((left, right) => Date.parse(right.start_at!) - Date.parse(left.start_at!))[0];
+  return next ?? latest ?? null;
+}
+async function checkInOtherDate(body: { bookingId?: unknown; phone?: unknown; requestId?: unknown }) {
+  const phone = typeof body.phone === "string" ? normalizePhone(body.phone) : "";
+  const requestId = typeof body.requestId === "string" && /^[\w-]{8,64}$/.test(body.requestId) ? body.requestId : "";
+  if (typeof body.bookingId !== "string" || !body.bookingId || phone.length !== 10 || !requestId) return NextResponse.json({ error: "Invalid appointment." }, { status: 400 });
+  try {
+    const original = (await square<{ booking?: SquareBooking }>(`/bookings/${encodeURIComponent(body.bookingId)}`)).booking;
+    if (!original?.customer_id || !original.start_at || CLOSED_STATUSES.includes(original.status ?? "")) return NextResponse.json({ error: "Appointment could not be found." }, { status: 404 });
+    const customer = (await square<{ customer?: SquareCustomer }>(`/customers/${encodeURIComponent(original.customer_id)}`)).customer;
+    if (!customer?.phone_number || normalizePhone(customer.phone_number) !== phone) return NextResponse.json({ error: "The phone number does not match this appointment." }, { status: 403 });
+    if (torontoDate(new Date(original.start_at)) === torontoDate()) return NextResponse.json({ error: "This appointment is today. Use the standard check-in." }, { status: 409 });
+    const originalStart = Date.parse(original.start_at);
+    const sameVisit = (await customerBookings(original.customer_id, new Date(originalStart - 60_000), new Date(originalStart + 60_000))).filter((booking) => Date.parse(booking.start_at!) === originalStart);
+    const party = [original, ...sameVisit.filter((booking) => booking.id !== original.id)].slice(0, 4);
+    const today = await todayBookings();
+    if (today.some((booking) => party.some((source) => booking.seller_note?.includes(`${OTHER_DATE_OF}${source.id}]`)))) return NextResponse.json({ success: true, alreadyCheckedIn: true }, { headers: { "Cache-Control": "no-store" } });
+    const variationIds = Array.from(new Set(party.flatMap((booking) => (booking.appointment_segments ?? []).map((segment) => segment.service_variation_id).filter((id): id is string => Boolean(id)))));
+    const catalog = variationIds.length ? await square<{ objects?: { id: string; version?: number }[] }>("/catalog/batch-retrieve", "POST", { object_ids: variationIds }) : { objects: [] };
+    const versions = new Map((catalog.objects ?? []).map((object) => [object.id, object.version]));
+    const arrival = new Date();
+    const startAt = new Date(arrival.getTime() + 2 * 60_000).toISOString();
+    for (const [index, source] of party.entries()) {
+      const segments = (source.appointment_segments ?? []).filter((segment) => segment.service_variation_id && segment.team_member_id && versions.get(segment.service_variation_id) !== undefined).map((segment) => ({ duration_minutes: segment.duration_minutes ?? 30, service_variation_id: segment.service_variation_id, service_variation_version: versions.get(segment.service_variation_id!), team_member_id: segment.team_member_id }));
+      if (!segments.length) throw new Error("The booked services are no longer available in Square.");
+      const markers = `[TUI_QUEUE_AT:${arrival.toISOString()}] ${CHECKED_IN}${arrival.toISOString()}] ${OTHER_DATE}${source.start_at}] ${OTHER_DATE_OF}${source.id}]`;
+      const carriedNote = (source.seller_note ?? "").replace(/\s?\[(?:TUI_[^\]]*|CHECKED_IN|KIOSK-BOOKED)\]/g, "").trim();
+      const created = await square<{ booking: { id: string } }>("/bookings", "POST", { idempotency_key: `${requestId}-${index}`, booking: { location_id: LOCATION_ID, start_at: startAt, customer_id: source.customer_id, seller_note: `${markers} ${carriedNote}`.slice(0, 500).trim(), appointment_segments: segments } });
+      await saveCheckIn(created.booking.id, arrival);
+    }
+    const guestName = [customer.given_name, customer.family_name].filter(Boolean).join(" ") || "Guest";
+    await notifyOwnerSms(`${guestName} có hẹn ngày ${torontoDate(new Date(original.start_at)).split("-").reverse().join("/")} lúc ${torontoTime(original.start_at)} nhưng đã check-in hôm nay tại quầy (khác ngày hẹn)`);
+    return NextResponse.json({ success: true, arrivalAt: arrival.toISOString() }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) { return responseError(error); }
+}
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const phone = normalizePhone(url.searchParams.get("phone") ?? "");
@@ -68,8 +124,10 @@ export async function GET(request: Request) {
       square<{ customers?: SquareCustomer[] }>("/customers/search", "POST", { query: { filter: { phone_number: { exact: `+1${phone}` } } }, limit: 1 }),
     ]);
     const customer = customerResult.customers?.[0];
-    const result = customer ? bookings.filter((booking) => booking.customer_id === customer.id).map((booking) => ({ id: booking.id, version: booking.version, name: [customer.given_name, customer.family_name].filter(Boolean).join(" ") || "Guest", time: booking.start_at, service: booking.seller_note?.match(/Services:\s*([\s\S]+?)(?:\. Guest subtotal|\. Combo discount:|$)/)?.[1]?.split(/;\s*/).map((line) => line.split(/\s+—\s+\$/)[0]).join(", ") || "Appointment", technician: Array.from(new Set((booking.appointment_segments ?? []).map((segment) => technicianName(segment.team_member_id)))).filter((name) => name !== "Unassigned").join(", ") || "Unassigned", checkedIn: booking.seller_note?.includes(CHECKED_IN) || booking.seller_note?.includes("[TUI_CHECKED_IN]") || false })) : [];
-    return NextResponse.json({ appointments: result }, { headers: { "Cache-Control": "no-store" } });
+    const result: unknown[] = customer ? bookings.filter((booking) => booking.customer_id === customer.id).map((booking) => ({ id: booking.id, version: booking.version, name: [customer.given_name, customer.family_name].filter(Boolean).join(" ") || "Guest", time: booking.start_at, service: booking.seller_note?.match(/Services:\s*([\s\S]+?)(?:\. Guest subtotal|\. Combo discount:|$)/)?.[1]?.split(/;\s*/).map((line) => line.split(/\s+—\s+\$/)[0]).join(", ") || "Appointment", technician: Array.from(new Set((booking.appointment_segments ?? []).map((segment) => technicianName(segment.team_member_id)))).filter((name) => name !== "Unassigned").join(", ") || "Unassigned", checkedIn: booking.seller_note?.includes(CHECKED_IN) || booking.seller_note?.includes("[TUI_CHECKED_IN]") || false })) : [];
+    // Only the date and time leave the server: the kiosk is a public screen.
+    const other = customer && !result.length ? await nearestOtherDateBooking(customer.id) : null;
+    return NextResponse.json({ appointments: result, otherAppointment: other ? { id: other.id, startAt: other.start_at } : null }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return responseError(error); }
 }
 export async function PATCH(request: Request) {
@@ -99,6 +157,7 @@ export async function PATCH(request: Request) {
 }
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
+  if (body?.mode === "other-date") return checkInOtherDate(body);
   const name = typeof body?.name === "string" ? body.name.trim().slice(0, 100) : "";
   const phone = typeof body?.phone === "string" ? body.phone.trim().slice(0, 30) : "";
   const serviceIds: string[] = Array.isArray(body?.serviceIds) ? body.serviceIds.filter((id: unknown): id is string => typeof id === "string" && serviceById.has(id) && /^(hands-|enhancement-|feet-|waxing-)/.test(id)).slice(0, 8) : [];

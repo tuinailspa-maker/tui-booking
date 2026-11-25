@@ -121,3 +121,6 @@
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
 }
+
+.admin-flag-other-date { display: inline-block; align-self: flex-start; max-width: 100%; margin: 2px 0; padding: 1px 6px; overflow: hidden; border: 1px solid #e0a63a; border-radius: 4px; background: #fff4d6; color: #6b4200; font-size: 10px; font-style: normal; font-weight: 700; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.admin-list-booking .admin-flag-other-date { margin: 3px 0; font-size: 11px; }
