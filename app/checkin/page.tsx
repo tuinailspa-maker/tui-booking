@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   description: "Check in for your Tui Nail Spa appointment or join today’s walk-in queue.",
   robots: { index: false, follow: false },
   applicationName: "Tui Check-in",
+  manifest: "/checkin/manifest.webmanifest",
   appleWebApp: { capable: true, title: "Tui Check-in", statusBarStyle: "default" },
   icons: {
     icon: [
