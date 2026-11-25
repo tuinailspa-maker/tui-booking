@@ -143,3 +143,27 @@ html:has(.kiosk), body:has(.kiosk) { height: 100%; overflow: hidden; overscroll-
 .kiosk-panel .kiosk-submit { position: sticky; bottom: 0; z-index: 3; box-shadow: 0 -22px 18px -6px #faf5f0; }
 .kiosk-services { overscroll-behavior: contain; }
 .kiosk-thanks-card { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+
+/* Compact primary actions placed right under the keypad / guest options. */
+.kiosk-keypad button { min-height: 56px; font-size: 26px; }
+.kiosk-panel:has(.kiosk-keypad) .kiosk-back { margin-bottom: 8px; }
+.kiosk-panel:has(.kiosk-keypad) .kiosk-phone-display { min-height: 62px; margin: 10px 0 10px; }
+.kiosk-panel .kiosk-submit-compact { position: static; min-height: 48px; margin: 12px 0 0; padding: 0 20px; box-shadow: none; font-size: 16px; }
+.kiosk-submit-compact span { font-size: 20px; }
+.kiosk-panel .kiosk-keypad-action { width: min(410px, 100%); margin: 9px auto 0; }
+.kiosk-panel .kiosk-counts-action { margin-top: 10px; }
+.kiosk-counts button { min-height: 64px; }
+
+.kiosk-other-card { display: flex; flex-direction: column; gap: 6px; margin: 22px 0 14px; padding: 22px 24px; border: 1px solid var(--kiosk-line); border-left: 4px solid #bd8588; background: var(--kiosk-paper); }
+.kiosk-other-card span { color: #5e5256; font-size: 15px; }
+.kiosk-other-card strong { display: block; color: var(--kiosk-ink); font: 28px/1.25 Georgia, serif; }
+.kiosk-other-card strong::first-letter { text-transform: uppercase; }
+.kiosk-other-card b { color: #46363b; font-size: 22px; }
+.kiosk-other-note { margin: 0; color: var(--kiosk-ink); font-size: 17px; line-height: 1.55; }
+.kiosk-other-actions { display: flex; gap: 12px; margin-top: 20px; }
+.kiosk-other-actions > * { flex: 1 1 0; }
+.kiosk-panel .kiosk-other-actions .kiosk-submit-compact { margin: 0; }
+.kiosk-secondary { min-height: 48px; padding: 0 20px; border: 1px solid #46363b; background: transparent; color: #46363b; cursor: pointer; font-size: 16px; font-weight: 600; touch-action: manipulation; }
+.kiosk-secondary:hover:not(:disabled) { background: #fbf2ef; }
+.kiosk-secondary:disabled { cursor: not-allowed; opacity: .45; }
+@media (max-width: 560px) { .kiosk-other-actions { flex-direction: column-reverse; } }

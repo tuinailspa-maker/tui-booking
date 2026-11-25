@@ -23,6 +23,7 @@ type AdminBooking = {
   status: string;
   startAt: string;
   arrivalAt?: string | null;
+  otherDateFrom?: string | null;
   customerName: string;
   phone: string;
   technicians: string[];
