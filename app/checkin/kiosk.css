@@ -282,3 +282,19 @@ html:has(.kiosk), body:has(.kiosk) { height: 100%; overflow: hidden; overscroll-
 .kiosk-other-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr); gap: 12px; }
 .kiosk-other-actions button { width: 100%; white-space: nowrap; }
 @media (max-width: 600px) { .kiosk-other-actions { grid-template-columns: 1fr; } .kiosk-other-actions button { white-space: normal; } }
+
+/* Walk-in time picker: one centered column; slots scroll inside their own area so the action stays in frame. */
+.kiosk-panel.kiosk-walkin-slots { width: min(780px, 100%); display: flex; flex-direction: column; }
+.kiosk-walkin-slots > * { flex: none; }
+.kiosk-walkin-slots h1 { margin-bottom: 0; }
+.kiosk-walkin-slots .kiosk-date-bar { margin: 14px 0 12px; }
+.kiosk-walkin-slots .kiosk-subtitle { margin: 0 0 10px; }
+.kiosk-walkin-slots > .kiosk-slots { flex: 0 1 auto; min-height: 96px; overflow-y: auto; overscroll-behavior: contain; padding: 2px 2px 2px 0; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); scrollbar-width: thin; scrollbar-color: #d9ccc6 transparent; }
+.kiosk-walkin-slots .kiosk-slots button { min-height: 72px; }
+.kiosk-walkin-slots .kiosk-slots strong { font-size: 24px; }
+.kiosk-slots-action { margin-top: 14px; }
+.kiosk-panel .kiosk-slots-action .kiosk-submit-compact { width: 100%; margin: 0; }
+@media (max-height: 800px) {
+  .kiosk-walkin-slots .kiosk-date-bar > button, .kiosk-walkin-slots .kiosk-date-field { min-height: 52px; }
+  .kiosk-walkin-slots .kiosk-slots button { min-height: 64px; }
+}
