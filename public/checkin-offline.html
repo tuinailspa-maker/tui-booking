@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#faf5f0">
+  <title>Offline | Tui Nail Spa Check-in</title>
+  <style>
+    html, body { height: 100%; margin: 0; overscroll-behavior: none; touch-action: manipulation; }
+    body { display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; background: #faf5f0; color: #302a2c; font-family: Georgia, "Times New Roman", serif; text-align: center; }
+    main { max-width: 560px; }
+    img { width: 120px; height: 120px; }
+    h1 { margin: 20px 0 10px; font-size: 38px; font-weight: 400; }
+    p { margin: 0 0 6px; color: #82777a; font-size: 19px; line-height: 1.5; }
+    button { margin-top: 28px; min-width: 260px; min-height: 64px; border: 0; background: #46363b; color: #fff; font: 600 18px system-ui, sans-serif; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/icons/icon-192.png" alt="Tui Nail Spa">
+    <h1>We’re reconnecting</h1>
+    <p>The check-in kiosk is offline. Please ask a team member for help.</p>
+    <p lang="fr">Le kiosque est hors ligne. Veuillez demander de l’aide à un membre de l’équipe.</p>
+    <button type="button" onclick="location.replace('/checkin')">Try again · Réessayer</button>
+  </main>
+  <script>window.addEventListener("online", () => location.replace("/checkin"));</script>
+</body>
+</html>
