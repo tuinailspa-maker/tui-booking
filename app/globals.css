@@ -211,7 +211,7 @@ button { color: inherit; }
 .print-receipt-topline > span { flex: 0 0 auto; font-size: 10px; line-height: 1.25; text-align: right; font-variant-numeric: tabular-nums; }
 .print-receipt-topline-id { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
 .print-receipt-topline-id b { font-size: 12px; font-weight: 800; line-height: 1.2; }
-.print-receipt-topline-id small { font-size: 9px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.print-receipt-topline-id small { font-size: 9px; font-weight: 700; line-height: 1.25; overflow-wrap: break-word; }
 .print-receipt-topline-id strong { margin-top: 2px; font-size: 22px; font-weight: 900; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .bill-drawer-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; font-size: 10px; }
 .bill-drawer-toggle input { accent-color: #292723; }
