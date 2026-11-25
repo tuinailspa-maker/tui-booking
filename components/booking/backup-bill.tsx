@@ -172,8 +172,15 @@ export function BackupBill({ language, date, time, selections, serviceAddOns, te
   const titleId = useId();
   const catalogSearchId = useId();
   const [receiptLanguage, setReceiptLanguage] = useState<Language>(language);
-  const [tipChoice, setTipChoice] = useState<TipChoice>("none");
-  const [customTip, setCustomTip] = useState("");
+  const [tipChoice, setTipChoice] = useState<TipChoice>(() => squarePayment && squarePayment.tipCents > 0 ? "custom" : "none");
+  const [customTip, setCustomTip] = useState(() => squarePayment && squarePayment.tipCents > 0 ? (squarePayment.tipCents / 100).toFixed(2) : "");
+  const squareTipKey = squarePayment ? `${squarePayment.orderId}:${squarePayment.tipCents}` : "";
+  const [appliedSquareTipKey, setAppliedSquareTipKey] = useState(squareTipKey);
+  if (squarePayment && squareTipKey !== appliedSquareTipKey) {
+    setAppliedSquareTipKey(squareTipKey);
+    setTipChoice(squarePayment.tipCents > 0 ? "custom" : "none");
+    setCustomTip(squarePayment.tipCents > 0 ? (squarePayment.tipCents / 100).toFixed(2) : "");
+  }
   const [customSubtotal, setCustomSubtotal] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"Interac" | "Card" | "Cash">("Card");
   const [paymentAuth, setPaymentAuth] = useState("");

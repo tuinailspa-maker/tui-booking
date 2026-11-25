@@ -39,7 +39,7 @@ type SquareOrder = {
   line_items?: { catalog_object_id?: string; name?: string; variation_name?: string; base_price_money?: SquareMoney }[];
   taxes?: { percentage?: string; applied_money?: SquareMoney }[];
   service_charges?: { name?: string; applied_money?: SquareMoney; total_money?: SquareMoney }[];
-  tenders?: { type?: string; customer_id?: string }[];
+  tenders?: { type?: string; customer_id?: string; tip_money?: SquareMoney }[];
   total_money?: SquareMoney;
   total_tax_money?: SquareMoney;
   total_tip_money?: SquareMoney;
@@ -272,7 +272,9 @@ function summarizeOrder(order: SquareOrder): SquarePaymentSummary {
   const tipChargeCents = (order.service_charges ?? [])
     .filter((charge) => /tip|pourboire/i.test(charge.name ?? ""))
     .reduce((sum, charge) => sum + amountOf(charge.applied_money ?? charge.total_money), 0);
-  const tipCents = amountOf(order.total_tip_money) + tipChargeCents;
+  // Square reports card tips on each tender and usually mirrors them in total_tip_money; take the larger to avoid double counting.
+  const tenderTipCents = (order.tenders ?? []).reduce((sum, tender) => sum + amountOf(tender.tip_money), 0);
+  const tipCents = Math.max(amountOf(order.total_tip_money), tenderTipCents) + tipChargeCents;
   const subtotalCents = Math.max(0, totalCents - taxTotalCents - tipCents);
   const appliedTax = (percent: number) => order.taxes?.find((tax) => Number(tax.percentage) === percent)?.applied_money;
   const tpsApplied = appliedTax(5);
