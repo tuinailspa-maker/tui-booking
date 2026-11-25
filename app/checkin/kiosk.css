@@ -219,3 +219,66 @@ html:has(.kiosk), body:has(.kiosk) { height: 100%; overflow: hidden; overscroll-
 .kiosk-secondary:hover:not(:disabled) { background: #fbf2ef; }
 .kiosk-secondary:disabled { cursor: not-allowed; opacity: .45; }
 @media (max-width: 560px) { .kiosk-other-actions { flex-direction: column-reverse; } }
+
+/* Polish: one type scale and one button system shared by every kiosk step. */
+.kiosk { --kiosk-accent: #bd8588; --kiosk-tint: #fbf2ef; --kiosk-primary: #46363b; --kiosk-primary-hover: #5e4750; --kiosk-btn-h: 56px; }
+.kiosk-panel h1 { font-size: clamp(28px, 3.2vw, 34px); line-height: 1.15; text-wrap: balance; }
+.kiosk-eyebrow { letter-spacing: .16em; }
+.kiosk-helper { margin: 8px 0 0; color: var(--kiosk-muted); font-size: 15px; line-height: 1.45; text-wrap: pretty; }
+.kiosk-back { display: inline-flex; align-items: center; gap: 6px; font-size: 15px; transition: color .15s; }
+.kiosk-back:hover { color: var(--kiosk-ink); }
+.kiosk button:focus-visible, .kiosk input:focus-visible { outline: 2px solid var(--kiosk-rose); outline-offset: 2px; }
+
+.kiosk-panel .kiosk-submit, .kiosk-panel .kiosk-submit-compact, .kiosk-secondary, .kiosk-next-guest { min-height: var(--kiosk-btn-h); padding: 0 22px; font-size: 17px; font-weight: 600; letter-spacing: .01em; line-height: 1.2; }
+.kiosk-submit { background: var(--kiosk-primary); transition: background .16s, transform .08s; }
+.kiosk-submit:hover:not(:disabled) { background: var(--kiosk-primary-hover); }
+.kiosk-submit:disabled, .kiosk-panel .kiosk-submit:disabled { opacity: 1; background: #d9cfcc; color: #fffdfa; }
+.kiosk-submit:disabled span { color: #fffdfa; opacity: .8; }
+.kiosk-submit span, .kiosk-submit-compact span { font-size: 20px; line-height: 1; }
+.kiosk-secondary { display: inline-flex; align-items: center; justify-content: center; border-color: var(--kiosk-primary); color: var(--kiosk-primary); transition: background .16s, transform .08s; }
+.kiosk-secondary:disabled { opacity: .5; }
+.kiosk-next-guest { border-color: var(--kiosk-accent); transition: background .16s, transform .08s; }
+.kiosk-next-guest:hover { background: var(--kiosk-tint); }
+.kiosk-submit:active:not(:disabled), .kiosk-secondary:active:not(:disabled), .kiosk-next-guest:active, .kiosk-start-over:active { transform: translateY(1px); }
+.kiosk-start-over { flex: none; min-height: 48px; margin: 12px auto 0; padding: 0 24px; border: 1px solid var(--kiosk-line); background: var(--kiosk-paper); color: var(--kiosk-muted); font-size: 15px; font-weight: 600; letter-spacing: .02em; transition: color .15s, border-color .15s; }
+.kiosk-start-over:hover { border-color: #c9a3a2; color: var(--kiosk-ink); }
+
+/* Phone entry: one centered column so heading, number, keypad and action line up. */
+.kiosk-panel:has(.kiosk-keypad) { width: min(560px, 100%); text-align: center; }
+.kiosk-panel:has(.kiosk-keypad) .kiosk-back { display: flex; margin-right: auto; }
+.kiosk-panel:has(.kiosk-keypad) .kiosk-phone-display { width: min(410px, 100%); min-height: 60px; margin: 12px auto 12px; border-bottom: 2px solid var(--kiosk-line); font: 38px/1 Georgia, serif; letter-spacing: .03em; font-variant-numeric: tabular-nums; transition: border-color .2s; }
+.kiosk-phone-display[data-filled="true"] { border-bottom-color: var(--kiosk-accent); }
+.kiosk-keypad button { display: grid; place-items: center; color: var(--kiosk-ink); }
+.kiosk-keypad button:active { border-color: var(--kiosk-accent); background: var(--kiosk-tint); }
+.kiosk-keypad button:nth-child(10) { font: 600 14px Arial, sans-serif; letter-spacing: .04em; }
+.kiosk-panel:has(.kiosk-keypad) .kiosk-error { width: min(410px, 100%); margin-inline: auto; }
+
+/* Appointment, other-date and confirmation details. */
+.kiosk-appointment strong { font-size: 21px; }
+.kiosk-appointment label > span { gap: 6px; }
+.kiosk-other-card { margin: 18px 0 14px; padding: 20px 24px; }
+.kiosk-other-card span { color: var(--kiosk-muted); font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.kiosk-other-card strong { font-size: 27px; }
+.kiosk-other-card b { font-size: 21px; font-variant-numeric: tabular-nums; }
+.kiosk-other-note { color: var(--kiosk-muted); font-size: 16px; line-height: 1.5; text-wrap: pretty; }
+.kiosk-other-actions { margin-top: 22px; }
+.kiosk-flower { display: inline-grid; place-items: center; color: #b57f80; font-size: 0; }
+
+/* Icon buttons and indicators. */
+.kiosk-selected li button { display: grid; place-items: center; color: var(--kiosk-muted); }
+.kiosk-selected li button:hover { border-color: var(--kiosk-accent); color: var(--kiosk-ink); }
+.kiosk-guest-check { display: inline-flex; align-items: center; gap: 4px; font-size: 16px; font-weight: 700; }
+.kiosk-counts button, .kiosk-services button, .kiosk-guest-tabs button, .kiosk-slots button, .kiosk-date-bar > button { transition: border-color .15s, background .15s; }
+.kiosk-slots strong, .kiosk-counts strong { font-variant-numeric: tabular-nums; }
+
+/* Short landscape kiosks (e.g. 1024x768): trim vertical rhythm, keep 48px+ touch targets. */
+@media (max-height: 800px) {
+  .kiosk-panel h1 { font-size: clamp(26px, 3vw, 32px); }
+  .kiosk-keypad { gap: 8px; }
+  .kiosk-keypad button { min-height: 52px; }
+  .kiosk-panel:has(.kiosk-keypad) .kiosk-phone-display { min-height: 54px; margin: 8px auto 10px; font-size: 34px; }
+  .kiosk-helper { margin-top: 6px; font-size: 14px; }
+}
+.kiosk-other-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr); gap: 12px; }
+.kiosk-other-actions button { width: 100%; white-space: nowrap; }
+@media (max-width: 600px) { .kiosk-other-actions { grid-template-columns: 1fr; } .kiosk-other-actions button { white-space: normal; } }

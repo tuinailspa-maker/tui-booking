@@ -108,15 +108,6 @@ async function checkInOtherDate(body: { bookingId?: unknown; phone?: unknown; re
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const phone = normalizePhone(url.searchParams.get("phone") ?? "");
-  if (url.searchParams.get("customer") === "1") {
-    if (phone.length !== 10) return NextResponse.json({ error: "Enter a 10-digit phone number." }, { status: 400 });
-    try {
-      const formatted = `+1${phone}`;
-      const result = await square<{ customers?: SquareCustomer[] }>("/customers/search", "POST", { query: { filter: { phone_number: { exact: formatted } } }, limit: 1 });
-      const customer = result.customers?.[0];
-      return NextResponse.json({ name: [customer?.given_name, customer?.family_name].filter(Boolean).join(" ") }, { headers: { "Cache-Control": "no-store" } });
-    } catch (error) { return responseError(error); }
-  }
   if (phone.length !== 10) return NextResponse.json({ error: "Enter a 10-digit phone number." }, { status: 400 });
   try {
     const [bookings, customerResult] = await Promise.all([
@@ -124,7 +115,7 @@ export async function GET(request: Request) {
       square<{ customers?: SquareCustomer[] }>("/customers/search", "POST", { query: { filter: { phone_number: { exact: `+1${phone}` } } }, limit: 1 }),
     ]);
     const customer = customerResult.customers?.[0];
-    const result: unknown[] = customer ? bookings.filter((booking) => booking.customer_id === customer.id).map((booking) => ({ id: booking.id, version: booking.version, name: [customer.given_name, customer.family_name].filter(Boolean).join(" ") || "Guest", time: booking.start_at, service: booking.seller_note?.match(/Services:\s*([\s\S]+?)(?:\. Guest subtotal|\. Combo discount:|$)/)?.[1]?.split(/;\s*/).map((line) => line.split(/\s+—\s+\$/)[0]).join(", ") || "Appointment", technician: Array.from(new Set((booking.appointment_segments ?? []).map((segment) => technicianName(segment.team_member_id)))).filter((name) => name !== "Unassigned").join(", ") || "Unassigned", checkedIn: booking.seller_note?.includes(CHECKED_IN) || booking.seller_note?.includes("[TUI_CHECKED_IN]") || false })) : [];
+    const result: unknown[] = customer ? bookings.filter((booking) => booking.customer_id === customer.id).map((booking) => ({ id: booking.id, version: booking.version, name: [customer.given_name, customer.family_name].map((part) => part?.trim().charAt(0).toUpperCase()).filter(Boolean).map((initial) => `${initial}.`).join(" "), time: booking.start_at, service: booking.seller_note?.match(/Services:\s*([\s\S]+?)(?:\. Guest subtotal|\. Combo discount:|$)/)?.[1]?.split(/;\s*/).map((line) => line.split(/\s+—\s+\$/)[0]).join(", ") || "", technician: Array.from(new Set((booking.appointment_segments ?? []).map((segment) => technicianName(segment.team_member_id)))).filter((name) => name !== "Unassigned").join(", "), checkedIn: booking.seller_note?.includes(CHECKED_IN) || booking.seller_note?.includes("[TUI_CHECKED_IN]") || false })) : [];
     // Only the date and time leave the server: the kiosk is a public screen.
     const other = customer && !result.length ? await nearestOtherDateBooking(customer.id) : null;
     return NextResponse.json({ appointments: result, otherAppointment: other ? { id: other.id, startAt: other.start_at } : null }, { headers: { "Cache-Control": "no-store" } });
