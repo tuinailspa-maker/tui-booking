@@ -181,7 +181,7 @@ export function Kiosk() {
       const isToday = walkinDate === today;
       const isFull = !slotsLoading && !error && slots.length === 0;
       const pickTime = isToday ? t.pickTime : t.pickTimeDay;
-      return <section className="kiosk-panel kiosk-walkin">
+      return <section className="kiosk-panel kiosk-walkin-slots">
         <button className="kiosk-back" type="button" onClick={() => { slotRequest.current += 1; setSlotsLoading(false); setScreen("walkin"); setError(""); }}>← {t.back}</button>
         <p className="kiosk-eyebrow">{isToday ? t.today : t.walkinDay}</p>
         <h1>{slotsLoading ? t.loading : slots.length ? `${t.nextAvailable}: ${slotLabel(slots[0].startAt)}` : isFull ? (isToday ? t.fullTitle : t.fullDateTitle) : t.chooseDate}</h1>
@@ -196,8 +196,7 @@ export function Kiosk() {
         </div>
         {slotsLoading ? <p className="kiosk-subtitle" aria-live="polite">{t.loading}</p> : slots.length > 0 ? <><p className="kiosk-subtitle">{pickTime}</p><div className="kiosk-slots" role="group" aria-label={pickTime}>{slots.map((slot, index) => <button type="button" key={slot.time} aria-pressed={selectedSlot === slot.time} className={index === 0 ? "is-next" : undefined} onClick={() => setSelectedSlot(slot.time)}><strong>{slotLabel(slot.startAt)}</strong>{index === 0 && <span>{t.earliest}</span>}</button>)}</div></> : isFull ? <p className="kiosk-not-found">{guestCount > 1 ? (isToday ? t.groupFullTodayBody : t.groupFullDateBody) : isToday ? t.fullBody : t.fullDateBody}</p> : null}
         {error && <p className="kiosk-error" role="alert">{error}</p>}
-        {!slotsLoading && slots.length > 0 && <button className="kiosk-submit" type="button" disabled={busy || !selectedSlot} onClick={confirmWalkinBooking}>{busy ? t.loading : t.bookConfirm} <span aria-hidden="true">→</span></button>}
-        {!slotsLoading && slots.length === 0 && isToday && <button className="kiosk-submit" type="button" disabled={busy} onClick={submitWalkIn}>{busy ? t.loading : t.submit} <span aria-hidden="true">→</span></button>}
+        {!slotsLoading && (slots.length > 0 || isToday) && <div className="kiosk-slots-action">{slots.length > 0 ? <button className="kiosk-submit kiosk-submit-compact" type="button" disabled={busy || !selectedSlot} onClick={confirmWalkinBooking}>{busy ? t.loading : t.bookConfirm} <span aria-hidden="true">→</span></button> : <button className="kiosk-submit kiosk-submit-compact" type="button" disabled={busy} onClick={submitWalkIn}>{busy ? t.loading : t.submit} <span aria-hidden="true">→</span></button>}</div>}
       </section>;
     })()}
     {screen !== "welcome" && <button className="kiosk-start-over" type="button" onClick={reset}>{t.backWelcome}</button>}
