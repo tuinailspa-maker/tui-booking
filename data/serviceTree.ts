@@ -83,6 +83,11 @@ export const serviceTree: ServiceBranch[] = [
         service("enhancement-refill-regular-polish", "Regular polish", "Vernis classique", 42, 50, undefined, overThreeWeeksAddOn(42)),
         service("enhancement-refill-shellac", "Shellac", "Shellac", 47, 50, undefined, overThreeWeeksAddOn(47)),
       ], "If nails over 3 weeks +$5 · +15 mins", "Ongles de plus de 3 semaines +5 $ · +15 min"),
+      branch("enhancement-overlay", "Overlay (Gel / Acrylic)", "Recouvrement (gel / acrylique)", [
+        service("enhancement-overlay-no-polish", "No polish", "Sans vernis", 37, 45),
+        service("enhancement-overlay-regular-polish", "Regular polish", "Vernis régulier", 47, 45),
+        service("enhancement-overlay-shellac", "Shellac", "Vernis Shellac", 52, 45),
+      ], "Protective layer on natural nails · Flat rate Gel or Acrylic · No extension added", "Couche protectrice sur ongles naturels · Tarif uniforme gel ou acrylique · Sans rallongement"),
     ]),
   ]),
   branch("feet", "Feets", "Pieds", [
@@ -176,6 +181,9 @@ const DISPLAY_PATH_OVERRIDES: Record<string, { en: string; fr: string }> = {
   "enhancement-refill-no-polish": { en: "Refill / No polish", fr: "Remplissage / Sans vernis" },
   "enhancement-refill-regular-polish": { en: "Refill / Regular polish", fr: "Remplissage / Vernis classique" },
   "enhancement-refill-shellac": { en: "Refill / Shellac", fr: "Remplissage / Shellac" },
+  "enhancement-overlay-no-polish": { en: "Overlay / No polish", fr: "Recouvrement / Sans vernis" },
+  "enhancement-overlay-regular-polish": { en: "Overlay / Regular polish", fr: "Recouvrement / Vernis régulier" },
+  "enhancement-overlay-shellac": { en: "Overlay / Shellac", fr: "Recouvrement / Vernis Shellac" },
   "feet-pedicure-no-polish": { en: "Pedicure / No polish", fr: "Pédicure / Sans vernis" },
   "feet-pedicure-regular-polish": { en: "Pedicure / Regular polish", fr: "Pédicure / Vernis classique" },
   "feet-pedicure-shellac": { en: "Pedicure / Shellac", fr: "Pédicure / Shellac" },
