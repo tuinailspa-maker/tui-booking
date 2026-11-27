@@ -36,7 +36,7 @@ type SquareOrder = {
   created_at?: string;
   updated_at?: string;
   metadata?: Record<string, string>;
-  line_items?: { catalog_object_id?: string; name?: string; variation_name?: string; base_price_money?: SquareMoney }[];
+  line_items?: { catalog_object_id?: string; name?: string; variation_name?: string; quantity?: string; base_price_money?: SquareMoney }[];
   taxes?: { percentage?: string; applied_money?: SquareMoney }[];
   service_charges?: { name?: string; applied_money?: SquareMoney; total_money?: SquareMoney }[];
   tenders?: { type?: string; customer_id?: string; tip_money?: SquareMoney }[];
@@ -264,9 +264,53 @@ async function searchCompletedOrders(startAt: Date, endAt: Date): Promise<Square
   return orders;
 }
 
+export type SquarePaymentRecord = {
+  id: string;
+  status?: string;
+  source_type?: string;
+  order_id?: string;
+  customer_id?: string;
+  team_member_id?: string;
+  created_at?: string;
+  tip_money?: SquareMoney;
+  card_details?: unknown;
+};
+
+export const WALK_IN_BOOKING_PREFIX = "square-walkin:";
+export const walkInBookingId = (orderId: string) => `${WALK_IN_BOOKING_PREFIX}${orderId}`;
+const isCardPayment = (payment: SquarePaymentRecord) => payment.source_type === "CARD" || Boolean(payment.card_details);
+/** Appointments checkouts often carry no customer, so fall back to the booked price and time. */
+const AMOUNT_MATCH_EARLY_MS = 60 * 60 * 1000;
+const AMOUNT_MATCH_LATE_MS = 6 * 60 * 60 * 1000;
+
+/** Completed Square payments (v2/payments) in a time window, including Square POS and Appointments checkouts. */
+async function listCompletedPayments(startAt: Date, endAt: Date): Promise<SquarePaymentRecord[]> {
+  const payments: SquarePaymentRecord[] = [];
+  let cursor: string | undefined;
+  do {
+    const query = new URLSearchParams({ location_id: ADMIN_LOCATION_ID, begin_time: startAt.toISOString(), end_time: endAt.toISOString(), sort_order: "ASC", limit: "100" });
+    if (cursor) query.set("cursor", cursor);
+    const page = await squareRequest<{ payments?: SquarePaymentRecord[]; cursor?: string }>(`/payments?${query}`);
+    payments.push(...(page.payments ?? []).filter((payment) => payment.status === "COMPLETED"));
+    cursor = page.cursor;
+  } while (cursor);
+  return payments;
+}
+
+/** Orders behind payments that the closed-order search did not return (v2/orders/batch-retrieve). */
+async function batchRetrieveOrders(orderIds: string[]): Promise<SquareOrder[]> {
+  const orders: SquareOrder[] = [];
+  for (let start = 0; start < orderIds.length; start += 100) {
+    const page = await squareRequest<{ orders?: SquareOrder[] }>("/orders/batch-retrieve", { location_id: ADMIN_LOCATION_ID, order_ids: orderIds.slice(start, start + 100) });
+    orders.push(...(page.orders ?? []).filter((order) => order.state !== "CANCELED"));
+  }
+  return orders;
+}
+
 const amountOf = (money?: SquareMoney) => typeof money?.amount === "number" ? money.amount : 0;
 
-function summarizeOrder(order: SquareOrder): SquarePaymentSummary {
+/** Pass the summed payment tip_money when known; it is Square's exact tip for the sale. */
+function summarizeOrder(order: SquareOrder, paymentTipCents?: number): SquarePaymentSummary {
   const totalCents = amountOf(order.total_money);
   const taxTotalCents = amountOf(order.total_tax_money);
   const tipChargeCents = (order.service_charges ?? [])
@@ -274,7 +318,7 @@ function summarizeOrder(order: SquareOrder): SquarePaymentSummary {
     .reduce((sum, charge) => sum + amountOf(charge.applied_money ?? charge.total_money), 0);
   // Square reports card tips on each tender and usually mirrors them in total_tip_money; take the larger to avoid double counting.
   const tenderTipCents = (order.tenders ?? []).reduce((sum, tender) => sum + amountOf(tender.tip_money), 0);
-  const tipCents = Math.max(amountOf(order.total_tip_money), tenderTipCents) + tipChargeCents;
+  const tipCents = (typeof paymentTipCents === "number" ? paymentTipCents : Math.max(amountOf(order.total_tip_money), tenderTipCents)) + tipChargeCents;
   const subtotalCents = Math.max(0, totalCents - taxTotalCents - tipCents);
   const appliedTax = (percent: number) => order.taxes?.find((tax) => Number(tax.percentage) === percent)?.applied_money;
   const tpsApplied = appliedTax(5);
@@ -295,17 +339,36 @@ function summarizeOrder(order: SquareOrder): SquarePaymentSummary {
   };
 }
 
-/** Square does not link Appointments checkouts to bookings, so match our reference id first, then the booking's customer. */
-function matchOrders(groups: BookingGroup[], orders: SquareOrder[]) {
+type MatchContext = {
+  /** Square order id → booking id already saved in Neon (e.g. a manual "Mark Paid" with an order id). */
+  claimed: Map<string, string>;
+  expectedBeforeTipCents: Map<string, number>;
+  customersOf: (order: SquareOrder) => Set<string | undefined>;
+  tipOf: (order: SquareOrder) => number;
+};
+
+const orderTime = (order: SquareOrder) => Date.parse(order.closed_at ?? order.created_at ?? "");
+
+/**
+ * Square does not link Appointments checkouts to bookings. Match in order of confidence:
+ * an order id saved in Neon, our reference id, the booking's customer, then the booked price within a time window.
+ */
+function matchOrders(groups: BookingGroup[], orders: SquareOrder[], context: MatchContext) {
   const matches = new Map<string, { order: SquareOrder; byReference: boolean }>();
   const used = new Set<string>();
+  const available = (order: SquareOrder, groupId: string) => !used.has(order.id) && (!context.claimed.has(order.id) || context.claimed.get(order.id) === groupId);
+  const take = (groupId: string, order: SquareOrder | undefined, byReference: boolean) => {
+    if (!order) return;
+    used.add(order.id);
+    matches.set(groupId, { order, byReference });
+  };
   for (const group of groups) {
+    take(group.primaryId, orders.find((item) => !used.has(item.id) && context.claimed.get(item.id) === group.primaryId), true);
+  }
+  for (const group of groups) {
+    if (matches.has(group.primaryId)) continue;
     const refs = new Set(group.bookings.flatMap((booking) => [booking.id, booking.id.slice(-40)]).concat(group.key, group.key.slice(-40)));
-    const order = orders.find((item) => !used.has(item.id) && ((item.reference_id && refs.has(item.reference_id)) || (item.metadata?.booking_id && refs.has(item.metadata.booking_id))));
-    if (order) {
-      used.add(order.id);
-      matches.set(group.primaryId, { order, byReference: true });
-    }
+    take(group.primaryId, orders.find((item) => available(item, group.primaryId) && ((item.reference_id && refs.has(item.reference_id)) || (item.metadata?.booking_id && refs.has(item.metadata.booking_id)))), true);
   }
   const byStart = [...groups].sort((left, right) => (left.bookings[0].start_at ?? "").localeCompare(right.bookings[0].start_at ?? ""));
   for (const group of byStart) {
@@ -313,16 +376,28 @@ function matchOrders(groups: BookingGroup[], orders: SquareOrder[]) {
     const customerId = group.bookings.find((booking) => booking.customer_id)?.customer_id;
     const startTime = Date.parse(group.bookings[0].start_at ?? "");
     if (!customerId || !Number.isFinite(startTime)) continue;
-    const order = orders.find((item) => {
-      if (used.has(item.id)) return false;
-      const customers = new Set([item.customer_id, ...(item.tenders ?? []).map((tender) => tender.customer_id)]);
-      const closedAt = Date.parse(item.closed_at ?? item.created_at ?? "");
-      return customers.has(customerId) && closedAt >= startTime - EARLY_CHECKOUT_WINDOW_MS && closedAt <= startTime + LATE_CHECKOUT_WINDOW_MS;
-    });
-    if (order) {
-      used.add(order.id);
-      matches.set(group.primaryId, { order, byReference: false });
-    }
+    take(group.primaryId, orders.find((item) => {
+      if (!available(item, group.primaryId)) return false;
+      const closedAt = orderTime(item);
+      return context.customersOf(item).has(customerId) && closedAt >= startTime - EARLY_CHECKOUT_WINDOW_MS && closedAt <= startTime + LATE_CHECKOUT_WINDOW_MS;
+    }), false);
+  }
+  for (const group of byStart) {
+    if (matches.has(group.primaryId)) continue;
+    const expected = context.expectedBeforeTipCents.get(group.primaryId) ?? 0;
+    const startTime = Date.parse(group.bookings[0].start_at ?? "");
+    if (expected <= 0 || !Number.isFinite(startTime)) continue;
+    const customerId = group.bookings.find((booking) => booking.customer_id)?.customer_id;
+    const tolerance = Math.max(100, Math.round(expected * 0.03));
+    const candidates = orders.filter((item) => {
+      if (!available(item, group.primaryId) || item.reference_id || item.metadata?.booking_id) return false;
+      const customers = [...context.customersOf(item)].filter(Boolean);
+      if (customerId && customers.length > 0 && !customers.includes(customerId)) return false;
+      const closedAt = orderTime(item);
+      if (!(closedAt >= startTime - AMOUNT_MATCH_EARLY_MS && closedAt <= startTime + AMOUNT_MATCH_LATE_MS)) return false;
+      return Math.abs(amountOf(item.total_money) - context.tipOf(item) - expected) <= tolerance;
+    }).sort((left, right) => Math.abs(orderTime(left) - startTime) - Math.abs(orderTime(right) - startTime));
+    take(group.primaryId, candidates[0], false);
   }
   return matches;
 }
@@ -351,17 +426,48 @@ export async function reconcileSquareCheckouts(
   staffNameById: Map<string, string>,
   ordersFrom: Date,
   ordersTo: Date,
+  options: ReconcileOptions = {},
 ): Promise<Map<string, ReconciledCheckout>> {
   const results = new Map<string, ReconciledCheckout>();
-  if (groups.length === 0) return results;
-  const matches = matchOrders(groups, await searchCompletedOrders(ordersFrom, new Date(Math.min(ordersTo.getTime(), Date.now() + 60_000))));
-  if (matches.size === 0) return results;
-  await extendVariationIndex(index, [
-    ...segmentVariationIds(groups.flatMap((group) => group.bookings)),
-    ...Array.from(matches.values()).flatMap(({ order }) => (order.line_items ?? []).flatMap((item) => item.catalog_object_id ? [item.catalog_object_id] : [])),
-  ]);
+  if (groups.length === 0 && !options.walkInWindow) return results;
+  const searchTo = new Date(Math.min(ordersTo.getTime(), Date.now() + 60_000));
+  const [searchedOrders, payments] = await Promise.all([searchCompletedOrders(ordersFrom, searchTo), listCompletedPayments(ordersFrom, searchTo)]);
+  const paymentsByOrder = new Map<string, SquarePaymentRecord[]>();
+  for (const payment of payments) {
+    if (payment.order_id) paymentsByOrder.set(payment.order_id, [...(paymentsByOrder.get(payment.order_id) ?? []), payment]);
+  }
+  const searchedIds = new Set(searchedOrders.map((order) => order.id));
+  const orders = [...searchedOrders, ...await batchRetrieveOrders([...paymentsByOrder.keys()].filter((id) => !searchedIds.has(id)))];
+  if (options.stats) options.stats.cardPayments = payments.filter(isCardPayment).length;
+  if (orders.length === 0) return results;
+  const paymentTip = (order: SquareOrder) => {
+    const list = paymentsByOrder.get(order.id);
+    return list?.length ? list.reduce((sum, payment) => sum + amountOf(payment.tip_money), 0) : undefined;
+  };
+
+  const claimedRows = await reportsDb.select({ bookingId: serviceRevenueReports.bookingId, squareOrderId: serviceRevenueReports.squareOrderId }).from(serviceRevenueReports).where(and(
+    eq(serviceRevenueReports.userId, REPORT_USER_ID),
+    inArray(serviceRevenueReports.squareOrderId, orders.map((order) => order.id)),
+  ));
+  const claimed = new Map(claimedRows.flatMap((row) => row.squareOrderId && !row.bookingId.startsWith(WALK_IN_BOOKING_PREFIX) ? [[row.squareOrderId, row.bookingId] as const] : []));
+
+  await extendVariationIndex(index, segmentVariationIds(groups.flatMap((group) => group.bookings)));
+  const expectedBeforeTipCents = new Map(groups.map((group) => {
+    const selections = group.bookings.map((booking) => resolveBookingSelection(booking, index));
+    return [group.primaryId, calculateBill({ selections: selections.map((item) => item.serviceIds), addOns: selections.map((item) => item.addOns) }).totalBeforeTipCents] as const;
+  }));
+  const matches = matchOrders(groups, orders, {
+    claimed,
+    expectedBeforeTipCents,
+    customersOf: (order) => new Set([order.customer_id, ...(order.tenders ?? []).map((tender) => tender.customer_id), ...(paymentsByOrder.get(order.id) ?? []).map((payment) => payment.customer_id)]),
+    tipOf: (order) => summarizeOrder(order, paymentTip(order)).tipCents,
+  });
+
+  const unmatchedOrders = orders.filter((order) => !Array.from(matches.values()).some((match) => match.order.id === order.id));
+  await extendVariationIndex(index, [...Array.from(matches.values()).map(({ order }) => order), ...(options.walkInWindow ? unmatchedOrders : [])]
+    .flatMap((order) => (order.line_items ?? []).flatMap((item) => item.catalog_object_id ? [item.catalog_object_id] : [])));
   // Deleted or older catalog versions are not retrievable, but the paid order still names each line.
-  for (const { order } of matches.values()) {
+  for (const order of orders) {
     for (const item of order.line_items ?? []) {
       if (!item.catalog_object_id || index.byVariationId.has(item.catalog_object_id)) continue;
       const ref = matchServiceByName([item.variation_name ?? "", item.name ?? ""], item.base_price_money?.amount);
@@ -369,7 +475,7 @@ export async function reconcileSquareCheckouts(
     }
   }
 
-  const existingRows = await reportsDb.select().from(serviceRevenueReports).where(and(
+  const existingRows = matches.size === 0 ? [] : await reportsDb.select().from(serviceRevenueReports).where(and(
     eq(serviceRevenueReports.userId, REPORT_USER_ID),
     inArray(serviceRevenueReports.bookingId, Array.from(matches.keys())),
   ));
@@ -378,10 +484,10 @@ export async function reconcileSquareCheckouts(
     const match = matches.get(group.primaryId);
     if (!match) continue;
     const bookingRows = existingRows.filter((row) => row.bookingId === group.primaryId);
-    // A checkout saved in /admin without a Square order (e.g. cash) wins over a customer-only guess.
-    if (!match.byReference && bookingRows.length > 0 && bookingRows.every((row) => !row.squareOrderId)) continue;
+    // A checkout saved in /admin (cash, or linked to another order) wins over a customer or amount guess.
+    if (!match.byReference && bookingRows.length > 0 && bookingRows.every((row) => row.squareOrderId !== match.order.id)) continue;
 
-    const payment = summarizeOrder(match.order);
+    const payment = summarizeOrder(match.order, paymentTip(match.order));
     const orderSelection = group.bookings.length === 1
       ? selectionFromVariationIds((match.order.line_items ?? []).map((item) => item.catalog_object_id ?? ""), index)
       : null;
@@ -447,20 +553,102 @@ export async function reconcileSquareCheckouts(
       payment,
     });
   }
+
+  // An order now tied to a booking no longer needs its walk-in placeholder.
+  const linkedOrderIds = [...Array.from(results.values()).map((result) => result.payment.orderId), ...claimed.keys()];
+  if (linkedOrderIds.length > 0) {
+    await reportsDb.delete(serviceRevenueReports).where(and(
+      eq(serviceRevenueReports.userId, REPORT_USER_ID),
+      inArray(serviceRevenueReports.bookingId, linkedOrderIds.map(walkInBookingId)),
+    ));
+  }
+  if (options.walkInWindow) {
+    const linked = new Set(linkedOrderIds);
+    const walkInOrders = orders.filter((order) => {
+      if (linked.has(order.id) || Array.from(matches.values()).some((match) => match.order.id === order.id) || order.reference_id || order.metadata?.booking_id) return false;
+      const orderPayments = paymentsByOrder.get(order.id) ?? [];
+      if (!orderPayments.some(isCardPayment)) return false;
+      const paidAt = Date.parse(order.closed_at ?? orderPayments[0]?.created_at ?? order.created_at ?? "");
+      return paidAt >= options.walkInWindow!.start.getTime() && paidAt < options.walkInWindow!.end.getTime();
+    });
+    const existingWalkIns = walkInOrders.length === 0 ? [] : await reportsDb.select().from(serviceRevenueReports).where(and(
+      eq(serviceRevenueReports.userId, REPORT_USER_ID),
+      inArray(serviceRevenueReports.bookingId, walkInOrders.map((order) => walkInBookingId(order.id))),
+    ));
+    for (const order of walkInOrders) {
+      const orderPayments = paymentsByOrder.get(order.id) ?? [];
+      const payment = summarizeOrder(order, paymentTip(order));
+      const bookingId = walkInBookingId(order.id);
+      const current = existingWalkIns.find((row) => row.bookingId === bookingId);
+      const technicianId = orderPayments.find((item) => item.team_member_id)?.team_member_id;
+      const squareTechnician = technicianId ? staffNameById.get(technicianId) : undefined;
+      const transactedAt = new Date(order.closed_at ?? orderPayments[0]?.created_at ?? order.created_at ?? Date.now());
+      const services = (order.line_items ?? []).map((item) => {
+        const ref = item.catalog_object_id ? index.byVariationId.get(item.catalog_object_id) : undefined;
+        const service = ref ? serviceById.get(ref.serviceId) : undefined;
+        const quantity = Math.max(1, Number(item.quantity) || 1);
+        return {
+          name: service ? serviceDisplayNameWithAddOn(service, "en", ref?.addOnKey) : [item.name, item.variation_name].filter(Boolean).join(" · ") || "Square sale",
+          amount: (amountOf(item.base_price_money) * quantity) / 100,
+        };
+      });
+      const record = {
+        id: createHash("sha256").update(`${bookingId}:0`).digest("hex"),
+        userId: REPORT_USER_ID,
+        bookingId,
+        guestIndex: 0,
+        transactedAt,
+        businessDate: torontoDate(transactedAt),
+        guestName: current?.guestName ?? "Walk-in (Square)",
+        // A technician the owner assigned in /admin is kept unless Square names one.
+        technician: squareTechnician || current?.technician || "Unassigned",
+        services,
+        serviceSubtotal: toAmount(payment.subtotalCents),
+        tipAmount: toAmount(payment.tipCents),
+        paymentMethod: payment.paymentMethod,
+        squareOrderId: order.id,
+        squareTipAmount: toAmount(payment.tipCents),
+        discountAmount: toAmount(payment.discountCents),
+        appointmentAt: null,
+        updatedAt: new Date(),
+      };
+      const { id: _id, userId: _userId, bookingId: _bookingId, guestIndex: _guestIndex, ...changes } = record;
+      await reportsDb.insert(serviceRevenueReports).values(record).onConflictDoUpdate({
+        target: [serviceRevenueReports.userId, serviceRevenueReports.bookingId, serviceRevenueReports.guestIndex],
+        set: changes,
+      });
+      if (options.stats) options.stats.walkIns++;
+    }
+  }
   return results;
 }
 
-/** Re-reads one business day from Square (bookings + completed orders) and reconciles its checkouts into Neon. */
-export async function reconcileSquareDate(date: string) {
+export type ReconcileStats = { cardPayments: number; matched: number; walkIns: number };
+type ReconcileOptions = { walkInWindow?: { start: Date; end: Date }; stats?: ReconcileStats };
+
+/**
+ * Re-reads one business day (America/Toronto) from Square — bookings, completed orders and v2/payments —
+ * and reconciles its checkouts into Neon. Unmatched card payments become walk-in records.
+ */
+export async function syncSquareDate(date: string, { walkIns = true }: { walkIns?: boolean } = {}) {
   const [bookings, roster, index] = await Promise.all([fetchDayBookings(date), getStaffRoster(ADMIN_LOCATION_ID), loadVariationIndex()]);
   const dayStart = torontoMidnightUtc(date);
-  return reconcileSquareCheckouts(
+  const dayEnd = torontoMidnightUtc(nextDate(date));
+  const stats: ReconcileStats = { cardPayments: 0, matched: 0, walkIns: 0 };
+  const reconciled = await reconcileSquareCheckouts(
     groupSquareBookings(bookings),
     index,
     new Map(roster.map((member) => [member.teamMemberId, member.name])),
     new Date(dayStart.getTime() - EARLY_CHECKOUT_WINDOW_MS),
-    new Date(torontoMidnightUtc(nextDate(date)).getTime() + LATE_CHECKOUT_WINDOW_MS),
+    new Date(dayEnd.getTime() + LATE_CHECKOUT_WINDOW_MS),
+    { walkInWindow: walkIns ? { start: dayStart, end: dayEnd } : undefined, stats },
   );
+  stats.matched = reconciled.size;
+  return { reconciled, stats };
+}
+
+export async function reconcileSquareDate(date: string) {
+  return (await syncSquareDate(date)).reconciled;
 }
 
 /** Business date an order belongs to, for webhook events that only carry an order id. */

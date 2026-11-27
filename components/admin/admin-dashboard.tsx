@@ -13,6 +13,7 @@ import { PinLockScreen } from "./pin-lock-screen";
 import { allServices, selectedServiceDuration, selectedServicePrice, serviceById, type ServiceAddOnKey } from "@/data/serviceTree";
 import { getComboDiscountDetails } from "@/data/comboDiscount";
 import { ServiceEditor } from "./service-editor";
+import { PaymentOverrideDialog, type PaymentOverrideTarget } from "./payment-override-dialog";
 import { ReportsDashboard } from "./reports-dashboard";
 import { TechnicianTipsSummary } from "./technician-tips-summary";
 import { SquareCatalogSync } from "./square-catalog-sync";
@@ -161,6 +162,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
   const [assignmentBusy, setAssignmentBusy] = useState<string | null>(null);
   const [assignmentError, setAssignmentError] = useState("");
   const [editor, setEditor] = useState<{ booking: AdminBooking | null; walkIn: boolean } | null>(null);
+  const [paymentTarget, setPaymentTarget] = useState<PaymentOverrideTarget | null>(null);
   const session = useSWR<{ authenticated: boolean; role?: "owner" | "staff"; name?: string }, FetchError>(sessionHint ? "/api/admin/session" : null, jsonFetcher, { shouldRetryOnError: false, revalidateOnFocus: false });
   const isAuthenticated = sessionHint && session.data?.authenticated === true;
   const viewerRole = session.data?.role === "owner" ? "owner" : "staff";
@@ -451,6 +453,7 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
         <p className="admin-access-note">Pricing, discounts and checkout are handled by the owner.</p>
       </div>
     </AppointmentDrawer>}
-    {drawerBooking && isOwner && <ServiceEditor staffNames={staffNames} key={drawerBooking.id} initialServiceIds={currentEditorDraft?.serviceIds ?? drawerBooking.serviceIds} initialAddOns={currentEditorDraft?.addOns ?? drawerBooking.addOns} bookingId={drawerBooking.id} guestNames={drawerBooking.guestNames} customerName={drawerBooking.customerName} customerPhone={drawerBooking.phone} startAt={drawerBooking.startAt} technician={drawerTechnician} initialTechnicians={drawerBooking.technicians} status={drawerStatus} busy={assignmentBusy === drawerBooking.id} checkedOut={drawerStatus === "CHECKED_OUT"} squarePayment={drawerBooking.squarePayment} onSyncFromSquare={() => syncBookingFromSquare(drawerBooking)} onMarkCheckedOut={async () => { await updateBookingStatus(drawerBooking, "CHECKED_OUT"); }} onBillSelectionChange={(serviceIds, addOns) => saveBillingSelection(drawerBooking, serviceIds, addOns)} walkIn={Boolean(editor?.walkIn)} onCancel={() => setEditor(null)} onTechnicianChange={(technician) => void updateBookingTechnician(drawerBooking, technician)} onStatusChange={(status) => void updateBookingStatus(drawerBooking, status)} onSave={saveServices} onBookingCreated={async () => { setEditor(null); await bookings.mutate(); }} />}
+    {drawerBooking && isOwner && <ServiceEditor staffNames={staffNames} key={drawerBooking.id} initialServiceIds={currentEditorDraft?.serviceIds ?? drawerBooking.serviceIds} initialAddOns={currentEditorDraft?.addOns ?? drawerBooking.addOns} bookingId={drawerBooking.id} guestNames={drawerBooking.guestNames} customerName={drawerBooking.customerName} customerPhone={drawerBooking.phone} startAt={drawerBooking.startAt} technician={drawerTechnician} initialTechnicians={drawerBooking.technicians} status={drawerStatus} busy={assignmentBusy === drawerBooking.id} checkedOut={drawerStatus === "CHECKED_OUT"} squarePayment={drawerBooking.squarePayment} onSyncFromSquare={() => syncBookingFromSquare(drawerBooking)} paymentAction={editor?.walkIn ? undefined : <button type="button" className="admin-secondary-button admin-edit-payment-button" onClick={() => setPaymentTarget({ bookingId: drawerBooking.id, title: drawerBooking.customerName || "Appointment", startAt: drawerBooking.startAt, guestNames: drawerBooking.guestNames, technicians: drawerBooking.technicians, selections: currentEditorDraft?.serviceIds ?? drawerBooking.serviceIds, addOns: currentEditorDraft?.addOns ?? drawerBooking.addOns })}>Edit Payment / Mark Paid</button>} onMarkCheckedOut={async () => { await updateBookingStatus(drawerBooking, "CHECKED_OUT"); }} onBillSelectionChange={(serviceIds, addOns) => saveBillingSelection(drawerBooking, serviceIds, addOns)} walkIn={Boolean(editor?.walkIn)} onCancel={() => setEditor(null)} onTechnicianChange={(technician) => void updateBookingTechnician(drawerBooking, technician)} onStatusChange={(status) => void updateBookingStatus(drawerBooking, status)} onSave={saveServices} onBookingCreated={async () => { setEditor(null); await bookings.mutate(); }} />}
+    {paymentTarget && isOwner && <PaymentOverrideDialog target={paymentTarget} staffNames={staffNames} onClose={() => setPaymentTarget(null)} onSaved={(paid) => { if (paid) setCheckedOutStatus(paymentTarget.bookingId); void bookings.mutate(); }} />}
   </main>;
 }

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import styles from "./reports-dashboard.module.css";
+import { PaymentOverrideDialog, type PaymentOverrideTarget } from "./payment-override-dialog";
 
 type ReportRecord = {
   id: string;
@@ -80,6 +81,9 @@ export function ReportsDashboard() {
   const [syncing, setSyncing] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [syncDate, setSyncDate] = useState(montrealToday);
+  const [paymentSyncing, setPaymentSyncing] = useState(false);
+  const [paymentTarget, setPaymentTarget] = useState<PaymentOverrideTarget | null>(null);
   const today = montrealToday();
   const range = dateRange(period, today, customFrom, customTo);
   const key = range.from && range.to && range.from <= range.to ? `/api/admin/reports?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}` : null;
@@ -88,6 +92,23 @@ export function ReportsDashboard() {
   const unassigned = records.filter((record) => !TECHNICIANS.includes(record.technician));
   const technicianRows = [...TECHNICIANS.map((name) => ({ name, records: records.filter((record) => record.technician === name) })), { name: "Unassigned", records: unassigned }, { name: "Total", records }];
   const visibleRecords = useMemo(() => records.filter((record) => !technicianFilter || (technicianFilter === "Unassigned" ? !TECHNICIANS.includes(record.technician) : technicianFilter === "Total" || record.technician === technicianFilter)), [records, technicianFilter]);
+
+  async function syncPayments() {
+    setPaymentSyncing(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/payments/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: syncDate }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not sync Square payments.");
+      setNotice(`Square payments for ${result.date}: ${result.cardPayments} card payments found · ${result.matched} bookings marked paid · ${result.walkIns} walk-in records created.`);
+      await reports.mutate();
+    } catch (syncError) {
+      setError(syncError instanceof Error ? syncError.message : "Could not sync Square payments.");
+    } finally {
+      setPaymentSyncing(false);
+    }
+  }
 
   async function syncTips() {
     setSyncing(true);
@@ -108,6 +129,11 @@ export function ReportsDashboard() {
 
   return <section className={`reports-panel ${styles.root}`} aria-labelledby="reports-title">
     <div className="reports-heading"><div><span className="admin-eyebrow">REVENUE & PAYROLL</span><h2 id="reports-title">Service reports</h2><p>Checkout totals, tips, and technician turns · all dates in Montréal time</p></div><div className="reports-actions"><button type="button" className="admin-secondary-button" onClick={() => void syncTips()} disabled={syncing || !records.some((record) => record.squareOrderId)}>{syncing ? "Syncing tips…" : "Sync Tips from Square"}</button><button type="button" className="admin-primary-button" onClick={() => exportCsv(visibleRecords)} disabled={visibleRecords.length === 0}>Export CSV</button></div></div>
+    <form className={styles.paymentSync} onSubmit={(event) => { event.preventDefault(); void syncPayments(); }}>
+      <div><strong>Pull missing Square card payments</strong><span>Matches card sales from Square POS / Appointments to bookings for one day (Montréal time); unmatched sales become walk-in records.</span></div>
+      <label>Date<input type="date" value={syncDate} max={today} required onChange={(event) => setSyncDate(event.target.value)} /></label>
+      <button type="submit" className="admin-primary-button" disabled={paymentSyncing || !syncDate}>{paymentSyncing ? "Syncing payments…" : "Sync Square Payments"}</button>
+    </form>
     <div className="reports-filters" role="group" aria-label="Report date range">
       {[{ id: "today", label: "Today" }, { id: "week", label: "This Week" }, { id: "biweekly", label: "Bi-Weekly · 14 days" }, { id: "custom", label: "Custom range" }].map((option) => <button key={option.id} type="button" className={period === option.id ? "is-active" : ""} aria-pressed={period === option.id} onClick={() => setPeriod(option.id as Period)}>{option.label}</button>)}
       {period === "custom" && <div className="reports-custom-range"><label>From<input type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} /></label><label>To<input type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} /></label></div>}
@@ -132,10 +158,11 @@ export function ReportsDashboard() {
       })}
     </div>
     <div className="reports-table-heading"><div><h3>{technicianFilter ? `${technicianFilter} transactions` : "All transactions"}</h3><span>{visibleRecords.length} guest {visibleRecords.length === 1 ? "record" : "records"}</span></div><button type="button" className="reports-clear-filter" onClick={() => setTechnicianFilter(null)} disabled={!technicianFilter}>Clear technician filter</button></div>
-    <div className="reports-table-wrap"><table className="reports-table"><thead><tr><th>Date / time</th><th>Guest</th><th>Technician</th><th>Services</th><th>Service sales</th><th>Tip</th><th>Payment</th><th>Square order</th></tr></thead><tbody>
-      {visibleRecords.map((record) => <tr key={record.id}><td>{new Intl.DateTimeFormat("en-CA", { dateStyle: "short", timeStyle: "short", timeZone: "America/Toronto" }).format(new Date(record.transactedAt))}</td><td>{record.guestName}<small>{record.bookingId}</small></td><td>{record.technician}</td><td>{record.services.map((service) => service.name).join(", ") || "—"}</td><td>{money(Number(record.serviceSubtotal))}</td><td>{money(Number(record.tipAmount))}{record.squareTipAmount !== null && <small>Square synced</small>}</td><td><span className={`reports-payment is-${record.paymentMethod.toLowerCase()}`}>{record.paymentMethod}</span></td><td>{record.squareOrderId ?? "—"}</td></tr>)}
-      {visibleRecords.length === 0 && <tr><td className="reports-empty" colSpan={8}>{reports.isLoading ? "Loading transactions…" : "No checkout transactions in this date range yet."}</td></tr>}
+    <div className="reports-table-wrap"><table className="reports-table"><thead><tr><th>Date / time</th><th>Guest</th><th>Technician</th><th>Services</th><th>Service sales</th><th>Tip</th><th>Payment</th><th>Square order</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>
+      {visibleRecords.map((record) => <tr key={record.id}><td>{new Intl.DateTimeFormat("en-CA", { dateStyle: "short", timeStyle: "short", timeZone: "America/Toronto" }).format(new Date(record.transactedAt))}</td><td>{record.guestName}<small>{record.bookingId}</small></td><td>{record.technician}</td><td>{record.services.map((service) => service.name).join(", ") || "—"}</td><td>{money(Number(record.serviceSubtotal))}</td><td>{money(Number(record.tipAmount))}{record.squareTipAmount !== null && <small>Square synced</small>}</td><td><span className={`reports-payment is-${record.paymentMethod.toLowerCase()}`}>{record.paymentMethod}</span></td><td>{record.squareOrderId ?? "—"}</td><td><button type="button" className={styles.editPayment} onClick={() => setPaymentTarget({ bookingId: record.bookingId, title: record.guestName, startAt: record.transactedAt })} aria-label={`Edit payment for ${record.guestName}`}>Edit</button></td></tr>)}
+      {visibleRecords.length === 0 && <tr><td className="reports-empty" colSpan={9}>{reports.isLoading ? "Loading transactions…" : "No checkout transactions in this date range yet."}</td></tr>}
     </tbody></table></div>
     <p className="reports-payroll-note">Estimated turns = pre-tax service sales ÷ $15. Square tip sync refreshes recorded tips for matching orders; payment method remains the staff selection made at checkout.</p>
+    {paymentTarget && <PaymentOverrideDialog target={paymentTarget} staffNames={TECHNICIANS} onClose={() => setPaymentTarget(null)} onSaved={() => void reports.mutate()} />}
   </section>;
 }
