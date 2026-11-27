@@ -307,6 +307,34 @@ async function batchRetrieveOrders(orderIds: string[]): Promise<SquareOrder[]> {
   return orders;
 }
 
+type SquareCustomer = { id: string; given_name?: string; family_name?: string; phone_number?: string };
+type CustomerKeys = { name?: string; phone?: string };
+
+const customerNameKey = (customer: SquareCustomer) => {
+  const name = normalizeName(`${customer.given_name ?? ""} ${customer.family_name ?? ""}`);
+  return name.length >= 3 ? name : undefined;
+};
+const customerPhoneKey = (phone?: string) => {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  return digits.length >= 10 ? digits.slice(-10) : undefined;
+};
+
+/** Square Appointments often creates a second customer profile at checkout, so ids alone miss the same person. */
+async function loadCustomerKeys(customerIds: string[]): Promise<Map<string, CustomerKeys>> {
+  const keys = new Map<string, CustomerKeys>();
+  for (let start = 0; start < customerIds.length; start += 100) {
+    try {
+      const page = await squareRequest<{ responses?: Record<string, { customer?: SquareCustomer }> }>("/customers/bulk-retrieve", { customer_ids: customerIds.slice(start, start + 100) });
+      for (const response of Object.values(page.responses ?? {})) {
+        if (response.customer) keys.set(response.customer.id, { name: customerNameKey(response.customer), phone: customerPhoneKey(response.customer.phone_number) });
+      }
+    } catch (error) {
+      console.warn("Square customer lookup failed; matching by customer id only", error);
+    }
+  }
+  return keys;
+}
+
 const amountOf = (money?: SquareMoney) => typeof money?.amount === "number" ? money.amount : 0;
 
 /** Pass the summed payment tip_money when known; it is Square's exact tip for the sale. */
@@ -344,6 +372,9 @@ type MatchContext = {
   claimed: Map<string, string>;
   expectedBeforeTipCents: Map<string, number>;
   customersOf: (order: SquareOrder) => Set<string | undefined>;
+  /** true: same person by id, name or phone; false: a different known person; undefined: order has no customer. */
+  sameCustomer: (order: SquareOrder, customerId: string) => boolean | undefined;
+  teamMembersOf: (order: SquareOrder) => Set<string>;
   tipOf: (order: SquareOrder) => number;
 };
 
@@ -379,8 +410,24 @@ function matchOrders(groups: BookingGroup[], orders: SquareOrder[], context: Mat
     take(group.primaryId, orders.find((item) => {
       if (!available(item, group.primaryId)) return false;
       const closedAt = orderTime(item);
-      return context.customersOf(item).has(customerId) && closedAt >= startTime - EARLY_CHECKOUT_WINDOW_MS && closedAt <= startTime + LATE_CHECKOUT_WINDOW_MS;
+      return context.sameCustomer(item, customerId) === true && closedAt >= startTime - EARLY_CHECKOUT_WINDOW_MS && closedAt <= startTime + LATE_CHECKOUT_WINDOW_MS;
     }), false);
+  }
+  // The technician who took the payment, closest to the appointment time, when the order names no other client.
+  for (const group of byStart) {
+    if (matches.has(group.primaryId)) continue;
+    const startTime = Date.parse(group.bookings[0].start_at ?? "");
+    const technicians = new Set(group.bookings.flatMap((booking) => (booking.appointment_segments ?? []).flatMap((segment) => segment.team_member_id ? [segment.team_member_id] : [])));
+    if (technicians.size === 0 || !Number.isFinite(startTime)) continue;
+    const customerId = group.bookings.find((booking) => booking.customer_id)?.customer_id;
+    const candidates = orders.filter((item) => {
+      if (!available(item, group.primaryId) || item.reference_id || item.metadata?.booking_id) return false;
+      if (customerId && context.sameCustomer(item, customerId) === false) return false;
+      if (![...context.teamMembersOf(item)].some((id) => technicians.has(id))) return false;
+      const closedAt = orderTime(item);
+      return closedAt >= startTime - AMOUNT_MATCH_EARLY_MS && closedAt <= startTime + AMOUNT_MATCH_LATE_MS;
+    }).sort((left, right) => Math.abs(orderTime(left) - startTime) - Math.abs(orderTime(right) - startTime));
+    take(group.primaryId, candidates[0], false);
   }
   for (const group of byStart) {
     if (matches.has(group.primaryId)) continue;
@@ -391,8 +438,7 @@ function matchOrders(groups: BookingGroup[], orders: SquareOrder[], context: Mat
     const tolerance = Math.max(100, Math.round(expected * 0.03));
     const candidates = orders.filter((item) => {
       if (!available(item, group.primaryId) || item.reference_id || item.metadata?.booking_id) return false;
-      const customers = [...context.customersOf(item)].filter(Boolean);
-      if (customerId && customers.length > 0 && !customers.includes(customerId)) return false;
+      if (customerId && context.sameCustomer(item, customerId) === false) return false;
       const closedAt = orderTime(item);
       if (!(closedAt >= startTime - AMOUNT_MATCH_EARLY_MS && closedAt <= startTime + AMOUNT_MATCH_LATE_MS)) return false;
       return Math.abs(amountOf(item.total_money) - context.tipOf(item) - expected) <= tolerance;
@@ -456,10 +502,30 @@ export async function reconcileSquareCheckouts(
     const selections = group.bookings.map((booking) => resolveBookingSelection(booking, index));
     return [group.primaryId, calculateBill({ selections: selections.map((item) => item.serviceIds), addOns: selections.map((item) => item.addOns) }).totalBeforeTipCents] as const;
   }));
+  const customersOf = (order: SquareOrder) => new Set([order.customer_id, ...(order.tenders ?? []).map((tender) => tender.customer_id), ...(paymentsByOrder.get(order.id) ?? []).map((payment) => payment.customer_id)]);
+  const customerIds = new Set<string>();
+  for (const group of groups) for (const booking of group.bookings) if (booking.customer_id) customerIds.add(booking.customer_id);
+  for (const order of orders) for (const id of customersOf(order)) if (id) customerIds.add(id);
+  const customerKeys = await loadCustomerKeys([...customerIds]);
+  const samePerson = (left: string, right: string) => {
+    if (left === right) return true;
+    const a = customerKeys.get(left);
+    const b = customerKeys.get(right);
+    if (!a || !b) return undefined;
+    return Boolean((a.phone && a.phone === b.phone) || (a.name && a.name === b.name));
+  };
   const matches = matchOrders(groups, orders, {
     claimed,
     expectedBeforeTipCents,
-    customersOf: (order) => new Set([order.customer_id, ...(order.tenders ?? []).map((tender) => tender.customer_id), ...(paymentsByOrder.get(order.id) ?? []).map((payment) => payment.customer_id)]),
+    customersOf,
+    sameCustomer: (order, customerId) => {
+      const ids = [...customersOf(order)].filter((id): id is string => Boolean(id));
+      if (ids.length === 0) return undefined;
+      const results = ids.map((id) => samePerson(id, customerId));
+      if (results.includes(true)) return true;
+      return results.every((result) => result === false) ? false : undefined;
+    },
+    teamMembersOf: (order) => new Set((paymentsByOrder.get(order.id) ?? []).flatMap((payment) => payment.team_member_id ? [payment.team_member_id] : [])),
     tipOf: (order) => summarizeOrder(order, paymentTip(order)).tipCents,
   });
 
