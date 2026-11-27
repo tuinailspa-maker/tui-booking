@@ -1,0 +1,24 @@
+.root { color: #17191c; }
+.lang { display: inline-flex; padding: 2px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; }
+.lang button { min-height: 30px; min-width: 38px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: #555c65; cursor: pointer; font: 600 10px Arial, sans-serif; }
+.lang .langActive { background: #f1f6f0; color: #264b35; }
+.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.card { display: flex; flex-direction: column; gap: 4px; padding: 14px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
+.card span { color: #737983; font-size: 10px; }
+.card strong { color: #17191c; font-size: 20px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.card small { color: #858b92; font-size: 9px; font-variant-numeric: tabular-nums; }
+.table { min-width: 720px; }
+.table tbody > tr > th, .table tfoot th { padding: 10px 11px; border-bottom: 1px solid #eff0f1; color: #17191c; font-size: 10px; font-weight: 600; text-align: left; }
+.table td { font-variant-numeric: tabular-nums; }
+.openRow > * { background: #f7faf6; }
+.rowActions { display: flex; flex-wrap: wrap; gap: 10px; }
+.linkButton { padding: 0; border: 0; background: transparent; color: #264b35; cursor: pointer; font: 600 9px Arial, sans-serif; text-decoration: underline; text-underline-offset: 2px; }
+.linkButton:focus-visible { outline: 2px solid #264b35; outline-offset: 2px; border-radius: 2px; }
+.detailRow > td { padding: 0 11px 12px !important; background: #f7faf6; }
+.detailEmpty { margin: 0; padding: 10px 0; color: #737983; font-size: 9px; }
+.detailTable { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; }
+.detailTable th { padding: 8px 9px; border-bottom: 1px solid #e5e7eb; background: #fbfbfa; color: #707780; font-size: 8px; font-weight: 600; text-align: left; white-space: nowrap; }
+.detailTable td { padding: 8px 9px; border-bottom: 1px solid #f0f1f2; color: #34383e; font-size: 9px; vertical-align: top; }
+.detailTable tr:last-child td { border-bottom: 0; }
+.grandRow > * { border-top: 2px solid #17191c; background: #f8f9f8; font-weight: 700; }
+@media (max-width: 720px) { .cards { grid-template-columns: 1fr; } }
