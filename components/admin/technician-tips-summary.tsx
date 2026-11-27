@@ -21,8 +21,8 @@ type Period = "thisWeek" | "lastWeek" | "currentPay" | "previousPay" | "custom";
 type Lang = "en" | "fr";
 type TechnicianRow = { name: string; bills: TipRecord[]; subtotal: number; tips: number; tippedBills: number };
 
-// First day of a known 14-day pay period (a Monday). Every pay period repeats every 14 days from here.
-const PAY_PERIOD_ANCHOR = "2026-01-05";
+  // First day of a known 14-day pay period (Friday Nov 13 – Thursday Nov 26, 2026). Every pay period repeats every 14 days from here.
+  const PAY_PERIOD_ANCHOR = "2026-11-13";
 const TIMEZONE = "America/Toronto";
 const EMPTY: TipRecord[] = [];
 
