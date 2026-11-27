@@ -155,6 +155,8 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
   const [scheduleView, setScheduleView] = useState<"day" | "list">("day");
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => new Set());
   const [showCatalogSync, setShowCatalogSync] = useState(false);
+  const [daySyncing, setDaySyncing] = useState(false);
+  const [daySyncResult, setDaySyncResult] = useState<{ ok: boolean; message: string } | null>(null);
   const checkedOutSnapshot = useSyncExternalStore(subscribeToCheckedOut, readCheckedOutSnapshot, () => "{}");
   const checkedOut = useMemo<Record<string, boolean>>(() => JSON.parse(checkedOutSnapshot), [checkedOutSnapshot]);
   const [serviceOverrides, setServiceOverrides] = useState<Record<string, { serviceIds: string[][]; addOns: Record<string, ServiceAddOnKey>[] }>>({});
@@ -265,6 +267,26 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
       id, squareBookingIds: [], status: "WALK_IN", startAt, customerName: "", phone: "", technicians: [technician], serviceIds: [[]], addOns: [{}], guestNames: ["Guest 1"], guestPhones: [""], durationMinutes: 0,
     };
     setEditor({ booking, walkIn: true });
+  }
+
+  async function syncSquareDay() {
+    if (!isOwner) {
+      await bookings.mutate();
+      return;
+    }
+    setDaySyncing(true);
+    setDaySyncResult(null);
+    try {
+      const response = await fetch("/api/square/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date }) });
+      const result = await response.json().catch(() => null) as { error?: string; appointments?: number; cardPayments?: number; matched?: number; walkIns?: number } | null;
+      if (!response.ok) throw new Error(result?.error ?? "Could not sync from Square.");
+      setDaySyncResult({ ok: true, message: `${date}: ${result?.appointments ?? 0} Square appointments · ${result?.cardPayments ?? 0} card payments · ${result?.matched ?? 0} marked paid · ${result?.walkIns ?? 0} walk-ins added` });
+      await bookings.mutate();
+    } catch (error) {
+      setDaySyncResult({ ok: false, message: error instanceof Error ? error.message : "Could not sync from Square." });
+    } finally {
+      setDaySyncing(false);
+    }
   }
 
   async function syncBookingFromSquare(booking: AdminBooking) {
@@ -402,8 +424,9 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
         isOwner={isOwner}
         viewerLabel={isOwner ? (viewerName && viewerName !== "Owner" ? `${viewerName} · Owner` : "Owner") : `${viewerName || "Staff"} · Technician`}
         syncState={bookings.error ? "error" : bookings.isLoading ? "syncing" : "ok"}
-        isRefreshing={bookings.isValidating}
-        onRefresh={() => void bookings.mutate()}
+        isRefreshing={bookings.isValidating || daySyncing}
+        onRefresh={() => void syncSquareDay()}
+        refreshLabel={isOwner ? "Sync Square for this day" : undefined}
         onLock={logOut}
         onNewBooking={() => openWalkInEditor()}
         scheduleView={activeTab === "schedule" ? scheduleView : undefined}
@@ -421,6 +444,9 @@ export function AdminDashboard({ initialDate }: { initialDate: string }) {
 
       <div className="admin-page-content">
         {bookings.error && <div className="admin-alert" role="alert"><strong>Couldn&apos;t sync Square appointments.</strong><span>{bookings.error.message}</span><button type="button" onClick={() => bookings.mutate()}>Try again</button></div>}
+        {daySyncResult && (daySyncResult.ok
+          ? <p className="admin-sync-note" role="status">{daySyncResult.message}</p>
+          : <div className="admin-alert" role="alert"><strong>Couldn&apos;t sync this day from Square.</strong><span>{daySyncResult.message}</span><button type="button" onClick={() => void syncSquareDay()}>Try again</button></div>)}
         {assignmentError && <div className="admin-alert" role="alert"><strong>Couldn&apos;t update appointment.</strong><span>{assignmentError}</span></div>}
         {activeTab === "summary" ? <>
           <div className="admin-summary-intro"><div><h2>End-of-day snapshot</h2><p>{dateLabel}</p></div><span className="admin-summary-live">Square · Live</span></div>

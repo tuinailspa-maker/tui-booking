@@ -634,7 +634,7 @@ export async function syncSquareDate(date: string, { walkIns = true }: { walkIns
   const [bookings, roster, index] = await Promise.all([fetchDayBookings(date), getStaffRoster(ADMIN_LOCATION_ID), loadVariationIndex()]);
   const dayStart = torontoMidnightUtc(date);
   const dayEnd = torontoMidnightUtc(nextDate(date));
-  const stats: ReconcileStats = { cardPayments: 0, matched: 0, walkIns: 0 };
+  const stats: ReconcileStats & { appointments: number } = { appointments: bookings.length, cardPayments: 0, matched: 0, walkIns: 0 };
   const reconciled = await reconcileSquareCheckouts(
     groupSquareBookings(bookings),
     index,

@@ -14,6 +14,7 @@ type ScheduleHeaderProps = {
   syncState: "ok" | "syncing" | "error";
   isRefreshing: boolean;
   onRefresh: () => void;
+  refreshLabel?: string;
   onLock: () => void;
   onNewBooking: () => void;
   scheduleView?: "day" | "list";
@@ -46,7 +47,7 @@ function weekOf(value: string) {
   });
 }
 
-export function ScheduleHeader({ date, todayDate, onDateChange, showWeekStrip, isOwner, viewerLabel, syncState, isRefreshing, onRefresh, onLock, onNewBooking, scheduleView, onScheduleViewChange, columns = [], hiddenColumns, onToggleColumn, onShowAllColumns }: ScheduleHeaderProps) {
+export function ScheduleHeader({ date, todayDate, onDateChange, showWeekStrip, isOwner, viewerLabel, syncState, isRefreshing, onRefresh, refreshLabel, onLock, onNewBooking, scheduleView, onScheduleViewChange, columns = [], hiddenColumns, onToggleColumn, onShowAllColumns }: ScheduleHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -137,7 +138,7 @@ export function ScheduleHeader({ date, todayDate, onDateChange, showWeekStrip, i
           </div>}
           <div className="sq-menu-section sq-menu-actions">
             <button type="button" onClick={() => { onDateChange(todayDate); setMenuOpen(false); }}>Go to today</button>
-            <button type="button" onClick={onRefresh} disabled={isRefreshing}>{isRefreshing ? "Refreshing…" : "Refresh appointments"}</button>
+            <button type="button" onClick={onRefresh} disabled={isRefreshing}>{isRefreshing ? "Syncing…" : refreshLabel ?? "Refresh appointments"}</button>
             <button type="button" className="is-lock" onClick={onLock}>Lock / Switch staff</button>
           </div>
         </div>}
