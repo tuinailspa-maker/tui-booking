@@ -49,3 +49,13 @@
 :global(.reports-payroll-note) { margin: -7px 0 0; color: #848a91; font-size: 9px; line-height: 1.5; }
 @media (max-width: 1100px) { :global(.reports-cards) { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 760px) { :global(.reports-heading) { align-items: flex-start; flex-direction: column; } :global(.reports-actions) { width: 100%; } :global(.reports-actions button) { flex: 1; } :global(.reports-cards) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.paymentSync { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 0 0 14px; padding: 12px 14px; border: 1px solid #dfe6e1; border-radius: 8px; background: #f6f9f7; }
+.paymentSync > div { display: flex; flex: 1 1 260px; flex-direction: column; gap: 3px; }
+.paymentSync strong { color: #17191c; font-size: 12px; }
+.paymentSync span { color: #737983; font-size: 10px; line-height: 1.45; }
+.paymentSync label { display: flex; flex-direction: column; gap: 4px; color: #555c65; font-size: 10px; font-weight: 600; }
+.paymentSync input { min-height: 36px; padding: 0 9px; border: 1px solid #d9dce0; border-radius: 6px; background: #fff; color: #17191c; font-size: 12px; }
+.editPayment { min-height: 28px; padding: 0 10px; border: 1px solid #d9dce0; border-radius: 6px; background: #fff; color: #264b35; font-size: 11px; font-weight: 600; cursor: pointer; }
+.editPayment:hover { border-color: #264b35; }
+.editPayment:focus-visible, .paymentSync input:focus-visible { outline: 2px solid #264b35; outline-offset: 1px; }

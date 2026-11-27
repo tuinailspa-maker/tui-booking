@@ -1119,3 +1119,5 @@ button { color: inherit; }
 .summary-action-link:focus-visible, .change-services-button:focus-visible { outline: 2px solid var(--sage); outline-offset: 2px; }
 .change-services-button { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 14px; padding: 8px 14px; border: 1px solid #e7dccb; border-radius: 999px; background: #fffdf9; color: #8a6f4c !important; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; }
 .change-services-button:hover { border-color: var(--gold); color: var(--gold) !important; }
+
+.admin-edit-payment-button { width: 100%; margin: 4px 0 10px; }

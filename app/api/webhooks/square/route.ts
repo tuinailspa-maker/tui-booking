@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { after, NextResponse } from "next/server";
-import { orderBusinessDate, reconcileSquareDate, torontoDate } from "@/data/squareCheckoutSync";
+import { orderBusinessDate, syncSquareDate, torontoDate } from "@/data/squareCheckoutSync";
 import { clearSquareVariationCache } from "@/data/squareVariations";
 import { bumpSquareSyncVersion } from "@/data/squareSync";
 
@@ -56,8 +56,8 @@ export async function POST(request: Request) {
       try {
         const date = await checkoutDateForEvent(eventType, event?.data?.object);
         if (!date) return;
-        const reconciled = await reconcileSquareDate(date);
-        if (reconciled.size > 0) await bumpSquareSyncVersion("checkout.reconciled");
+        const { reconciled, stats } = await syncSquareDate(date);
+        if (reconciled.size > 0 || stats.walkIns > 0) await bumpSquareSyncVersion("checkout.reconciled");
       } catch (error) {
         console.error("[v0] Square webhook checkout reconciliation failed:", error instanceof Error ? error.message : error);
       }
@@ -70,12 +70,19 @@ type WebhookObject = {
   booking?: { start_at?: string };
   order_created?: { order_id?: string };
   order_updated?: { order_id?: string; state?: string };
-  payment?: { order_id?: string; status?: string };
+  payment?: { order_id?: string; status?: string; created_at?: string; updated_at?: string };
 };
 
 async function checkoutDateForEvent(eventType: string, object: WebhookObject | undefined): Promise<string | null> {
   if (eventType.startsWith("booking.")) return object?.booking?.start_at ? torontoDate(object.booking.start_at) : null;
-  if (eventType.startsWith("payment.") && object?.payment?.status !== "COMPLETED") return null;
+  if (eventType.startsWith("payment.")) {
+    const payment = object?.payment;
+    if (payment?.status !== "COMPLETED") return null;
+    // Square POS / Appointments orders can still be OPEN when the payment completes; fall back to the payment time.
+    const fromOrder = payment.order_id ? await orderBusinessDate(payment.order_id).catch(() => null) : null;
+    const paidAt = payment.created_at ?? payment.updated_at;
+    return fromOrder ?? (paidAt ? torontoDate(paidAt) : null);
+  }
   const orderId = object?.payment?.order_id ?? object?.order_updated?.order_id ?? object?.order_created?.order_id;
   return orderId ? orderBusinessDate(orderId) : null;
 }

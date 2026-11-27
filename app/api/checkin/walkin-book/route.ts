@@ -13,6 +13,11 @@ import { saveWalkinBookings } from "@/data/walkinStore";
 const REQUEST_ID_PATTERN = /^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$/;
 const NO_STORE = { "Cache-Control": "no-store" };
 const SLOT_TAKEN = "This time was just taken. Please choose another time.";
+const START_LEAD_MS = 2 * 60_000;
+
+function warnNotice(channel: string, error: unknown) {
+  console.warn(`[v0] Walk-in ${channel} notice skipped:`, error instanceof Error ? error.message : error);
+}
 
 type SquareCustomer = { id: string; given_name?: string; family_name?: string };
 type CreatedBooking = { id: string; version?: number };
@@ -87,7 +92,8 @@ export async function POST(request: Request) {
     const segmentsByGuest = guests.map((guest, index) => buildGuestSegments(guest.services.map((service) => service.id), {}, live, technicians[index].teamMemberId));
 
     const checkedInAt = new Date();
-    const startIso = new Date(startMs).toISOString();
+    // Square rejects a start_at in the past, so a "now" slot is pushed 2 minutes ahead (same as the kiosk check-in).
+    const startIso = new Date(Math.max(startMs, checkedInAt.getTime() + START_LEAD_MS)).toISOString();
     const statusTags = isToday ? `[CHECKED_IN] [TUI_CHECKED_IN:${checkedInAt.toISOString()}]` : "[KIOSK-BOOKED]";
     const created: CreatedBooking[] = [];
     try {
@@ -107,10 +113,9 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    if (isToday) {
-      await Promise.all(created.map((booking) => recordCheckIn(booking.id, checkedInAt).catch((error) => console.error("[v0] Saving walk-in check-in failed:", booking.id, error))));
-    }
-    await saveWalkinBookings(created.map((booking, index) => ({
+    // Persist to Neon and refresh /admin before any notification is attempted.
+    try {
+      await saveWalkinBookings(created.map((booking, index) => ({
       bookingId: booking.id,
       groupId: requestId,
       guestIndex: index + 1,
@@ -122,18 +127,28 @@ export async function POST(request: Request) {
       serviceIds: guests[index].services.map((service) => service.id),
       teamMemberId: technicians[index].teamMemberId,
       checkedIn: isToday,
-    }))).catch((error) => console.error("[v0] Saving walk-in bookings failed:", error instanceof Error ? error.message : error));
+      })));
+    } catch (error) {
+      console.error("[v0] Saving walk-in bookings to Neon failed:", error instanceof Error ? error.message : error);
+    }
+    if (isToday) {
+      await Promise.all(created.map((booking) => recordCheckIn(booking.id, checkedInAt).catch((error) => console.error("[v0] Saving walk-in check-in failed:", booking.id, error))));
+    }
     await bumpSquareSyncVersion("booking.created.walkin").catch(() => undefined);
 
-    // One combined notice per channel for the whole group.
+    // Notifications are best-effort: a Twilio or Telegram error never fails a saved booking.
     const when = ownerDateTimeLabel(startIso);
     const serviceNames = (index: number) => guests[index].services.map((service) => service.displayNameEn).join(", ");
-    const smsGuests = isGroup ? guests.map((guest, index) => `G${index + 1} ${guest.name}: ${serviceNames(index)}`).join("; ") : `Services: ${serviceNames(0)}`;
-    const ownerSms = notifyOwnerSms(
-      `Tui ${isToday ? "walk-in" : "kiosk booking"}${isGroup ? " group" : ""}: ${name}, ${phoneE164}, ${when}, ${guestCount} guest${isGroup ? "s" : ""}. ${smsGuests}`,
-    );
+    try {
+      const smsGuests = isGroup ? guests.map((guest, index) => `G${index + 1} ${guest.name}: ${serviceNames(index)}`).join("; ") : `Services: ${serviceNames(0)}`;
+      await notifyOwnerSms(
+        `Tui ${isToday ? "walk-in" : "kiosk booking"}${isGroup ? " group" : ""}: ${name}, ${phoneE164}, ${when}, ${guestCount} guest${isGroup ? "s" : ""}. ${smsGuests}`,
+      );
+    } catch (error) {
+      warnNotice("SMS", error);
+    }
     const ownerChatId = process.env.OWNER_CHAT_ID;
-    if (ownerChatId) {
+    if (ownerChatId) try {
       const heading = isToday ? `Walk-in ${isGroup ? "group " : ""}booked and checked in` : `Kiosk ${isGroup ? "group " : ""}booking for a future date (not checked in)`;
       const text = [
         heading,
@@ -145,9 +160,10 @@ export async function POST(request: Request) {
           ? guests.map((guest, index) => `${index + 1}. ${guest.name} — ${serviceNames(index)} (Technician: ${technicians[index].name})`)
           : [`Services: ${serviceNames(0)}`, `Technician: ${technicians[0].name}`]),
       ].join("\n");
-      await telegram("sendMessage", { chat_id: ownerChatId, text }).catch((error) => console.error("[v0] Walk-in Telegram notice failed:", error instanceof Error ? error.message : error));
+      await telegram("sendMessage", { chat_id: ownerChatId, text });
+    } catch (error) {
+      warnNotice("Telegram", error);
     }
-    await ownerSms;
 
     return NextResponse.json({ success: true, bookingIds: created.map((booking) => booking.id), startAt: startIso, isToday, technicians: technicians.map((member) => member.name) }, { headers: NO_STORE });
   } catch (error) {

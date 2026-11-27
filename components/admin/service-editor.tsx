@@ -43,6 +43,7 @@ type ServiceEditorProps = {
   checkedOut?: boolean;
   squarePayment?: SquarePaymentSummary | null;
   onSyncFromSquare?: () => Promise<void>;
+  paymentAction?: React.ReactNode;
   onMarkCheckedOut?: () => void | Promise<void>;
   walkIn: boolean;
   onCancel: () => void;
@@ -79,7 +80,7 @@ function formatSlot(time: string) {
   return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
 }
 
-export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, customerName, customerPhone, startAt, technician, initialTechnicians = [], squareServiceReference = [], onBillSelectionChange, status, busy, checkedOut, squarePayment, onSyncFromSquare, onMarkCheckedOut, walkIn, onCancel, onTechnicianChange, onStatusChange, onSave, onBookingCreated, bookingId, staffNames = ["Jenny", "Melika", "Nana", "Option 1", "Option 2"] }: ServiceEditorProps) {
+export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, customerName, customerPhone, startAt, technician, initialTechnicians = [], squareServiceReference = [], onBillSelectionChange, status, busy, checkedOut, squarePayment, onSyncFromSquare, paymentAction, onMarkCheckedOut, walkIn, onCancel, onTechnicianChange, onStatusChange, onSave, onBookingCreated, bookingId, staffNames = ["Jenny", "Melika", "Nana", "Option 1", "Option 2"] }: ServiceEditorProps) {
   const guestCount = Math.max(1, initialServiceIds.length);
   const [activeGuest, setActiveGuest] = useState(0);
   const [serviceIds, setServiceIds] = useState(() => Array.from({ length: guestCount }, (_, index) => initialServiceIds[index] ?? []));
@@ -391,6 +392,7 @@ export function ServiceEditor({ initialServiceIds, initialAddOns, guestNames, cu
         </label>
       </div>
       {squareOrderId && <p className="admin-square-order-confirmation" role="status"><strong>Square order recorded for this checkout.</strong><span>Square order: {squareOrderId}</span></p>}
+      {paymentAction}
       <div className="admin-drawer-bill"><BackupBill language="en" date={billDate} time={billTime} selections={serviceIds} serviceAddOns={addOns} technicians={mode === "appointment" ? technicians.slice(0, serviceIds.length) : Array.from({ length: serviceIds.length }, (_, index) => initialTechnicians[index] || (index === 0 ? technician : "Unassigned"))} customerName={walkIn ? name : customerName} customerPhone={walkIn ? phone : customerPhone} bookingId={bookingId} terminalEnabled={!checkedOut} manualDiscountAmount={manualDiscountAmount} squareServiceReference={squareServiceReference} onBillSelectionChange={handleBillSelectionChange} triggerLabel={checkedOut ? "View receipt" : "Check out / Bill"} onMarkCheckedOut={checkedOut ? undefined : recordCheckout} markCheckedOutLabel="Save checkout & mark paid" squarePayment={squarePayment} onSyncFromSquare={onSyncFromSquare} /></div>
       <div className="admin-drawer-footer">
         <button className="admin-secondary-button" type="button" onClick={onCancel} disabled={submitting}>Cancel</button>
