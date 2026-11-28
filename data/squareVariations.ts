@@ -1,6 +1,7 @@
 import { SQUARE_API_VERSION } from "@/data/squareConfig";
 import { SURCHARGE_SKU_MARKER, resolveServiceVariation, squareSurchargeSkuFor, surchargeLinkKey } from "@/data/squareServiceMap";
 import { allServices } from "@/data/serviceTree";
+import { linkServicesByName, variationNameKeys } from "@/data/squareNameLinks";
 
 const PRODUCTION_URL = "https://connect.squareup.com/v2";
 const SANDBOX_URL = "https://connect.squareupsandbox.com/v2";
@@ -169,6 +170,18 @@ export async function getServiceVariationLinks(): Promise<Map<string, SquareServ
       if (surcharge) links.set(surchargeLinkKey(service.id, service.addOn.key), surcharge);
     }
   }
+
+  // Bookable before the catalog sync has tagged it: a service without a SKU/seeded variation is linked to
+  // the identically named variation in Square, the same rule the sync uses to adopt it.
+  const itemVariationCounts = new Map<string, number>();
+  for (const variation of variations) itemVariationCounts.set(variation.serviceName, (itemVariationCounts.get(variation.serviceName) ?? 0) + 1);
+  const nameLinks = linkServicesByName(
+    allServices.filter((service) => !links.has(service.id)).map((service) => service.id),
+    variations,
+    (variation) => ({ id: variation.variationId, sku: variation.sku, names: variationNameKeys(variation.serviceName, variation.variationName, itemVariationCounts.get(variation.serviceName) === 1) }),
+    new Set([...links.values()].map((variation) => variation.variationId)),
+  );
+  for (const [serviceId, variation] of nameLinks) links.set(serviceId, variation);
   return links;
 }
 

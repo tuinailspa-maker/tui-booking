@@ -4,6 +4,7 @@ import { resolveServiceVariation, SQUARE_SKU_PREFIX, squareMappingFor, squareSku
 import { allServices, serviceDisplayName, serviceTree, type ServiceLeaf, type ServiceNode } from "@/data/serviceTree";
 import { TPS_RATE_PERCENT, TVQ_RATE_PERCENT } from "@/data/billing";
 import { clearSquareVariationCache } from "@/data/squareVariations";
+import { linkServicesByName, variationNameKeys } from "@/data/squareNameLinks";
 
 const PRODUCTION_URL = "https://connect.squareup.com";
 const SANDBOX_URL = "https://connect.squareupsandbox.com";
@@ -391,20 +392,43 @@ function assign(catalog: Catalog, targets: ServiceTarget[]): Assignment {
   const byVariation = new Map<string, ServiceTarget[]>();
   const unresolved: Assignment["unresolved"] = [];
   const free: ServiceTarget[] = [];
+  const pending: ServiceTarget[] = [];
+  const attach = (variation: SquareVariationObject, target: ServiceTarget) => {
+    const list = byVariation.get(variation.id) ?? [];
+    list.push(target);
+    byVariation.set(variation.id, list);
+  };
   for (const target of targets) {
     if (target.priceCents <= 0) {
       free.push(target);
       continue;
     }
     const variation = resolveServiceVariation(target.id, catalog.bySku, catalog.variations);
-    if (variation) {
-      const list = byVariation.get(variation.id) ?? [];
-      list.push(target);
-      byVariation.set(variation.id, list);
-    } else {
-      const seededId = squareMappingFor(target.id)?.variationId;
-      unresolved.push({ target, template: seededId ? catalog.variations.get(seededId) ?? null : null });
+    if (variation) attach(variation, target);
+    else pending.push(target);
+  }
+
+  // Services with no SKU/seeded variation adopt an identically named variation already in Square
+  // (e.g. the hand-made "Overlay / ..." ones) so sync tags and updates it instead of creating a duplicate.
+  const nameLinks = linkServicesByName(
+    pending.map((target) => target.id),
+    [...catalog.variations.values()],
+    (variation) => {
+      const data = variation.item_variation_data;
+      const item = data?.item_id ? catalog.items.get(data.item_id) : undefined;
+      const siblings = (item?.item_data?.variations ?? []).filter((sibling) => !sibling.is_deleted).length;
+      return { id: variation.id, sku: data?.sku?.trim() || null, names: variationNameKeys(item?.item_data?.name, data?.name, siblings === 1) };
+    },
+    new Set(byVariation.keys()),
+  );
+  for (const target of pending) {
+    const linked = nameLinks.get(target.id);
+    if (linked) {
+      attach(linked, target);
+      continue;
     }
+    const seededId = squareMappingFor(target.id)?.variationId;
+    unresolved.push({ target, template: seededId ? catalog.variations.get(seededId) ?? null : null });
   }
   return { byVariation, unresolved, free };
 }

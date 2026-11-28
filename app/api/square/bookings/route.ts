@@ -93,9 +93,9 @@ function parseBookingRequest(body: unknown): BookingRequest | null {
   return { requestId, startAt, client: { firstName, lastName, countryCode, phone, email: email ?? undefined, notes }, guests: parsedGuests };
 }
 
-async function squareRequest<T>(step: string, path: string, body: unknown): Promise<T> {
+async function squareRequest<T>(step: string, path: string, body: unknown, method: "POST" | "PUT" = "POST"): Promise<T> {
   const response = await fetch(`${squareBaseUrl()}${path}`, {
-    method: "POST",
+    method,
     headers: {
       Authorization: `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
       "Square-Version": SQUARE_API_VERSION,
@@ -167,7 +167,29 @@ function guestDurationMinutes(guest: BookingGuest) {
   }, 0);
 }
 
-type CreatedBooking = { id: string; version?: number; created_at?: string };
+type CreatedBooking = { id: string; version?: number; created_at?: string; appointment_segments?: { service_variation_id?: string; duration_minutes?: number }[] };
+
+/** Square must hold every segment we sent: same services in the same order and the same total blocked minutes. */
+function holdsAllSegments(booking: CreatedBooking, sent: AppointmentSegment[]) {
+  const actual = booking.appointment_segments ?? [];
+  const minutes = (segments: { duration_minutes?: number }[]) => segments.reduce((sum, segment) => sum + (segment.duration_minutes ?? 0), 0);
+  return actual.length === sent.length
+    && sent.every((segment, index) => actual[index]?.service_variation_id === segment.service_variation_id)
+    && minutes(actual) === minutes(sent);
+}
+
+/** Re-sends the full segment list when Square's response is missing a service; fails if it still is. */
+async function ensureAllSegments(booking: CreatedBooking, sent: AppointmentSegment[], startAt: string): Promise<CreatedBooking> {
+  if (holdsAllSegments(booking, sent)) return booking;
+  console.error("[v0] Square booking is missing segments, repairing:", booking.id, booking.appointment_segments?.length ?? 0, "of", sent.length);
+  const { booking: repaired } = await squareRequest<{ booking: CreatedBooking }>("repair_segments", `/bookings/${encodeURIComponent(booking.id)}`, {
+    booking: { version: booking.version, start_at: startAt, appointment_segments: sent },
+  }, "PUT");
+  if (!holdsAllSegments(repaired, sent)) {
+    throw new SquareStepError("verify_segments", 502, [{ code: "SEGMENTS_MISSING", field: "appointment_segments", detail: "Square did not keep every selected service on the appointment." }]);
+  }
+  return { ...booking, ...repaired };
+}
 
 async function cancelBookings(requestId: string, bookings: CreatedBooking[]) {
   await Promise.all(bookings.map((booking) =>
@@ -236,6 +258,10 @@ export async function POST(request: Request) {
     });
 
     const segmentsByGuest = await buildAppointmentSegments(parsed, assignment.members.map((member) => member.teamMemberId));
+    const segmentMismatch = segmentsByGuest.findIndex((segments, index) => segments.reduce((sum, segment) => sum + segment.duration_minutes, 0) !== guestAssignments[index].durationMinutes);
+    if (segmentMismatch >= 0) {
+      return NextResponse.json({ error: "Square booking failed.", step: "segment_duration", detail: `Guest ${segmentMismatch + 1}'s Square segments do not add up to the selected services' duration.` }, { status: 502 });
+    }
 
     // Step 2: re-verify live Square availability immediately before /v2/bookings, in case a column
     // was closed, blocked, or booked on the Square Dashboard while the customer record was created.
@@ -247,18 +273,21 @@ export async function POST(request: Request) {
     const created: CreatedBooking[] = [];
     try {
       for (const [index, guest] of parsed.guests.entries()) {
+        const startAtIso = new Date(parsed.startAt).toISOString();
         const { booking } = await squareRequest<{ booking: CreatedBooking }>("create_booking", "/bookings", {
           idempotency_key: `${parsed.requestId}-${index + 1}`,
           booking: {
             location_id: locationId,
-            start_at: new Date(parsed.startAt).toISOString(),
+            start_at: startAtIso,
             customer_id: customer.id,
             customer_note: buildSellerNote(parsed, guest, index),
             seller_note: buildSellerNote(parsed, guest, index),
             appointment_segments: segmentsByGuest[index],
           },
         });
+        // Tracked before verification so a failed repair still rolls this booking back.
         created.push(booking);
+        created[created.length - 1] = await ensureAllSegments(booking, segmentsByGuest[index], startAtIso);
       }
     } catch (error) {
       // Never leave a partial group on the calendar.
