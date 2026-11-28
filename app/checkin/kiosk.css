@@ -309,6 +309,9 @@ html:has(.kiosk), body:has(.kiosk) { height: 100%; overflow: hidden; overscroll-
 .kiosk-cc::after { content: ""; position: absolute; right: 9px; top: 50%; width: 6px; height: 6px; margin-top: -5px; border-right: 1.5px solid var(--kiosk-muted); border-bottom: 1.5px solid var(--kiosk-muted); transform: rotate(45deg); pointer-events: none; }
 .kiosk-cc select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
 .kiosk-cc:focus-within { outline: 2px solid var(--kiosk-accent); outline-offset: 1px; }
+.kiosk-fields.kiosk-fields-single { width: min(410px, 100%); grid-template-columns: minmax(0, 1fr); margin: 12px auto 12px; }
+.kiosk-fields-single .kiosk-phone-row { height: 56px; }
+.kiosk-fields-single .kiosk-phone-row > input { font-size: 20px; }
 @media (max-width: 640px) {
   .kiosk-fields:has(.kiosk-phone-field) { grid-template-columns: 1fr; }
 }
