@@ -3,6 +3,7 @@ import { selectedServiceDuration, serviceById, serviceDisplayNameWithAddOn } fro
 import { BUSINESS_TIME_ZONE } from "@/data/staffSchedule";
 import { SQUARE_API_VERSION, SQUARE_TEAM_MEMBER_IDS } from "@/data/squareConfig";
 import { notifyOwnerSms, recordCheckIn, torontoTime } from "@/data/lateCheckin";
+import { isUsablePhone, parseContactPhone, phonesMatch } from "@/data/phone";
 
 const API = process.env.SQUARE_ENVIRONMENT === "sandbox" ? "https://connect.squareupsandbox.com/v2" : "https://connect.squareup.com/v2";
 const LOCATION_ID = process.env.SQUARE_LOCATION_ID || "R73A64VPAR34X";
@@ -41,6 +42,18 @@ async function saveCheckIn(bookingId: string, at: Date) {
   try { await recordCheckIn(bookingId, at); } catch (error) { console.error("Saving check-in status failed:", error); }
 }
 function normalizePhone(value: string) { return value.replace(/\D/g, "").slice(-10); }
+// Exact E.164 first (what Square stores); otherwise a fuzzy digits search verified against the national number, so "+33 6 …", "(514) 555-0123" and "514-555-0123" all find the same guest.
+async function findCustomers(typed: string) {
+  const parsed = parseContactPhone(typed);
+  if (parsed.e164) {
+    const exact = await square<{ customers?: SquareCustomer[] }>("/customers/search", "POST", { query: { filter: { phone_number: { exact: parsed.e164 } } }, limit: 10 });
+    if (exact.customers?.length) return exact.customers;
+  }
+  const tail = parsed.national.slice(-10);
+  if (tail.length < 7) return [];
+  const fuzzy = await square<{ customers?: SquareCustomer[] }>("/customers/search", "POST", { query: { filter: { phone_number: { fuzzy: tail } } }, limit: 25 });
+  return (fuzzy.customers ?? []).filter((customer) => phonesMatch(customer.phone_number, typed));
+}
 function technicianName(id?: string) { return Object.entries(SQUARE_TEAM_MEMBER_IDS).find(([, teamMemberId]) => teamMemberId === id)?.[0] ?? "Unassigned"; }
 async function todayBookings() {
   const date = torontoDate(); const start = dayStart(date); const end = dayStart(new Date(start.getTime() + 36 * 60 * 60 * 1000).toISOString().slice(0, 10));
@@ -73,14 +86,14 @@ async function nearestOtherDateBooking(customerId: string) {
   return next ?? latest ?? null;
 }
 async function checkInOtherDate(body: { bookingId?: unknown; phone?: unknown; requestId?: unknown }) {
-  const phone = typeof body.phone === "string" ? normalizePhone(body.phone) : "";
+  const phone = typeof body.phone === "string" ? body.phone : "";
   const requestId = typeof body.requestId === "string" && /^[\w-]{8,64}$/.test(body.requestId) ? body.requestId : "";
-  if (typeof body.bookingId !== "string" || !body.bookingId || phone.length !== 10 || !requestId) return NextResponse.json({ error: "Invalid appointment." }, { status: 400 });
+  if (typeof body.bookingId !== "string" || !body.bookingId || !isUsablePhone(phone) || !requestId) return NextResponse.json({ error: "Invalid appointment." }, { status: 400 });
   try {
     const original = (await square<{ booking?: SquareBooking }>(`/bookings/${encodeURIComponent(body.bookingId)}`)).booking;
     if (!original?.customer_id || !original.start_at || CLOSED_STATUSES.includes(original.status ?? "")) return NextResponse.json({ error: "Appointment could not be found." }, { status: 404 });
     const customer = (await square<{ customer?: SquareCustomer }>(`/customers/${encodeURIComponent(original.customer_id)}`)).customer;
-    if (!customer?.phone_number || normalizePhone(customer.phone_number) !== phone) return NextResponse.json({ error: "The phone number does not match this appointment." }, { status: 403 });
+    if (!customer?.phone_number || !phonesMatch(customer.phone_number, phone)) return NextResponse.json({ error: "The phone number does not match this appointment." }, { status: 403 });
     if (torontoDate(new Date(original.start_at)) === torontoDate()) return NextResponse.json({ error: "This appointment is today. Use the standard check-in." }, { status: 409 });
     const originalStart = Date.parse(original.start_at);
     const sameVisit = (await customerBookings(original.customer_id, new Date(originalStart - 60_000), new Date(originalStart + 60_000))).filter((booking) => Date.parse(booking.start_at!) === originalStart);
@@ -107,23 +120,21 @@ async function checkInOtherDate(body: { bookingId?: unknown; phone?: unknown; re
 }
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const phone = normalizePhone(url.searchParams.get("phone") ?? "");
-  if (phone.length !== 10) return NextResponse.json({ error: "Enter a 10-digit phone number." }, { status: 400 });
+  const phone = url.searchParams.get("phone") ?? "";
+  if (!isUsablePhone(phone)) return NextResponse.json({ error: "Enter a valid phone number (7 to 15 digits)." }, { status: 400 });
   try {
-    const [bookings, customerResult] = await Promise.all([
-      todayBookings(),
-      square<{ customers?: SquareCustomer[] }>("/customers/search", "POST", { query: { filter: { phone_number: { exact: `+1${phone}` } } }, limit: 1 }),
-    ]);
-    const customer = customerResult.customers?.[0];
-    const result: unknown[] = customer ? bookings.filter((booking) => booking.customer_id === customer.id).map((booking) => ({ id: booking.id, version: booking.version, name: [customer.given_name, customer.family_name].map((part) => part?.trim().charAt(0).toUpperCase()).filter(Boolean).map((initial) => `${initial}.`).join(" "), time: booking.start_at, service: booking.seller_note?.match(/Services:\s*([\s\S]+?)(?:\. Guest subtotal|\. Combo discount:|$)/)?.[1]?.split(/;\s*/).map((line) => line.split(/\s+—\s+\$/)[0]).join(", ") || "", technician: Array.from(new Set((booking.appointment_segments ?? []).map((segment) => technicianName(segment.team_member_id)))).filter((name) => name !== "Unassigned").join(", "), checkedIn: booking.seller_note?.includes(CHECKED_IN) || booking.seller_note?.includes("[TUI_CHECKED_IN]") || false })) : [];
+    const [bookings, customers] = await Promise.all([todayBookings(), findCustomers(phone)]);
+    const customerById = new Map(customers.map((item) => [item.id, item]));
+    const result: unknown[] = customers.length ? bookings.filter((booking) => booking.customer_id && customerById.has(booking.customer_id)).map((booking) => ({ id: booking.id, version: booking.version, name: [customerById.get(booking.customer_id!)?.given_name, customerById.get(booking.customer_id!)?.family_name].map((part) => part?.trim().charAt(0).toUpperCase()).filter(Boolean).map((initial) => `${initial}.`).join(" "), time: booking.start_at, service: booking.seller_note?.match(/Services:\s*([\s\S]+?)(?:\. Guest subtotal|\. Combo discount:|$)/)?.[1]?.split(/;\s*/).map((line) => line.split(/\s+—\s+\$/)[0]).join(", ") || "", technician: Array.from(new Set((booking.appointment_segments ?? []).map((segment) => technicianName(segment.team_member_id)))).filter((name) => name !== "Unassigned").join(", "), checkedIn: booking.seller_note?.includes(CHECKED_IN) || booking.seller_note?.includes("[TUI_CHECKED_IN]") || false })) : [];
     // Only the date and time leave the server: the kiosk is a public screen.
-    const other = customer && !result.length ? await nearestOtherDateBooking(customer.id) : null;
+    let other: SquareBooking | null = null;
+    if (!result.length) for (const customer of customers) { other = await nearestOtherDateBooking(customer.id); if (other) break; }
     return NextResponse.json({ appointments: result, otherAppointment: other ? { id: other.id, startAt: other.start_at } : null }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return responseError(error); }
 }
 export async function PATCH(request: Request) {
   const body = await request.json().catch(() => null);
-  if (!body || typeof body.id !== "string" || typeof body.version !== "number" || typeof body.phone !== "string" || normalizePhone(body.phone).length !== 10) return NextResponse.json({ error: "Invalid appointment." }, { status: 400 });
+  if (!body || typeof body.id !== "string" || typeof body.version !== "number" || typeof body.phone !== "string" || !isUsablePhone(body.phone)) return NextResponse.json({ error: "Invalid appointment." }, { status: 400 });
   try {
     const current = await square<{ booking?: SquareBooking }>(`/bookings/${encodeURIComponent(body.id)}`);
     if (!current.booking || typeof current.booking.version !== "number") return NextResponse.json({ error: "Appointment could not be found." }, { status: 404 });
@@ -131,7 +142,7 @@ export async function PATCH(request: Request) {
     const todaysBookings = await todayBookings();
     if (!booking.customer_id || !booking.start_at || !todaysBookings.some((item) => item.id === booking.id)) return NextResponse.json({ error: "This appointment is not available for check-in today." }, { status: 404 });
     const customer = await square<{ customer?: SquareCustomer }>(`/customers/${encodeURIComponent(booking.customer_id)}`);
-    if (!customer.customer?.phone_number || normalizePhone(customer.customer.phone_number) !== normalizePhone(body.phone)) return NextResponse.json({ error: "The phone number does not match this appointment." }, { status: 403 });
+    if (!customer.customer?.phone_number || !phonesMatch(customer.customer.phone_number, body.phone)) return NextResponse.json({ error: "The phone number does not match this appointment." }, { status: 403 });
     if (booking.seller_note?.includes(CHECKED_IN)) {
       await saveCheckIn(booking.id, new Date());
       return NextResponse.json({ success: true, alreadyCheckedIn: true }, { headers: { "Cache-Control": "no-store" } });
