@@ -7,7 +7,7 @@ export type AppointmentSegment = { duration_minutes: number; service_variation_i
 
 export class SegmentMappingError extends Error {
   constructor(
-    readonly code: "SERVICE_VARIATION_NOT_FOUND" | "SURCHARGE_VARIATION_NOT_FOUND" | "NO_BOOKABLE_SERVICE",
+    readonly code: "SERVICE_VARIATION_NOT_FOUND" | "SURCHARGE_VARIATION_NOT_FOUND" | "NO_BOOKABLE_SERVICE" | "SEGMENT_TOTAL_MISMATCH",
     readonly field: string | null,
     message: string,
   ) {
@@ -16,9 +16,14 @@ export class SegmentMappingError extends Error {
 }
 
 /**
- * One segment per service at its base duration, followed by a segment for its option surcharge
- * (e.g. "+ Extra Strong Calcium gel") at the add-on's duration, so Square bills base + surcharge.
- * Prices and minutes come from serviceTree; a missing surcharge variation fails rather than under-billing.
+ * One sequential segment per selected service at its base duration, followed by a segment for its option
+ * surcharge (e.g. "+ Extra Strong Calcium gel") at the add-on's duration, so Square bills base + surcharge.
+ * Prices and minutes come from serviceTree.
+ *
+ * A billable service (price > 0) with no live Square variation fails the booking instead of being folded
+ * into another segment's time: that fold is what made a second service (e.g. Feets after Hands) vanish from
+ * Square's "Services and items" while still blocking its minutes. Only $0 options, which Square never
+ * bills, may add their minutes to the last segment. The segment minutes must always equal the selected minutes.
  */
 export function buildGuestSegments(
   serviceIds: string[],
@@ -27,15 +32,17 @@ export function buildGuestSegments(
   teamMemberId: string,
 ): AppointmentSegment[] {
   const segments: AppointmentSegment[] = [];
-  let unmappedMinutes = 0;
+  let freeMinutes = 0;
+  let selectedMinutes = 0;
   for (const line of buildBillLines([serviceIds], [addOns])[0] ?? []) {
     const service = serviceById.get(line.serviceId);
     const variation = live.get(line.serviceId);
+    selectedMinutes += line.durationMinutes;
     if (!service || !variation) {
-      if (line.square) {
+      if (line.priceCents > 0 || line.square) {
         throw new SegmentMappingError("SERVICE_VARIATION_NOT_FOUND", line.serviceId, `"${line.nameEn}" has no bookable Square variation. Run the Square catalog sync in the admin.`);
       }
-      unmappedMinutes += line.durationMinutes;
+      freeMinutes += line.durationMinutes;
       continue;
     }
     const addOnMinutes = line.addOnKey && service.addOn ? service.addOn.durationMinutes : 0;
@@ -55,6 +62,10 @@ export function buildGuestSegments(
   if (segments.length === 0) {
     throw new SegmentMappingError("NO_BOOKABLE_SERVICE", null, "No selected service exists in the Square booking catalog.");
   }
-  segments[segments.length - 1].duration_minutes += unmappedMinutes;
+  segments[segments.length - 1].duration_minutes += freeMinutes;
+  const blockedMinutes = segments.reduce((sum, segment) => sum + segment.duration_minutes, 0);
+  if (blockedMinutes !== selectedMinutes) {
+    throw new SegmentMappingError("SEGMENT_TOTAL_MISMATCH", null, `Square would block ${blockedMinutes} min but the selected services total ${selectedMinutes} min.`);
+  }
   return segments;
 }
