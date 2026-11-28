@@ -298,3 +298,17 @@ html:has(.kiosk), body:has(.kiosk) { height: 100%; overflow: hidden; overscroll-
   .kiosk-walkin-slots .kiosk-date-bar > button, .kiosk-walkin-slots .kiosk-date-field { min-height: 52px; }
   .kiosk-walkin-slots .kiosk-slots button { min-height: 64px; }
 }
+
+/* Walk-in phone: compact country-code picker beside the number, same height as the name field (no extra rows). */
+.kiosk-fields:has(.kiosk-phone-field) { grid-template-columns: minmax(0, .72fr) minmax(0, 1.28fr); }
+.kiosk-fields .kiosk-phone-field { display: grid; gap: 5px; min-width: 0; color: var(--kiosk-muted); font-size: 14px; }
+.kiosk-phone-row { display: flex; gap: 6px; min-width: 0; }
+.kiosk-phone-row > input { flex: 1 1 0; min-width: 0; padding: 0 10px; }
+.kiosk-fields .kiosk-phone-row > input.kiosk-cc-other { flex: none; width: 58px; padding: 0 8px; text-align: center; }
+.kiosk-cc { position: relative; flex: none; display: flex; align-items: center; padding: 0 22px 0 9px; border: 1px solid var(--kiosk-line); background: var(--kiosk-paper); color: var(--kiosk-ink); font-size: 16px; white-space: nowrap; }
+.kiosk-cc::after { content: ""; position: absolute; right: 9px; top: 50%; width: 6px; height: 6px; margin-top: -5px; border-right: 1.5px solid var(--kiosk-muted); border-bottom: 1.5px solid var(--kiosk-muted); transform: rotate(45deg); pointer-events: none; }
+.kiosk-cc select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+.kiosk-cc:focus-within { outline: 2px solid var(--kiosk-accent); outline-offset: 1px; }
+@media (max-width: 640px) {
+  .kiosk-fields:has(.kiosk-phone-field) { grid-template-columns: 1fr; }
+}
