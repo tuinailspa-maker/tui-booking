@@ -3,6 +3,7 @@ import { localTorontoStart, openGroupSlots } from "@/data/dayAvailability";
 import { notifyOwnerSms, recordCheckIn, square, telegram } from "@/data/lateCheckin";
 import { buildGuestSegments, SegmentMappingError } from "@/data/squareSegments";
 import { getStaffRoster, verifyGuestAssignments } from "@/data/squareStaff";
+import { buildE164 } from "@/data/phone";
 import { bumpSquareSyncVersion } from "@/data/squareSync";
 import { getServiceVariationLinks } from "@/data/squareVariations";
 import type { StaffMember } from "@/data/staffRoster";
@@ -53,13 +54,14 @@ function requestedTechnicians(value: unknown, roster: StaffMember[], guestCount:
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const name = typeof body?.name === "string" ? body.name.trim().replace(/\s+/g, " ").slice(0, 100) : "";
-  const digits = typeof body?.phone === "string" ? body.phone.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "") : "";
+  // Older kiosk builds send only a 10-digit North American number, so a missing country code means +1.
+  const phoneE164 = buildE164(body?.countryCode ?? "1", body?.phone);
   const parsedGuests = parseWalkinGuests(body);
   const requestId = typeof body?.requestId === "string" && REQUEST_ID_PATTERN.test(body.requestId) ? body.requestId : null;
   const time = typeof body?.time === "string" && /^\d{2}:\d{2}$/.test(body.time) ? body.time : null;
   const today = getTorontoToday();
   const date = parseWalkinDate(body?.date, today);
-  if (!name || digits.length !== 10 || !parsedGuests || !requestId || !time || !date) return fail("Invalid walk-in booking.", 400);
+  if (!name || !phoneE164 || !parsedGuests || !requestId || !time || !date) return fail("Invalid walk-in booking.", 400);
 
   const locationId = process.env.SQUARE_LOCATION_ID;
   if (!process.env.SQUARE_ACCESS_TOKEN || !locationId) return fail("Square is not configured.", 500);
@@ -86,7 +88,6 @@ export async function POST(request: Request) {
     if (!assignment.ok) return fail(SLOT_TAKEN, 409);
     const technicians = assignment.members;
 
-    const phoneE164 = `+1${digits}`;
     const customer = await findOrCreateCustomer(name, phoneE164, requestId);
     const live = await getServiceVariationLinks();
     const segmentsByGuest = guests.map((guest, index) => buildGuestSegments(guest.services.map((service) => service.id), {}, live, technicians[index].teamMemberId));
